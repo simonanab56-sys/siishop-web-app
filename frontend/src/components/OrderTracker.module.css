@@ -1,0 +1,226 @@
+/* components/OrderTracker.module.css */
+.tracker {
+  display: flex;
+  align-items: flex-start;
+  padding: 20px 0 12px;
+  overflow-x: auto;
+}
+
+.stepGroup {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Horizontal line connecting steps */
+.line {
+  flex: 1;
+  height: 3px;
+  background: var(--brand-border);
+  border-radius: 2px;
+  margin-top: -28px;        /* align with circle centers */
+  transition: background 0.5s ease;
+}
+.lineActive { background: var(--brand-primary); }
+
+/* Each step: circle + labels below */
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.circle {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--brand-border);
+  color: var(--brand-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  border: 3px solid white;
+  box-shadow: 0 0 0 2px var(--brand-border);
+  transition: all 0.35s ease;
+  position: relative;
+  z-index: 1;
+}
+
+/* Completed step — filled orange, white checkmark */
+.completed .circle {
+  background: var(--brand-primary);
+  color: white;
+  box-shadow: 0 0 0 2px var(--brand-primary);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* Active / current step — pulsing ring */
+.current .circle {
+  background: white;
+  color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--brand-primary);
+  animation: pulse 1.8s infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--brand-primary); }
+  50%       { box-shadow: 0 0 0 7px rgba(249,115,22,0.18); }
+}
+
+.label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--brand-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+.desc {
+  font-size: 0.65rem;
+  color: var(--brand-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.completed .label,
+.completed .desc { color: var(--brand-primary); }
+.current .label   { color: var(--brand-primary); font-weight: 800; }
+.current .desc    { color: var(--brand-dark); }
+
+/* ── MOBILE RESPONSIVENESS (max-width: 768px) ── */
+@media (max-width: 768px) {
+  .tracker {
+    padding: 16px 0 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .circle {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+    border: 2px solid white;
+    box-shadow: 0 0 0 2px var(--brand-border);
+  }
+
+  .completed .circle {
+    box-shadow: 0 0 0 2px var(--brand-primary);
+  }
+
+  .current .circle {
+    box-shadow: 0 0 0 2px var(--brand-primary);
+  }
+
+  .label {
+    font-size: 0.65rem;
+    max-width: 60px;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .desc {
+    font-size: 0.6rem;
+    max-width: 60px;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .line {
+    margin-top: -24px;
+  }
+}
+
+/* ── SMALL PHONES (max-width: 480px) ── */
+@media (max-width: 480px) {
+  .tracker {
+    padding: 12px 0 4px;
+    gap: 4px;
+  }
+
+  .stepGroup {
+    min-width: 0;
+  }
+
+  .step {
+    gap: 4px;
+  }
+
+  .circle {
+    width: 36px;
+    height: 36px;
+    font-size: 0.9rem;
+    border: 2px solid white;
+    box-shadow: 0 0 0 1.5px var(--brand-border);
+  }
+
+  .completed .circle {
+    font-size: 0.8rem;
+    box-shadow: 0 0 0 1.5px var(--brand-primary);
+  }
+
+  .current .circle {
+    box-shadow: 0 0 0 2px var(--brand-primary);
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--brand-primary); }
+    50%       { box-shadow: 0 0 0 5px rgba(249,115,22,0.12); }
+  }
+
+  .label {
+    font-size: 0.6rem;
+    max-width: 50px;
+    line-height: 1.2;
+  }
+
+  .desc {
+    font-size: 0.55rem;
+    max-width: 50px;
+    line-height: 1.1;
+    display: none;
+  }
+
+  .line {
+    margin-top: -20px;
+    height: 2px;
+  }
+}
+
+/* ── EXTRA SMALL PHONES (max-width: 360px) ── */
+@media (max-width: 360px) {
+  .tracker {
+    padding: 10px 0 2px;
+  }
+
+  .circle {
+    width: 32px;
+    height: 32px;
+    font-size: 0.8rem;
+    border: 1.5px solid white;
+    box-shadow: 0 0 0 1px var(--brand-border);
+  }
+
+  .completed .circle {
+    box-shadow: 0 0 0 1px var(--brand-primary);
+  }
+
+  .current .circle {
+    box-shadow: 0 0 0 1.5px var(--brand-primary);
+  }
+
+  .label {
+    font-size: 0.55rem;
+    max-width: 45px;
+  }
+
+  .desc {
+    display: none;
+  }
+
+  .line {
+    margin-top: -18px;
+  }
+}

@@ -1,0 +1,183 @@
+/* components/OrderStatusBadge.module.css */
+.timeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 16px 0 8px;
+  position: relative;
+}
+
+.stepWrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.connector {
+  flex: 1;
+  height: 3px;
+  background: var(--brand-border);
+  border-radius: 2px;
+  transition: background 0.4s;
+  margin: 0 -2px;
+  margin-top: -28px; /* align with dot center */
+  position: relative;
+  z-index: 0;
+}
+.connectorActive { background: var(--brand-primary); }
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.dot {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--brand-border);
+  color: var(--brand-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  border: 3px solid white;
+  box-shadow: 0 0 0 2px var(--brand-border);
+  transition: all 0.3s var(--ease);
+}
+
+.completed .dot {
+  background: var(--brand-primary);
+  color: white;
+  box-shadow: 0 0 0 2px var(--brand-primary);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.current .dot {
+  background: white;
+  box-shadow: 0 0 0 3px var(--brand-primary);
+  animation: pulse 1.8s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--brand-primary); }
+  50% { box-shadow: 0 0 0 6px rgba(249,115,22,0.2); }
+}
+
+.stepInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.stepLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--brand-dark);
+  text-align: center;
+  max-width: 80px;
+  word-break: break-word;
+  line-height: 1.2;
+}
+.stepDesc {
+  font-size: 0.7rem;
+  color: var(--brand-muted);
+  text-align: center;
+  max-width: 80px;
+  word-break: break-word;
+  line-height: 1.1;
+}
+
+.completed .stepLabel { color: var(--brand-primary); }
+.current .stepLabel { color: var(--brand-primary); }
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .timeline {
+    padding: 12px 0 4px;
+  }
+  .connector {
+    height: 2px;
+    margin-top: -26px;
+  }
+  .step {
+    gap: 6px;
+  }
+  .dot {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+    border: 2px solid white;
+    box-shadow: 0 0 0 1.5px var(--brand-border);
+  }
+  .completed .dot {
+    box-shadow: 0 0 0 1.5px var(--brand-primary);
+  }
+  .current .dot {
+    box-shadow: 0 0 0 2.5px var(--brand-primary);
+  }
+  .stepLabel {
+    font-size: 0.7rem;
+    max-width: 70px;
+  }
+  .stepDesc {
+    font-size: 0.65rem;
+    max-width: 70px;
+  }
+}
+
+@media (max-width: 480px) {
+  .timeline {
+    padding: 10px 0 2px;
+  }
+  .connector {
+    height: 2px;
+    margin-top: -24px;
+  }
+  .step {
+    gap: 4px;
+  }
+  .dot {
+    width: 36px;
+    height: 36px;
+    font-size: 0.9rem;
+    border: 2px solid white;
+    box-shadow: 0 0 0 1px var(--brand-border);
+  }
+  .completed .dot {
+    box-shadow: 0 0 0 1px var(--brand-primary);
+  }
+  .current .dot {
+    box-shadow: 0 0 0 2px var(--brand-primary);
+  }
+  .stepLabel {
+    font-size: 0.65rem;
+    max-width: 60px;
+  }
+  .stepDesc {
+    font-size: 0.6rem;
+    max-width: 60px;
+  }
+}
+
+@media (max-width: 360px) {
+  .dot {
+    width: 32px;
+    height: 32px;
+    font-size: 0.8rem;
+  }
+  .stepLabel {
+    font-size: 0.6rem;
+    max-width: 50px;
+  }
+  .stepDesc {
+    font-size: 0.55rem;
+    max-width: 50px;
+  }
+}

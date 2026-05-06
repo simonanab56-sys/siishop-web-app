@@ -1,0 +1,54 @@
+/* components/CartItem.module.css — fully responsive */
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--brand-border);
+}
+.item:last-child { border-bottom: none; }
+
+.image {
+  width: 60px; height: 60px; border-radius: var(--radius-sm);
+  object-fit: cover; flex-shrink: 0;
+}
+.imagePlaceholder {
+  width: 60px; height: 60px; border-radius: var(--radius-sm);
+  background: var(--brand-surface); border: 1px solid var(--brand-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem; flex-shrink: 0;
+}
+
+.info { flex: 1; min-width: 0; }
+.name  { font-size: 0.9rem; font-weight: 600; color: var(--brand-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.price { font-size: 0.78rem; color: var(--brand-muted); margin-top: 2px; display: block; }
+
+.controls {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.qtyBtn {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--brand-surface); border: 1.5px solid var(--brand-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem; font-weight: 700; cursor: pointer;
+  transition: all var(--transition); color: var(--brand-dark);
+}
+.qtyBtn:hover { background: var(--brand-primary); color: white; border-color: var(--brand-primary); }
+.qty { font-size: 0.9rem; font-weight: 700; min-width: 20px; text-align: center; }
+
+.lineTotal { font-weight: 700; font-size: 0.95rem; color: var(--brand-dark); min-width: 54px; text-align: right; flex-shrink: 0; }
+
+.removeBtn {
+  background: none; border: none; color: var(--brand-muted);
+  font-size: 0.8rem; padding: 4px 6px; border-radius: 4px;
+  cursor: pointer; transition: all var(--transition); flex-shrink: 0;
+}
+.removeBtn:hover { background: #fee2e2; color: var(--brand-danger); }
+
+/* Mobile: tighten layout */
+@media (max-width: 480px) {
+  .item { gap: 8px; padding: 12px 0; }
+  .image, .imagePlaceholder { width: 48px; height: 48px; }
+  .lineTotal { min-width: 46px; font-size: 0.88rem; }
+  .qty { min-width: 16px; }
+}

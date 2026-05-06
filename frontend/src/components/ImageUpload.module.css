@@ -1,0 +1,53 @@
+/* components/ImageUpload.module.css */
+.zone {
+  border: 2.5px dashed var(--brand-border);
+  border-radius: var(--radius-md);
+  min-height: 180px;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+  overflow: hidden;
+  background: var(--brand-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.zone:hover { border-color: var(--brand-primary); background: #fff7ed; }
+.dragging { border-color: var(--brand-primary); background: #fff7ed; transform: scale(1.01); }
+.hasImage { border-style: solid; border-color: var(--brand-border); }
+
+.hiddenInput { display: none; }
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 24px;
+  text-align: center;
+}
+.uploadIcon { font-size: 2.5rem; }
+.primaryText { font-weight: 600; font-size: 0.95rem; color: var(--brand-dark); }
+.secondaryText { font-size: 0.8rem; color: var(--brand-muted); }
+
+.preview { width: 100%; position: relative; }
+.previewImg {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  display: block;
+}
+.previewOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.zone:hover .previewOverlay { opacity: 1; }

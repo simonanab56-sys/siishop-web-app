@@ -62,8 +62,15 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   prodFrontendUrl,
+  "https://siishop-web-app-git-main-simonanab56-6856s-projects.vercel.app", // Vercel preview branch
   ...corsOriginsFromEnv,
 ].filter(Boolean);
+
+// Also allow any vercel.app subdomain for flexibility
+const vercelPatterns = [
+  /\.vercel\.app$/,
+  /\.vercel\.app\/.*$/,
+];
 
 app.use(
   cors({
@@ -71,12 +78,18 @@ app.use(
       // Allow requests with no origin (Postman, mobile apps)
       if (!origin) return callback(null, true);
 
+      // Check exact match
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
-      } else {
-        console.error("❌ CORS blocked:", origin);
-        return callback(new Error("Not allowed by CORS"));
       }
+
+      // Check vercel.app pattern match
+      if (origin.endsWith(".vercel.app") || origin.includes(".vercel.app")) {
+        return callback(null, true);
+      }
+
+      console.error("❌ CORS blocked:", origin);
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

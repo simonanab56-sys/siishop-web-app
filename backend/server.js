@@ -51,10 +51,18 @@ app.use(helmet({
 /* ───────────────────────── CORS (FIXED) ─────────────────────────
  * Supports multiple frontend origins (React + Vite + production)
  */
+const prodFrontendUrl = process.env.FRONTEND_URL_PROD || "https://siishop-web-app.vercel.app";
+
+// Parse CORS_ORIGIN env variable if set (comma-separated URLs)
+const corsOriginsFromEnv = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
+  : [];
+
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  process.env.FRONTEND_URL_PROD, // production domain
+  prodFrontendUrl,
+  ...corsOriginsFromEnv,
 ].filter(Boolean);
 
 app.use(

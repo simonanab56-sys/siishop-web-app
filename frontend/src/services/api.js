@@ -4,8 +4,15 @@ function getToken() {
   return localStorage.getItem("token");
 }
 
+function getApiBaseUrl() {
+  // Use production URL if set, otherwise use local URL
+  const prodUrl = import.meta.env.VITE_API_URL_PROD;
+  const localUrl = import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+  return prodUrl || localUrl;
+}
+
 async function apiRequest(endpoint, options = {}) {
-  const baseURL = "http://localhost:5000/api";
+  const baseURL = getApiBaseUrl();
   const url = `${baseURL}${endpoint}`;
 
   try {
@@ -31,15 +38,17 @@ async function apiRequest(endpoint, options = {}) {
 
 /* ── Auth ──────────────────────────────────────────────────────────────────── */
 export const authAPI = {
-  register: (formData) =>
-    fetch("http://localhost:5000/api/auth/register", {
+  register: (formData) => {
+    const baseURL = getApiBaseUrl();
+    return fetch(`${baseURL}/auth/register`, {
       method: "POST",
       body: formData,
     }).then(async (r) => {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Registration failed");
       return data;
-    }),
+    });
+  },
   login: (email, password) =>
     apiRequest("/auth/login", {
       method: "POST",

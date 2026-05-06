@@ -54,7 +54,7 @@ app.use(helmet({
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  process.env.FRONTEND_ORIGIN, // production domain
+  process.env.FRONTEND_URL_PROD, // production domain
 ].filter(Boolean);
 
 app.use(

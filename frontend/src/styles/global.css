@@ -44,7 +44,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 16px; scroll-behavior: smooth; height: 100%; }
+html { font-size: 16px; scroll-behavior: smooth; height: 100%;  scrollbar-gutter: stable; }
 
 #root {
   display: flex;

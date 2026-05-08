@@ -44,12 +44,13 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 16px; scroll-behavior: smooth; height: 100%;   }
+html { font-size: 16px; scroll-behavior: smooth; min-height: 100%; }
 
 #root {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
+  width: 100%;
 }
 
 body {
@@ -57,8 +58,8 @@ body {
   background-color: var(--brand-surface);
   color: var(--brand-dark);
   line-height: 1.6;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
+  overflow-x: visible;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -92,6 +93,17 @@ input, textarea, select {
   color: var(--brand-dark);
   transition: border-color var(--transition), box-shadow var(--transition);
   outline: none;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Fix for inputs on mobile - prevent zoom on iOS */
+@media (max-width: 480px) {
+  input, textarea, select {
+    font-size: 16px;
+  }
 }
 input:focus, textarea:focus, select:focus {
   border-color: var(--brand-primary);
@@ -99,7 +111,24 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ── Utility classes ── */
-.container { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+.container { max-width: 1280px; margin: 0 auto; padding: 0 24px; width: 100%; }
+
+/* Responsive container - prevent overflow */
+@media (max-width: 640px) {
+  .container { padding: 0 16px; }
+}
+
+@media (max-width: 480px) {
+  .container { padding: 0 12px; }
+}
+
+@media (max-width: 360px) {
+  .container { padding: 0 10px; }
+}
+
+@media (max-width: 320px) {
+  .container { padding: 0 8px; }
+}
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
@@ -120,6 +149,11 @@ input:focus, textarea:focus, select:focus {
   font-size: 0.9rem;
   transition: all var(--transition);
   white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
 }
 .btn-primary {
   background: var(--brand-primary);
@@ -180,6 +214,15 @@ input:focus, textarea:focus, select:focus {
   flex-direction: column;
   gap: 10px;
   pointer-events: none;
+  max-width: calc(100vw - 32px);
+}
+
+@media (max-width: 480px) {
+  .toast-container {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+  }
 }
 .toast {
   padding: 12px 18px;
@@ -190,8 +233,17 @@ input:focus, textarea:focus, select:focus {
   box-shadow: var(--shadow-lg);
   animation: toastIn 0.3s var(--ease) forwards;
   pointer-events: auto;
-  min-width: 240px;
-  max-width: 340px;
+  min-width: 200px;
+  max-width: 100%;
+  word-wrap: break-word;
+}
+
+@media (max-width: 480px) {
+  .toast {
+    min-width: 0;
+    font-size: 0.85rem;
+    padding: 10px 14px;
+  }
 }
 .toast-success { background: var(--brand-success); }
 .toast-error   { background: var(--brand-danger); }
@@ -536,7 +588,6 @@ button,
 html,
 body {
   max-width: 100%;
-  overflow-x: hidden;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */

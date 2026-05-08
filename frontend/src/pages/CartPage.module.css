@@ -1,10 +1,11 @@
 /* pages/CartPage.module.css — mobile-first responsive */
 /* ── BASE (mobile) ──────────────────────────────────── */
-.page  { padding: 24px 0 48px; }
+.page  { padding: 24px 0 48px; min-width: 0; }
 .title {
   font-family: var(--font-display);
   font-size: clamp(1.4rem, 4vw, 2rem);
   margin-bottom: 20px;
+  word-wrap: break-word;
 }
 
 /* Single column on mobile */
@@ -12,6 +13,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 /* Cards — full width on mobile */
@@ -22,6 +24,7 @@
   box-shadow: var(--shadow-card);
   padding: 16px;
   width: 100%;
+  min-width: 0;
 }
 
 /* Tablet+ (≥640px) — side-by-side */
@@ -41,6 +44,17 @@
 /* Desktop (≥1024px) — wider gap */
 @media (min-width: 1024px) {
   .layout { gap: 28px; }
+}
+
+/* Responsive fixes for tiny screens */
+@media (max-width: 360px) {
+  .page { padding: 16px 0 48px; }
+  .cartCard, .checkoutCard { padding: 12px; }
+}
+
+@media (max-width: 320px) {
+  .page { padding: 12px 0 48px; }
+  .cartCard, .checkoutCard { padding: 10px; }
 }
 
 /* Cart header */
@@ -103,6 +117,17 @@
   .payMethods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 }
 
+/* Mobile fixes for payment buttons */
+@media (max-width: 400px) {
+  .payMethodBtn {
+    padding: 10px 8px;
+    font-size: 0.8rem;
+  }
+  .payMethodLabel {
+    font-size: 0.75rem;
+  }
+}
+
 .payMethodBtn {
   display: flex;
   align-items: center;
@@ -160,6 +185,22 @@
   padding: 14px !important;
   font-size: 1rem !important;
   border-radius: var(--radius-sm) !important;
+  min-height: 48px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 360px) {
+  .payBtn {
+    padding: 12px 10px !important;
+    font-size: 0.9rem !important;
+  }
+}
+
+@media (max-width: 320px) {
+  .payBtn {
+    padding: 10px 8px !important;
+    font-size: 0.85rem !important;
+  }
 }
 .payNote { font-size: 0.74rem; color: var(--brand-muted); text-align: center; margin-top: 10px; }
 
@@ -179,6 +220,22 @@
 }
 @media (min-width: 480px) {
   .loginNudge { flex-wrap: nowrap; }
+}
+
+@media (max-width: 360px) {
+  .loginNudge {
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 320px) {
+  .loginNudge {
+    flex-direction: column;
+    text-align: center;
+    gap: 8px;
+  }
 }
 
 /* Result screens */

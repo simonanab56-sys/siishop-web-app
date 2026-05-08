@@ -46,11 +46,11 @@
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 
-.footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; gap: 8px; }
-.priceGroup { display: flex; flex-direction: column; gap: 1px; }
+.footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.priceGroup { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
 .price         { font-size: 1.1rem; font-weight: 700; color: var(--brand-primary); }
 .originalPrice { font-size: 0.78rem; color: var(--brand-muted); text-decoration: line-through; }
-.addBtn        { border-radius: var(--radius-full) !important; padding: 7px 16px !important; white-space: nowrap; }
+.addBtn        { border-radius: var(--radius-full) !important; padding: 7px 16px !important; white-space: nowrap; flex-shrink: 0; }
 
 @media (max-width: 400px) {
   .imageWrapper { height: 160px; }

@@ -53,6 +53,8 @@
 
 /* Action buttons */
 .actionBtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.actionBtns button { flex-shrink: 0; font-size: 0.78rem; padding: 5px 8px; }
+@media (max-width: 480px) { .actionBtns { gap: 4px; } .actionBtns button { padding: 4px 6px; font-size: 0.72rem; } }
 
 /* Form card */
 .formCard {
@@ -69,7 +71,9 @@
 .formGroup  { margin-bottom: 14px; }
 .label      { display: block; font-size: 0.82rem; font-weight: 600; color: var(--brand-dark); margin-bottom: 5px; }
 .fieldError { display: block; font-size: 0.76rem; color: var(--brand-danger); margin-top: 4px; }
-.formActions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--brand-border); }
+.formActions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--brand-border); flex-wrap: wrap; }
+.formActions button { flex-shrink: 0; min-width: 90px; }
+@media (max-width: 480px) { .formActions { flex-direction: column; } .formActions button { width: 100%; } }
 
 /* Promo form grid */
 .promoFormGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 4px; }
@@ -104,16 +108,18 @@
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
   z-index: 1000;
+  padding: 16px;
 }
 .modalContent {
   background: white; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-  max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;
+  max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto;
 }
 .modalHeader {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 20px; border-bottom: 1px solid var(--border-color);
+  padding: 20px; border-bottom: 1px solid var(--brand-border);
+  gap: 12px;
 }
-.modalHeader h3 { margin: 0; font-size: 1.3rem; }
+.modalHeader h3 { margin: 0; font-size: 1.3rem; flex: 1; min-width: 0; }
 .modalBody {
   padding: 20px;
 }
@@ -122,7 +128,16 @@
 }
 .detailsGrid div {
   font-size: 0.95rem;
+  min-width: 0;
 }
 .detailsGrid strong {
   display: block; color: var(--brand-muted); font-size: 0.85rem; margin-bottom: 4px;
+}
+
+@media (max-width: 480px) {
+  .modal { padding: 12px; }
+  .modalContent { max-height: calc(100vh - 24px); }
+  .modalHeader { padding: 16px; }
+  .modalBody { padding: 16px; }
+  .detailsGrid { grid-template-columns: 1fr; gap: 12px; }
 }

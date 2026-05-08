@@ -52,3 +52,18 @@
   .lineTotal { min-width: 46px; font-size: 0.88rem; }
   .qty { min-width: 16px; }
 }
+
+@media (max-width: 360px) {
+  .item { gap: 6px; padding: 10px 0; }
+  .image, .imagePlaceholder { width: 42px; height: 42px; }
+  .name { font-size: 0.82rem; }
+  .price { font-size: 0.72rem; }
+  .lineTotal { min-width: 40px; font-size: 0.82rem; }
+  .qtyBtn { width: 24px; height: 24px; font-size: 0.9rem; }
+}
+
+@media (max-width: 320px) {
+  .item { gap: 4px; padding: 8px 0; }
+  .image, .imagePlaceholder { width: 38px; height: 38px; }
+  .lineTotal { display: none; }
+}

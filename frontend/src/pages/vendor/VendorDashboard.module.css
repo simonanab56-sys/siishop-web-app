@@ -47,7 +47,9 @@
 .label      { display: block; font-size: 0.83rem; font-weight: 600; color: var(--brand-dark); margin-bottom: 5px; }
 .fieldError { display: block; font-size: 0.76rem; color: var(--brand-danger); margin-top: 4px; }
 
-.formActions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--brand-border); }
+.formActions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--brand-border); flex-wrap: wrap; }
+.formActions button { flex-shrink: 0; min-width: 100px; }
+@media (max-width: 480px) { .formActions { flex-direction: column; } .formActions button { width: 100%; } }
 
 /* Product cards */
 .productCard { display: flex; flex-direction: column; }
@@ -64,7 +66,8 @@
 .productName  { font-weight: 700; font-size: 0.9rem; }
 .productPrice { color: var(--brand-primary); font-weight: 700; font-size: 0.95rem; }
 .productStock { font-size: 0.78rem; color: var(--brand-muted); }
-.productActions { display: flex; gap: 8px; margin-top: 8px; }
+.productActions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.productActions button { flex-shrink: 0; font-size: 0.78rem; padding: 6px 10px; }
 
 /* Orders tab */
 .ordersTab  {}

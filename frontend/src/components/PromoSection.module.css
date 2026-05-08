@@ -26,7 +26,16 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px;
 }
-@media (max-width: 480px) { .promoGrid { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
+@media (max-width: 480px) {
+  .promoGrid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .section { padding: 20px 16px 24px; margin: 24px 0 16px; }
+  .sectionTitle { font-size: 1.2rem; }
+  .sectionSub { font-size: 0.8rem; }
+}
+
+@media (max-width: 360px) {
+  .promoGrid { grid-template-columns: 1fr; }
+}
 
 /* Card */
 .promoCard {

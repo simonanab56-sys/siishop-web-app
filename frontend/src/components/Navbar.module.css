@@ -1,4 +1,4 @@
-/* components/Navbar.module.css — v4: currency switcher, animated hamburger */
+/* components/Navbar.module.css — v5: fixed mobile responsiveness */
 .nav {
   background: white;
   border-bottom: 1.5px solid var(--brand-border);
@@ -7,13 +7,20 @@
   z-index: 200;
   box-shadow: var(--shadow-sm);
   flex-shrink: 0;
+  contain: layout style;
+  width: 100%;
 }
 
 .inner {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   height: 64px;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
 }
 
 /* Logo */
@@ -28,6 +35,7 @@
   border: none;
   cursor: pointer;
   flex-shrink: 0;
+  padding: 4px 0;
 }
 
 .logo strong {
@@ -43,7 +51,6 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
 }
 
 .link {
@@ -57,6 +64,7 @@
   cursor: pointer;
   transition: all var(--transition);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .link:hover {
@@ -74,6 +82,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 /* Currency switcher */
@@ -94,6 +103,7 @@
   cursor: pointer;
   color: var(--brand-dark);
   transition: all var(--transition);
+  flex-shrink: 0;
 }
 
 .currencyBtn:hover {
@@ -125,7 +135,6 @@
     opacity: 0;
     transform: translateY(-6px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
@@ -199,6 +208,7 @@
 
 .cartLabel {
   font-size: 0.86rem;
+  white-space: nowrap;
 }
 
 .cartBadge {
@@ -232,6 +242,7 @@
   transition: all var(--transition);
   white-space: nowrap;
   font-family: var(--font-body);
+  flex-shrink: 0;
 }
 
 .signInBtn:hover {
@@ -249,7 +260,6 @@
   border: none;
   cursor: pointer;
   padding: 0;
-  margin-left: 4px;
   flex-shrink: 0;
 }
 
@@ -276,7 +286,7 @@
   transform: translateY(-8.75px) rotate(-45deg);
 }
 
-/* Mobile menu */
+/* Mobile menu - FIXED: overlay instead of pushing content */
 .mobileMenu {
   display: flex;
   flex-direction: column;
@@ -284,6 +294,8 @@
   background: white;
   padding-bottom: 8px;
   animation: slideDown 0.2s var(--ease);
+  max-height: calc(100vh - 65px);
+  overflow-y: auto;
 }
 
 @keyframes slideDown {
@@ -291,7 +303,6 @@
     opacity: 0;
     transform: translateY(-8px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
@@ -312,6 +323,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 48px;
 }
 
 .mobileLink:hover {
@@ -371,7 +383,7 @@
 }
 
 /* ── Responsive ── */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .links {
     display: none;
   }
@@ -391,15 +403,69 @@
 
   .cartBtn {
     padding: 8px 12px;
+    min-width: auto;
   }
 }
 
-@media (max-width: 360px) {
+@media (max-width: 480px) {
+  .inner {
+    height: 60px;
+    gap: 6px;
+    padding: 0 12px !important;
+  }
+
+  .logo {
+    font-size: 1.15rem;
+    gap: 6px;
+  }
+
+  .logoIcon {
+    font-size: 1.3rem;
+  }
+
   .logo span:not(.logoIcon) {
     display: none;
   }
 
   .logoIcon {
-    font-size: 1.6rem;
+    font-size: 1.5rem;
+  }
+
+  .signInBtn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+
+  .cartBtn {
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .inner {
+    padding: 0 8px !important;
+  }
+
+  .signInBtn {
+    padding: 6px 8px;
+    font-size: 0.75rem;
+  }
+
+  .cartBtn {
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 320px) {
+  .inner {
+    padding: 0 6px !important;
+  }
+
+  .signInBtn span:not(.cartBadge) {
+    display: none;
+  }
+
+  .cartBtn {
+    padding: 6px;
   }
 }

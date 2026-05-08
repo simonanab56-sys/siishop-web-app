@@ -121,7 +121,7 @@ function AppInner() {
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Navbar cartCount={cartCount} currentPage={page} onNavigate={setPage} onOpenAuth={() => onRequireAuth("login")} />
       <ErrorBoundary key={page}>
-        <main style={{ flex: 1, overflow: "auto" }}>{renderPage()}</main>
+        <main style={{ flex: 1, minHeight: 0, width: "100%" }}>{renderPage()}</main>
       </ErrorBoundary>
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} onSuccess={onAuthSuccess} initialView={authModalView} />
       <ToastContainer toasts={toasts} />

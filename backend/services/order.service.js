@@ -109,13 +109,13 @@ async function createOrder(data, { paymentMethod, paymentRef = null }) {
     // ✅ CRITICAL: Extract vendorId from first item for top-level reference
     const vendorId = itemsWithVendor[0]?.vendorId || null;
     
-    const [order] = await Order.create([{
+    // ✅ FIX: Build order data - omit paymentRef for COD orders
+    const orderData = {
       ...data,
       vendorId, // ✅ CRITICAL: Set top-level vendorId for aggregation queries
       items: itemsWithVendor,
       totalAmount: totalAmount,
       paymentMethod,
-      paymentRef,
       // ✅ CRITICAL FIX: Set correct status based on payment method
       // Cash orders: pending (waiting for payment)
       // Paystack orders: paid (payment already verified)
@@ -123,7 +123,14 @@ async function createOrder(data, { paymentMethod, paymentRef = null }) {
       orderStatus: paymentMethod === "paystack" ? "confirmed" : "pending",
       // ✅ ADDED: Track if order used promo code
       fromPromo: data.fromPromo || false,
-    }], { session });
+    };
+
+    // Only add paymentRef for online (paystack) orders - not for COD
+    if (paymentMethod === "paystack" && paymentRef) {
+      orderData.paymentRef = paymentRef;
+    }
+
+    const [order] = await Order.create([orderData], { session });
 
     // ✅ CRITICAL FIX: Reduce stock within transaction
     const stockReduced = await reduceStockTransactional(data.items, session);

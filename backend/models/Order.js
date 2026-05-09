@@ -30,9 +30,8 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
     },
     // paymentRef is the Paystack transaction reference.
-    // For paystack orders it is unique; cash orders leave it null.
-    // The unique+sparse index is defined via schema.index() below
-    // (inline index options can't express sparse+unique together).
+    // Only set for online payments - COD orders don't have paymentRef.
+    // The partial unique index ensures uniqueness only when paymentRef exists.
     paymentRef: String,
     orderStatus: {
       type: String,
@@ -60,15 +59,20 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 /*
- * Unique index on paymentRef with sparse: true.
+ * Partial unique index on paymentRef.
  *
- * sparse — allows many null values (cash orders have no paymentRef).
- * unique  — prevents duplicate Paystack refs creating two orders.
- *          Also serves as an idempotency guard: if Paystack calls the
- *          webhook twice for the same ref, MongoDB rejects the second
- *          upsert / duplicate insert.
+ * partialFilterExpression — only enforces uniqueness when paymentRef exists and is not null.
+ * This allows multiple COD orders without paymentRef without duplicate key errors.
+ * unique — prevents duplicate Paystack refs creating two orders.
+ * Also serves as an idempotency guard: if Paystack calls the webhook twice for the same ref,
+ * MongoDB rejects the second upsert / duplicate insert.
  */
-orderSchema.index({ paymentRef: 1 }, { unique: true, sparse: true });
+// ✅ FIX: Partial unique index - only enforces uniqueness when paymentRef exists and is not null
+// This allows multiple COD orders without paymentRef without causing duplicate key errors
+orderSchema.index(
+  { paymentRef: 1 },
+  { unique: true, partialFilterExpression: { paymentRef: { $exists: true, $ne: null } } }
+);
 // ✅ ADDED: Performance indexes for common queries
 orderSchema.index({ userId: 1, createdAt: -1 });  // For "my orders" listing
 orderSchema.index({ paymentStatus: 1 });          // For payment queries

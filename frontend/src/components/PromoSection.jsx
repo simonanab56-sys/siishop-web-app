@@ -9,6 +9,18 @@ import { promoAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./PromoSection.module.css";
 
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+
+// Helper to get full image URL
+function getFullImageUrl(url) {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  if (url.startsWith("/uploads")) {
+    return API_BASE.replace("/api", "") + url;
+  }
+  return url;
+}
+
 // Countdown hook — returns { days, hours, minutes, seconds } until endDate
 function useCountdown(endDate) {
   const [timeLeft, setTimeLeft] = useState(calcDiff(endDate));
@@ -35,7 +47,7 @@ function useCountdown(endDate) {
 }
 
 // Single promo card
-function PromoCard({ promo, onAddToCart }) {
+function PromoCard({ promo, onAddToCart, onViewProduct }) {
   const { fmt } = useCurrency();
   const product  = promo.productId;
   const discount = promo.discountPercent || 0;
@@ -45,16 +57,30 @@ function PromoCard({ promo, onAddToCart }) {
 
   if (!product) return null;
 
+  const handleCardClick = (e) => {
+    // Don't trigger click when clicking the add to cart button
+    if (e.target.closest("button")) return;
+    // Pass product with promo pricing applied
+    const productWithPromo = {
+      ...product,
+      price: sale,
+      _originalPrice: original,
+    };
+    onViewProduct?.(productWithPromo);
+  };
+
   return (
-    <div className={styles.promoCard}>
+    <div className={styles.promoCard} onClick={handleCardClick}>
       {/* Discount badge */}
       <div className={styles.discountBadge}>-{discount}%</div>
 
       {/* Image */}
       <div className={styles.promoImg}>
-        {product.image
-          ? <img src={product.image} alt={product.name || "Product"} loading="lazy" />
-          : <div className={styles.imgPlaceholder}>🛍️</div>
+        {product.images && product.images.length > 0
+          ? <img src={getFullImageUrl(product.images[0].url)} alt={product.name || "Product"} loading="lazy" />
+          : product.image
+            ? <img src={getFullImageUrl(product.image)} alt={product.name || "Product"} loading="lazy" />
+            : <div className={styles.imgPlaceholder}>🛍️</div>
         }
       </div>
 
@@ -103,7 +129,7 @@ function CountBox({ value, unit }) {
   );
 }
 
-export default function PromoSection({ onAddToCart }) {
+export default function PromoSection({ onAddToCart, onViewProduct }) {
   const [promos,  setPromos]  = useState([]);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
@@ -135,7 +161,7 @@ export default function PromoSection({ onAddToCart }) {
 
       <div className={styles.promoGrid}>
         {promos.map(promo => (
-          <PromoCard key={promo._id} promo={promo} onAddToCart={onAddToCart} />
+          <PromoCard key={promo._id} promo={promo} onAddToCart={onAddToCart} onViewProduct={onViewProduct} />
         ))}
       </div>
     </section>

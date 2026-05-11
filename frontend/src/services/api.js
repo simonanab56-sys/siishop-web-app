@@ -101,18 +101,67 @@ export const productAPI = {
   },
   getById: (id) => apiRequest(`/products/${id}`),
   getCategories: () => apiRequest("/products/categories"),
-  create: (data) =>
-    apiRequest("/products", {
+  create: async (data, imageFiles = []) => {
+    // If there are image files, use FormData
+    if (imageFiles.length > 0) {
+      const formData = new FormData();
+      Object.keys(data).forEach(key => {
+        if (data[key] !== undefined && data[key] !== null) {
+          formData.append(key, data[key]);
+        }
+      });
+      imageFiles.forEach(file => {
+        formData.append("images", file);
+      });
+      const baseURL = getApiBaseUrl();
+      const response = await fetch(`${baseURL}/products`, {
+        method: "POST",
+        body: formData,
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to create product");
+      return result;
+    }
+    // Otherwise use JSON
+    return apiRequest("/products", {
       method: "POST",
       body: JSON.stringify(data),
       headers: { Authorization: `Bearer ${getToken()}` },
-    }),
-  update: (id, data) =>
-    apiRequest(`/products/${id}`, {
+    });
+  },
+  update: async (id, data, newImageFiles = [], deleteImages = []) => {
+    // If there are new image files or images to delete, use FormData
+    if (newImageFiles.length > 0 || deleteImages.length > 0) {
+      const formData = new FormData();
+      Object.keys(data).forEach(key => {
+        if (data[key] !== undefined && data[key] !== null) {
+          formData.append(key, data[key]);
+        }
+      });
+      newImageFiles.forEach(file => {
+        formData.append("images", file);
+      });
+      if (deleteImages.length > 0) {
+        formData.append("deleteImages", JSON.stringify(deleteImages));
+      }
+      const baseURL = getApiBaseUrl();
+      const response = await fetch(`${baseURL}/products/${id}`, {
+        method: "PUT",
+        body: formData,
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to update product");
+      return result;
+    }
+    // Otherwise use JSON
+    return apiRequest(`/products/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
       headers: { Authorization: `Bearer ${getToken()}` },
-    }),
+    });
+  },
   delete: (id) =>
     apiRequest(`/products/${id}`, {
       method: "DELETE",
@@ -175,18 +224,67 @@ export const vendorAPI = {
     apiRequest("/vendor/products", {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
-  createProduct: (data) =>
-    apiRequest("/vendor/products", {
+  createProduct: async (data, imageFiles = []) => {
+    // If there are image files, use FormData
+    if (imageFiles.length > 0) {
+      const formData = new FormData();
+      Object.keys(data).forEach(key => {
+        if (data[key] !== undefined && data[key] !== null) {
+          formData.append(key, data[key]);
+        }
+      });
+      imageFiles.forEach(file => {
+        formData.append("images", file);
+      });
+      const baseURL = getApiBaseUrl();
+      const response = await fetch(`${baseURL}/vendor/products`, {
+        method: "POST",
+        body: formData,
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to create product");
+      return result;
+    }
+    // Otherwise use JSON
+    return apiRequest("/vendor/products", {
       method: "POST",
       body: JSON.stringify(data),
       headers: { Authorization: `Bearer ${getToken()}` },
-    }),
-  updateProduct: (id, data) =>
-    apiRequest(`/vendor/products/${id}`, {
+    });
+  },
+  updateProduct: async (id, data, newImageFiles = [], deleteImages = []) => {
+    // If there are new image files or images to delete, use FormData
+    if (newImageFiles.length > 0 || deleteImages.length > 0) {
+      const formData = new FormData();
+      Object.keys(data).forEach(key => {
+        if (data[key] !== undefined && data[key] !== null) {
+          formData.append(key, data[key]);
+        }
+      });
+      newImageFiles.forEach(file => {
+        formData.append("images", file);
+      });
+      if (deleteImages.length > 0) {
+        formData.append("deleteImages", JSON.stringify(deleteImages));
+      }
+      const baseURL = getApiBaseUrl();
+      const response = await fetch(`${baseURL}/vendor/products/${id}`, {
+        method: "PUT",
+        body: formData,
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to update product");
+      return result;
+    }
+    // Otherwise use JSON
+    return apiRequest(`/vendor/products/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
       headers: { Authorization: `Bearer ${getToken()}` },
-    }),
+    });
+  },
   deleteProduct: (id) =>
     apiRequest(`/vendor/products/${id}`, {
       method: "DELETE",

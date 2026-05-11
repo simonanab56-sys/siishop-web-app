@@ -3,13 +3,41 @@
 const express = require("express");
 const router  = express.Router();
 const mongoose = require("mongoose");
+const multer  = require("multer");
+const path    = require("path");
+const fs      = require("fs");
+const { v4: uuidv4 } = require("uuid");
 
 const User    = require("../models/User");
 const Product = require("../models/Product");
 const requireApprovedVendor = require("../middleware/requireApprovedVendor");
 const Order   = require("../models/Order");
 const { requireAuth, requireVendor } = require("../middleware/auth");
-const uploader = require("../utils/upload");
+
+// ── MULTER CONFIGURATION ───────────────────────────────────────────────────
+const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowed = /jpeg|jpg|webp|png|gif/;
+  const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
+  const mime = allowed.test(file.mimetype);
+  if (ext && mime) return cb(null, true);
+  cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
+};
+
+const multiUpload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).array("images", 10);
 
 function toObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id)
@@ -151,32 +179,105 @@ router.get("/products", requireAuth, requireApprovedVendor, async (req, res) => 
   }
 });
 
-/* CREATE PRODUCT — handles multipart/form-data (image file upload) */
-router.post("/products", requireAuth, requireApprovedVendor, uploader.single("image"), async (req, res) => {
-  try {
-    const imageUrl = req.file
-      ? `/uploads/${req.file.filename}`
-      : (req.body.image || "");
+/* CREATE PRODUCT — handles multipart/form-data (multiple image uploads) */
+// Wrapper to catch multer errors explicitly
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error("[MULTER ERROR] Code:", err.code, "Message:", err.message);
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "Image file too large. Max 5MB per file." });
+    }
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return res.status(413).json({ error: "Too many files. Max 10 images allowed." });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  if (err) {
+    console.error("[UPLOAD ERROR]", err.message);
+    return res.status(400).json({ error: err.message });
+  }
+  next();
+};
 
-    const product = await Product.create({
+router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handleMulterError, async (req, res) => {
+  try {
+    // 🐛 DEBUG LOGGING (MANDATORY)
+    console.log("=== VENDOR CREATE PRODUCT DEBUG ===");
+    console.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+    console.log("REQ.BODY:", req.body);
+    console.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
+    console.log("FILES DETAIL:", req.files ? req.files.map(f => ({ name: f.originalname, size: f.size, mimetype: f.mimetype })) : []);
+    console.log("===================================");
+
+    // Process uploaded files into images array
+    let images = [];
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      images = req.files.map(file => ({
+        url: `/uploads/${file.filename}`,
+        public_id: "",
+      }));
+      console.log("[CREATE PRODUCT] Processed images:", images);
+    } else {
+      console.log("[CREATE PRODUCT] No files in req.files, req.files =", req.files);
+    }
+
+    // Backward compatibility: if no files but legacy image field provided
+    const legacyImage = req.body.image;
+    if (images.length === 0 && legacyImage) {
+      images.push({ url: legacyImage, public_id: "" });
+      console.log("[CREATE PRODUCT] Using legacy image:", legacyImage);
+    }
+
+    // Validate: require at least one image
+    if (images.length === 0) {
+      console.log("[CREATE PRODUCT] ERROR: No images provided");
+      return res.status(400).json({ error: "At least one product image is required" });
+    }
+
+    const productData = {
       name:        req.body.name        || "",
       description: req.body.description || "",
       price:       parseFloat(req.body.price)    || 0,
       category:    req.body.category   || "",
       stock:       parseInt(req.body.stock, 10)  || 0,
       available:   req.body.available === "true" || req.body.available === true,
-      image:       imageUrl,
+      images:      images,
+      // Legacy field - keep for backward compatibility
+      image:       images.length > 0 ? images[0].url : "",
       vendorId:    req.user.userId,
-    });
+    };
+
+    console.log("[CREATE PRODUCT] Creating product with:", JSON.stringify(productData));
+
+    let product;
+    try {
+      product = await Product.create(productData);
+    } catch (dbErr) {
+      console.error("[CREATE PRODUCT] DB ERROR:", dbErr.message);
+      console.error("[CREATE PRODUCT] DB ERRORS:", dbErr.errors);
+      return res.status(500).json({ error: "Database error: " + dbErr.message });
+    }
+    console.log("[CREATE PRODUCT] Product created:", product._id);
+
     res.status(201).json(product);
   } catch (err) {
-    res.status(500).json({ error: "Failed to create product" });
+    console.error("[CREATE PRODUCT] Error:", err.message);
+    console.error("[CREATE PRODUCT] Stack:", err.stack);
+    res.status(500).json({ error: "Failed to create product: " + err.message });
   }
 });
 
-/* UPDATE PRODUCT — ownership-gated */
-router.put("/products/:id", requireAuth, requireApprovedVendor, uploader.single("image"), async (req, res) => {
+/* UPDATE PRODUCT — ownership-gated, supports multiple images */
+router.put("/products/:id", requireAuth, requireApprovedVendor, multiUpload, handleMulterError, async (req, res) => {
   try {
+    // 🐛 DEBUG LOGGING (MANDATORY)
+    console.log("=== VENDOR UPDATE PRODUCT DEBUG ===");
+    console.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+    console.log("REQ.BODY:", req.body);
+    console.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
+    console.log("PRODUCT ID:", req.params.id);
+    console.log("===================================");
+
     const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!product) return res.status(404).json({ error: "Product not found" });
 
@@ -185,12 +286,48 @@ router.put("/products/:id", requireAuth, requireApprovedVendor, uploader.single(
       return res.status(403).json({ error: "Not authorized to update this product" });
     }
 
-    if (req.file) {
-      product.image = `/uploads/${req.file.filename}`;
-    } else if (req.body.image !== undefined) {
-      product.image = req.body.image;
+    // Get existing images array or initialize
+    let existingImages = product.images || [];
+    if (existingImages.length === 0 && product.image) {
+      existingImages = [{ url: product.image, public_id: "" }];
     }
 
+    // Parse deleteImages - array of URLs to remove
+    let imagesToDelete = [];
+    if (req.body.deleteImages) {
+      try {
+        imagesToDelete = typeof req.body.deleteImages === "string"
+          ? JSON.parse(req.body.deleteImages)
+          : req.body.deleteImages;
+      } catch (e) {
+        imagesToDelete = req.body.deleteImages ? [req.body.deleteImages] : [];
+      }
+    }
+
+    // Remove deleted images
+    if (imagesToDelete.length > 0) {
+      existingImages = existingImages.filter(img => !imagesToDelete.includes(img.url));
+    }
+
+    // Add new uploaded images
+    if (req.files && req.files.length > 0) {
+      const newImages = req.files.map(file => ({
+        url: `/uploads/${file.filename}`,
+        public_id: "",
+      }));
+      existingImages = [...existingImages, ...newImages];
+    }
+
+    // Limit to 10 images max
+    if (existingImages.length > 10) {
+      existingImages = existingImages.slice(0, 10);
+    }
+
+    // Update product with new images array
+    product.images = existingImages;
+    product.image = existingImages.length > 0 ? existingImages[0].url : "";
+
+    // Handle text fields
     const fields = ["name","description","category","available"];
     fields.forEach((k) => {
       if (req.body[k] !== undefined) {
@@ -205,6 +342,7 @@ router.put("/products/:id", requireAuth, requireApprovedVendor, uploader.single(
     await product.save();
     res.json(product);
   } catch (err) {
+    console.error("Update product error:", err);
     res.status(500).json({ error: "Failed to update product" });
   }
 });

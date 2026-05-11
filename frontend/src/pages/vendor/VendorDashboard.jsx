@@ -1,9 +1,10 @@
-// pages/vendor/VendorDashboard.jsx — v6: Fixed expand/collapse in Orders tab
-import React, { useState, useEffect, useRef } from "react";
+// pages/vendor/VendorDashboard.jsx — v7: Multi-image support
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { vendorAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrency } from "../../context/CurrencyContext";
 import ImageUpload from "../../components/ImageUpload";
+import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import styles from "./VendorDashboard.module.css";
@@ -23,6 +24,7 @@ const EMPTY_PRODUCT = {
   price: "",
   category: "",
   image: "",
+  images: [], // Array of { file, preview, name } or { url }
   available: true,
   stock: "",
 };
@@ -388,12 +390,16 @@ function VendorProducts({ addToast, isOwnProduct }) {
 
   function validateForm() {
     const e = {};
-    if (!form.name.trim())               e.name = "Required";
-    if (!form.description.trim())         e.description = "Required";
+    if (!form.name?.trim())               e.name = "Required";
+    if (!form.description?.trim())         e.description = "Required";
     if (!form.price || isNaN(form.price) || Number(form.price) <= 0)
                                                 e.price = "Enter a valid price";
-    if (!form.category.trim())            e.category = "Required";
-    if (!form.image)                      e.image = "Upload a product image";
+    if (!form.category?.trim())            e.category = "Required";
+
+    // Check for at least one image (either legacy image or new images array)
+    const hasImages = form.images?.length > 0 || form.image;
+    if (!hasImages)                       e.image = "Upload at least one product image";
+
     return e;
   }
 
@@ -405,6 +411,18 @@ function VendorProducts({ addToast, isOwnProduct }) {
   }
 
   function startEdit(product) {
+    // Convert existing images to editable format
+    let existingImages = [];
+    if (product.images && product.images.length > 0) {
+      existingImages = product.images.map(img => ({
+        url: img.url,
+        existing: true,
+      }));
+    } else if (product.image) {
+      // Legacy single image support
+      existingImages = [{ url: product.image, existing: true }];
+    }
+
     setEditingId(product._id);
     setForm({
       name:        product.name        || "",
@@ -412,6 +430,7 @@ function VendorProducts({ addToast, isOwnProduct }) {
       price:       String(product.price ?? ""),
       category:    product.category    || "",
       image:       product.image       || "",
+      images:      existingImages,
       available:   product.available === true,
       stock:       String(product.stock ?? ""),
     });
@@ -426,6 +445,12 @@ function VendorProducts({ addToast, isOwnProduct }) {
     setFormErrors({});
   }
 
+  // Handler for image changes
+  const handleImagesChange = useCallback((newImages) => {
+    setForm((prev) => ({ ...prev, images: newImages }));
+    setFormErrors((prev) => ({ ...prev, image: "" }));
+  }, []);
+
   async function handleSave(e) {
     e.preventDefault();
     if (saving) return;
@@ -434,17 +459,35 @@ function VendorProducts({ addToast, isOwnProduct }) {
     setSaving(true);
     try {
       const payload = {
-        ...form,
-        price:    parseFloat(form.price),
-        stock:    form.stock ? parseInt(form.stock, 10) : 0,
+        name: form.name,
+        description: form.description,
+        price: parseFloat(form.price),
+        category: form.category,
+        stock: form.stock ? parseInt(form.stock, 10) : 0,
         available: form.available,
       };
 
+      // Separate new files from existing URLs
+      const imageList = form.images || [];
+      const newFiles = imageList.filter(img => img.file).map(img => img.file);
+      const existingUrls = imageList.filter(img => img.existing).map(img => img.url);
+
+      // Get images to delete (for edit mode - images that existed but were removed)
+      let deleteImages = [];
+      if (editingId) {
+        // Get original product to compare
+        const originalProduct = products.find(p => p._id === editingId);
+        if (originalProduct) {
+          const originalUrls = (originalProduct.images || []).map(img => img.url);
+          deleteImages = originalUrls.filter(url => !existingUrls.includes(url));
+        }
+      }
+
       let saved;
       if (editingId) {
-        saved = await vendorAPI.updateProduct(editingId, payload);
+        saved = await vendorAPI.updateProduct(editingId, payload, newFiles, deleteImages);
       } else {
-        saved = await vendorAPI.createProduct(payload);
+        saved = await vendorAPI.createProduct(payload, newFiles);
       }
 
       if (!mountedRef.current) return;
@@ -556,7 +599,10 @@ function VendorProducts({ addToast, isOwnProduct }) {
                     <input
                       type="checkbox"
                       checked={form.available}
-                      onChange={field("available")}
+                      onChange={(e) => {
+                        setForm((prev) => ({ ...prev, available: e.target.checked }));
+                        setFormErrors((prev) => ({ ...prev, available: "" }));
+                      }}
                     />
                     <span style={{ fontSize: "0.88rem", fontWeight: 600 }}>
                       Available for purchase
@@ -567,13 +613,10 @@ function VendorProducts({ addToast, isOwnProduct }) {
 
               {/* Right: image upload */}
               <div>
-                <label className={styles.label}>Product Image</label>
-                <ImageUpload
-                  value={form.image || ""}
-                  onChange={(b64) => {
-                    setForm((prev) => ({ ...prev, image: b64 }));
-                    setFormErrors((prev) => ({ ...prev, image: "" }));
-                  }}
+                <label className={styles.label}>Product Images (max 10)</label>
+                <MultiImageUpload
+                  images={form.images || []}
+                  onImagesChange={handleImagesChange}
                 />
                 {formErrors.image && (
                   <span className={styles.fieldError}>{formErrors.image}</span>
@@ -608,11 +651,14 @@ function VendorProducts({ addToast, isOwnProduct }) {
             const stock = typeof p.stock === "number" ? p.stock : 0;
             const isUnavailable = p.available === false || stock === 0;
 
+            // Get primary image (support both new images array and legacy image)
+            const primaryImage = p.images?.[0]?.url || p.image || "";
+
             return (
               <div key={p._id} className={`card ${styles.productCard}`}>
                 <div className={styles.productImg}>
-                  {p.image ? (
-                    <img src={p.image} alt={p.name || "Product"} />
+                  {primaryImage ? (
+                    <img src={primaryImage} alt={p.name || "Product"} />
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: "2rem" }}>📦</div>
                   )}

@@ -46,6 +46,7 @@
   display: flex;
   flex-direction: column;
   transition: transform var(--transition), box-shadow var(--transition);
+  cursor: pointer;
 }
 .promoCard:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
 

@@ -10,7 +10,7 @@ import styles        from "./HomePage.module.css";
 
 const DEBOUNCE_MS = 350;
 
-export default function HomePage({ onAddToCart }) {
+export default function HomePage({ onAddToCart, onViewProduct }) {
   const { fmt } = useCurrency();
   const [products,       setProducts]       = useState([]);
   const [categories,     setCategories]     = useState(["All"]);
@@ -120,7 +120,7 @@ export default function HomePage({ onAddToCart }) {
         </div>
 
         {/* PART 10: Flash Deals promo section */}
-        <PromoSection onAddToCart={onAddToCart} />
+        <PromoSection onAddToCart={onAddToCart} onViewProduct={onViewProduct} />
 
         {/* Category pills */}
         {categories.length > 1 && (
@@ -161,7 +161,7 @@ export default function HomePage({ onAddToCart }) {
             </p>
             <div className="grid-4">
               {safeProducts.map(product => product?._id && (
-                <ProductCard key={product._id} product={product} onAddToCart={onAddToCart} />
+                <ProductCard key={product._id} product={product} onAddToCart={onAddToCart} onClick={onViewProduct} />
               ))}
             </div>
           </>

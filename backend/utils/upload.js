@@ -39,4 +39,24 @@ const uploader = multer({
   },
 });
 
-module.exports = uploader;
+// Helper function to create array upload middleware with custom field name
+function createArrayUpload(fieldName, maxCount) {
+  return uploader.array(fieldName, maxCount);
+}
+
+// Single file upload (backward compatibility)
+const singleUpload = uploader.single("image");
+
+// Multiple file upload (up to 10 images) - function that creates middleware
+const multiUpload = createArrayUpload("images", 10);
+
+// Single file upload for product images (alternative field name)
+const productImageUpload = uploader.single("image");
+
+module.exports = {
+  single: singleUpload,
+  array: multiUpload,
+  productImage: productImageUpload,
+  uploader,
+  createArrayUpload,
+};

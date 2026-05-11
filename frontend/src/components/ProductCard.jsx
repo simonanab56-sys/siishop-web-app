@@ -1,10 +1,41 @@
-// components/ProductCard.jsx — v3: currency-aware pricing, promo support
+// components/ProductCard.jsx — v4: multi-image support, hover effect
+import { useState } from "react";
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./ProductCard.module.css";
 
-export default function ProductCard({ product, onAddToCart }) {
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+
+// Helper to get full image URL
+function getFullImageUrl(url) {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  if (url.startsWith("/uploads")) {
+    return API_BASE.replace("/api", "") + url;
+  }
+  return url;
+}
+
+// Helper to get the primary image (supports both new images array and legacy image field)
+function getPrimaryImage(product) {
+  if (product.images && product.images.length > 0) {
+    return getFullImageUrl(product.images[0].url);
+  }
+  return getFullImageUrl(product.image);
+}
+
+// Helper to get the secondary image for hover effect
+function getSecondaryImage(product) {
+  if (product.images && product.images.length > 1) {
+    return getFullImageUrl(product.images[1].url);
+  }
+  return null;
+}
+
+export default function ProductCard({ product, onAddToCart, onClick }) {
   const { fmt } = useCurrency();
   if (!product) return null;
+
+  const [isHovered, setIsHovered] = useState(false);
 
   const vendorName   = product.vendorId?.storeName || product.vendorId?.name || null;
   const price        = typeof product.price === "number" ? product.price : 0;
@@ -13,11 +44,34 @@ export default function ProductCard({ product, onAddToCart }) {
   const stock        = typeof product.stock === "number" ? product.stock : 999;
   const outOfStock   = stock === 0;
 
+  // Get images for hover effect
+  const primaryImage = getPrimaryImage(product);
+  const secondaryImage = getSecondaryImage(product);
+  const showHoverImage = isHovered && secondaryImage;
+
+  const handleClick = (e) => {
+    // Don't trigger click when clicking the add to cart button
+    if (e.target.closest("button")) return;
+    onClick?.(product);
+  };
+
   return (
-    <div className={`card ${styles.card}`}>
+    <div
+      className={`card ${styles.card}`}
+      onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <div className={styles.imageWrapper}>
-        {product.image
-          ? <img src={product.image} alt={product.name || "Product"} className={styles.image} loading="lazy" />
+        {primaryImage
+          ? (
+            <img
+              src={showHoverImage ? secondaryImage : primaryImage}
+              alt={product.name || "Product"}
+              className={styles.image}
+              loading="lazy"
+            />
+          )
           : <div className={styles.noImage}>🛍️</div>
         }
         {product.category && <span className={styles.category}>{product.category}</span>}
@@ -39,7 +93,7 @@ export default function ProductCard({ product, onAddToCart }) {
           </div>
           <button
             className={`btn btn-primary btn-sm ${styles.addBtn}`}
-            onClick={() => onAddToCart?.(product)}
+            onClick={(e) => { e.stopPropagation(); onAddToCart?.(product); }}
             disabled={outOfStock}
           >
             {outOfStock ? "Sold Out" : "+ Add"}

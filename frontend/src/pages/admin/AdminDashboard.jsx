@@ -1,15 +1,16 @@
-// pages/admin/AdminDashboard.jsx — v5: fixed API response handling, vendor management, stock input added
+// pages/admin/AdminDashboard.jsx — v6: multi-image support
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { adminAPI, vendorAPI, productAPI, orderAPI, promoAPI } from "../../services/api";
 import { useAuth }     from "../../context/AuthContext";
 import { useCurrency } from "../../context/CurrencyContext";
 import ImageUpload     from "../../components/ImageUpload";
+import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import styles          from "./AdminDashboard.module.css";
 
 const ORDER_STATUSES = ["pending","confirmed","preparing","out_for_delivery","delivered"];
-const EMPTY_PRODUCT  = { name:"", description:"", price:"", category:"", image:"", available:true, stock:"" };
+const EMPTY_PRODUCT  = { name:"", description:"", price:"", category:"", image:"", images:[], available:true, stock:"" };
 
 function safeId(id)   { return id ? `#${String(id).slice(-6).toUpperCase()}` : "#------"; }
 
@@ -439,13 +440,21 @@ function AdminProducts({ addToast, fmt }) {
       .finally(() => { if(mountedRef.current) setLoading(false); });
   }, [addToast]);
 
+  // Handle image changes
+  const handleImagesChange = useCallback((newImages) => {
+    setForm((prev) => ({ ...prev, images: newImages }));
+    setFormErrors((prev) => ({ ...prev, image: "" }));
+  }, []);
+
   function validate() {
     const e={};
-    if(!form.name.trim()) e.name="Required";
-    if(!form.description.trim()) e.description="Required";
+    if(!form.name?.trim()) e.name="Required";
+    if(!form.description?.trim()) e.description="Required";
     if(!form.price||isNaN(form.price)||Number(form.price)<=0) e.price="Enter a valid price";
-    if(!form.category.trim()) e.category="Required";
-    if(!form.image) e.image="Upload an image";
+    if(!form.category?.trim()) e.category="Required";
+    // Check for at least one image
+    const hasImages = form.images?.length > 0 || form.image;
+    if(!hasImages) e.image="Upload at least one image";
     return e;
   }
 
@@ -455,11 +464,19 @@ function AdminProducts({ addToast, fmt }) {
     setSaving(true);
     try {
       const payload = {
-        ...form,
+        name: form.name,
+        description: form.description,
         price: parseFloat(form.price),
+        category: form.category,
         stock: form.stock ? parseInt(form.stock, 10) : 0,
+        available: form.available,
       };
-      const created = await productAPI.create(payload);
+
+      // Get file objects from form.images
+      const imageList = form.images || [];
+      const newFiles = imageList.filter(img => img.file).map(img => img.file);
+
+      const created = await productAPI.create(payload, newFiles);
       if(!mountedRef.current) return;
       setProducts(prev => Array.isArray(prev)?[created,...prev]:[created]);
       setForm(EMPTY_PRODUCT); setShowForm(false); setFormErrors({});
@@ -481,6 +498,12 @@ function AdminProducts({ addToast, fmt }) {
 
   const f = (key) => ({ value: form[key], onChange: (e) => { setForm({...form,[key]:e.target.value}); setFormErrors({...formErrors,[key]:""}); } });
   const safeProducts = Array.isArray(products) ? products : [];
+
+  // Get primary image for table display (support both new and legacy)
+  const getPrimaryImage = (p) => {
+    if (p.images && p.images.length > 0) return p.images[0].url;
+    return p.image || "";
+  };
 
   return (
     <div>
@@ -510,8 +533,11 @@ function AdminProducts({ addToast, fmt }) {
                 </div>
               </div>
               <div>
-                <label className={styles.label}>Image</label>
-                <ImageUpload value={form.image} onChange={b64=>{setForm({...form,image:b64}); setFormErrors({...formErrors,image:""});}}/>
+                <label className={styles.label}>Product Images (max 10)</label>
+                <MultiImageUpload
+                  images={form.images || []}
+                  onImagesChange={handleImagesChange}
+                />
                 {formErrors.image && <span className={styles.fieldError}>{formErrors.image}</span>}
               </div>
             </div>
@@ -530,9 +556,10 @@ function AdminProducts({ addToast, fmt }) {
               {safeProducts.map(p => {
                 if(!p?._id) return null;
                 const price = typeof p.price==="number"?p.price:0;
+                const primaryImage = getPrimaryImage(p);
                 return (
                   <tr key={p._id}>
-                    <td>{p.image?<img src={p.image} alt={p.name||"Product"} style={{width:40,height:40,objectFit:"cover",borderRadius:8}}/>:<div style={{width:40,height:40,background:"var(--brand-surface)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>🛍️</div>}</td>
+                    <td>{primaryImage?<img src={primaryImage} alt={p.name||"Product"} style={{width:40,height:40,objectFit:"cover",borderRadius:8}}/>:<div style={{width:40,height:40,background:"var(--brand-surface)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>🛍️</div>}</td>
                     <td><strong>{p.name||"—"}</strong></td>
                     <td>{p.category||"—"}</td>
                     <td>{p.vendorName || (typeof p.vendorId === "object" && p.vendorId?.storeName ? p.vendorId.storeName : <em style={{color:"var(--brand-muted)"}}>—</em>)}</td>

@@ -1,4 +1,4 @@
-// App.jsx — v7: role-based login redirect, authChecked guard, stable routing
+// App.jsx — v8: product detail page with gallery
 import { useState, Component, useEffect } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CurrencyProvider } from "./context/CurrencyContext";
@@ -13,6 +13,7 @@ import StoresPage from "./pages/StoresPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import VendorDashboard from "./pages/vendor/VendorDashboard";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import ProductDetailPage from "./pages/ProductDetailPage";
 
 // ── Global Error Boundary ─────────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -73,7 +74,10 @@ function AppInner() {
   const { toasts, addToast } = useToast();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState("login");
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
   function onRequireAuth(view = "login") { setAuthModalView(view); setAuthModalOpen(true); }
+
   // ── Login redirect: go to correct dashboard based on role ─────────────────
   function onAuthSuccess(user) {
     addToast(`Welcome, ${user?.name || "there"}! 🎉`, "success");
@@ -86,13 +90,23 @@ function AppInner() {
       setPage("home");
     }
   }
+
+  // Handle view product detail
+  function handleViewProduct(product) {
+    setSelectedProduct(product);
+    setPage("product");
+  }
+
+  function handleBackFromProduct() {
+    setSelectedProduct(null);
+    setPage("home");
+  }
+
   function addToCart(product) {
     if (!product?._id) return;
     setCart(prev => {
       const ex = prev.find(i => i._id === product._id);
       if (ex) {
-        // ✅ FIXED: Update price in case product is being added from different source (promo vs non-promo)
-        // This ensures we always use the current price, not a stale promo price
         return prev.map(i => i._id === product._id ? { ...product, quantity: i.quantity + 1 } : i);
       }
       return [...prev, { ...product, quantity: 1 }];
@@ -104,9 +118,20 @@ function AppInner() {
   function removeFromCart(id) { if (!id) return; setCart(prev => prev.filter(i => i._id !== id)); }
   function clearCart() { setCart([]); }
   const cartCount = (Array.isArray(cart) ? cart : []).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+
   function renderPage() {
     switch (page) {
-      case "home": return <HomePage onAddToCart={addToCart} />;
+      case "home":
+        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
+      case "product":
+        return (
+          <ProductDetailPage
+            product={selectedProduct}
+            productId={selectedProduct?._id}
+            onBack={handleBackFromProduct}
+            onAddToCart={addToCart}
+          />
+        );
       case "vendors": return <StoresPage onNavigate={setPage} onAddToCart={addToCart} />;
       case "cart": return <CartPage cart={cart} onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeFromCart} onClearCart={clearCart} onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "orders": return <OrdersPage addToast={addToast} onRequireAuth={onRequireAuth} />;
@@ -114,7 +139,7 @@ function AppInner() {
       case "reset-password": return <ResetPasswordPage addToast={addToast} onNavigate={setPage} />;
       case "vendor": return <VendorDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "admin": return <AdminDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
-      default: return <HomePage onAddToCart={addToCart} />;
+      default: return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
     }
   }
   return (

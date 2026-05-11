@@ -19,9 +19,28 @@ function globalErrorHandler(err, req, res, next) {
     return next(err);
   }
 
-  // Multer file size limit
-  if (err.code === "LIMIT_FILE_SIZE") {
-    return res.status(413).json({ error: "Image file is too large. Maximum size is 5 MB." });
+  // ── Multer Error Handling ──────────────────────────────────────────────
+  if (err.name === "MulterError") {
+    // File size limit
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "Image file is too large. Maximum size is 5 MB." });
+    }
+    // Too many files
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return res.status(413).json({ error: "Too many files. Maximum 10 images allowed." });
+    }
+    // Unexpected field
+    if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      return res.status(400).json({ error: "Unexpected file field. Use 'images' field for uploads." });
+    }
+    // Generic multer error
+    console.error("[MULTER ERROR] Code:", err.code, "Message:", err.message);
+    return res.status(400).json({ error: err.message || "File upload error" });
+  }
+
+  // Multer file filter rejection (custom error from fileFilter callback)
+  if (err.message && err.message.includes("Only image files")) {
+    return res.status(400).json({ error: "Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed." });
   }
 
   // Operational errors can set isOperational/statusCode directly.

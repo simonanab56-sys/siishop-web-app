@@ -1,9 +1,59 @@
 
 const router = require("express").Router();
+const mongoose = require("mongoose");
+const multer  = require("multer");
+const path    = require("path");
+const fs      = require("fs");
+const { v4: uuidv4 } = require("uuid");
+
 const Product = require("../models/Product");
 const Promo = require("../models/Promo");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
 const { createProductSchema, updateProductSchema, validate } = require("../utils/joiSchemas");
+
+// ── MULTER CONFIGURATION ───────────────────────────────────────────────────
+const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowed = /jpeg|jpg|webp|png|gif/;
+  const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
+  const mime = allowed.test(file.mimetype);
+  if (ext && mime) return cb(null, true);
+  cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
+};
+
+const multiUpload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).array("images", 10);
+
+// Multer error handler for admin routes
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error("[ADMIN MULTER ERROR] Code:", err.code, "Message:", err.message);
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "Image file too large. Max 5MB per file." });
+    }
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return res.status(413).json({ error: "Too many files. Max 10 images allowed." });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  if (err) {
+    console.error("[ADMIN UPLOAD ERROR]", err.message);
+    return res.status(400).json({ error: err.message });
+  }
+  next();
+};
 
 // ── HELPERS ────────────────────────────────────────────────────────────────────
 function isAdmin(req) {
@@ -91,55 +141,127 @@ router.get("/:id", async (req, res) => {
 });
 
 /// ── ADMIN: CREATE PRODUCT ────────────────────────────────────────────────
-router.post("/", requireAuth, requireAdmin, async (req, res) => {
+router.post("/", requireAuth, requireAdmin, multiUpload, handleMulterError, async (req, res) => {
   try {
-    // ✅ ADDED: Input validation
-    const { error, value } = validate(req.body, createProductSchema);
-    if (error) {
-      const messages = error.details.map(d => d.message).join(", ");
-      return res.status(400).json({ error: messages });
+    // 🐛 DEBUG LOGGING (MANDATORY)
+    console.log("=== ADMIN CREATE PRODUCT DEBUG ===");
+    console.log("ADMIN USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+    console.log("ADMIN BODY:", req.body);
+    console.log("ADMIN FILES:", req.files);
+    console.log("=====================================");
+
+    // Validate at least one image
+    if (!req.files || req.files.length === 0) {
+      const legacyImage = req.body.image;
+      if (!legacyImage) {
+        return res.status(400).json({ error: "At least one product image is required" });
+      }
     }
-    const product = await Product.create({
-      name:        value.name,
-      description: value.description,
-      price:       value.price,
-      category:    value.category,
-      stock:       value.stock,
-      available:   value.available || false,
-      image:       value.image || "",
+
+    // Handle images from uploaded files
+    let images = [];
+    if (req.files && req.files.length > 0) {
+      images = req.files.map(file => ({
+        url: `/uploads/${file.filename}`,
+        public_id: "",
+      }));
+    }
+
+    // Backward compatibility: if no files but legacy image field provided
+    const legacyImage = req.body.image;
+    if (images.length === 0 && legacyImage) {
+      images.push({ url: legacyImage, public_id: "" });
+    }
+
+    const productData = {
+      name:        req.body.name        || "",
+      description: req.body.description || "",
+      price:       parseFloat(req.body.price)    || 0,
+      category:    req.body.category   || "",
+      stock:       parseInt(req.body.stock, 10)  || 0,
+      available:   req.body.available === "true" || req.body.available === true,
+      images:      images,
+      image:       images.length > 0 ? images[0].url : "",
       vendorId:    req.user.userId,
-    });
+    };
+
+    console.log("[ADMIN CREATE] Creating product:", productData);
+
+    const product = await Product.create(productData);
+    console.log("[ADMIN CREATE] Product created:", product._id);
+
     res.status(201).json(product);
   } catch (err) {
-    res.status(500).json({ error: "Failed to create product" });
+    console.error("[ADMIN CREATE] Error:", err.message);
+    res.status(500).json({ error: "Failed to create product: " + err.message });
   }
 });
 
 // ── ADMIN: UPDATE PRODUCT ────────────────────────────────────────────────
-router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
+router.put("/:id", requireAuth, requireAdmin, multiUpload, handleMulterError, async (req, res) => {
   try {
-    // ✅ ADDED: Input validation
-    const { error, value } = validate(req.body, updateProductSchema);
-    if (error) {
-      const messages = error.details.map(d => d.message).join(", ");
-      return res.status(400).json({ error: messages });
-    }
+    console.log("[ADMIN UPDATE] Files:", req.files);
+    console.log("[ADMIN UPDATE] Body:", req.body);
+
     const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!product) return res.status(404).json({ error: "Not found" });
 
-    // Update fields (validated)
-    if (value.name !== undefined)        product.name = value.name;
-    if (value.description !== undefined) product.description = value.description;
-    if (value.price !== undefined)       product.price = value.price;
-    if (value.category !== undefined)    product.category = value.category;
-    if (value.stock !== undefined)       product.stock = value.stock;
-    if (value.available !== undefined)   product.available = value.available;
-    if (value.image !== undefined)       product.image = value.image;
+    // Get existing images array or initialize
+    let existingImages = product.images || [];
+    if (existingImages.length === 0 && product.image) {
+      existingImages = [{ url: product.image, public_id: "" }];
+    }
+
+    // Parse deleteImages - array of URLs to remove
+    let imagesToDelete = [];
+    if (req.body.deleteImages) {
+      try {
+        imagesToDelete = typeof req.body.deleteImages === "string"
+          ? JSON.parse(req.body.deleteImages)
+          : req.body.deleteImages;
+      } catch (e) {
+        imagesToDelete = req.body.deleteImages ? [req.body.deleteImages] : [];
+      }
+    }
+
+    // Remove deleted images
+    if (imagesToDelete.length > 0) {
+      existingImages = existingImages.filter(img => !imagesToDelete.includes(img.url));
+    }
+
+    // Add new uploaded images
+    if (req.files && req.files.length > 0) {
+      const newImages = req.files.map(file => ({
+        url: `/uploads/${file.filename}`,
+        public_id: "",
+      }));
+      existingImages = [...existingImages, ...newImages];
+    }
+
+    // Limit to 10 images max
+    if (existingImages.length > 10) {
+      existingImages = existingImages.slice(0, 10);
+    }
+
+    // Update product
+    product.images = existingImages;
+    product.image = existingImages.length > 0 ? existingImages[0].url : "";
+
+    // Update other fields from body
+    if (req.body.name !== undefined)        product.name = req.body.name;
+    if (req.body.description !== undefined) product.description = req.body.description;
+    if (req.body.price !== undefined)       product.price = parseFloat(req.body.price) || 0;
+    if (req.body.category !== undefined)    product.category = req.body.category;
+    if (req.body.stock !== undefined)       product.stock = parseInt(req.body.stock, 10) || 0;
+    if (req.body.available !== undefined)   product.available = req.body.available === "true" || req.body.available === true;
 
     await product.save();
+    console.log("[ADMIN UPDATE] Product updated:", product._id);
+
     res.json(product);
   } catch (err) {
-    res.status(500).json({ error: "Failed to update product" });
+    console.error("[ADMIN UPDATE] Error:", err.message);
+    res.status(500).json({ error: "Failed to update product: " + err.message });
   }
 });
 

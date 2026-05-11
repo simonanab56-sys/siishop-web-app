@@ -2,6 +2,14 @@
 
 const mongoose = require("mongoose");
 
+const imageSchema = new mongoose.Schema(
+  {
+    url: { type: String, required: true },
+    public_id: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const productSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -14,11 +22,32 @@ const productSchema = new mongoose.Schema(
     stock:    { type: Number, default: 0, min: 0 },
     available: { type: Boolean, default: true },
 
+    // New multi-image field
+    images: {
+      type: [imageSchema],
+      validate: [
+        { validator: function(v) { return v.length <= 10; }, msg: "Maximum 10 images allowed" }
+      ],
+      default: []
+    },
+    // Legacy field - kept for backward compatibility
     image: { type: String, default: "" },
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
+
+// Virtual getter for backward compatibility - returns first image URL
+productSchema.virtual("primaryImage").get(function() {
+  if (this.images && this.images.length > 0) {
+    return this.images[0].url;
+  }
+  return this.image || "";
+});
+
+// Ensure virtuals are included in JSON
+productSchema.set("toJSON", { virtuals: true });
+productSchema.set("toObject", { virtuals: true });
 
 /**
  * MIDDLEWARE: Cleanup Promotions on Soft Delete

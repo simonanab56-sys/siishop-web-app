@@ -9,7 +9,7 @@ import { promoAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./PromoSection.module.css";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
 
 // Helper to get full image URL
 function getFullImageUrl(url) {

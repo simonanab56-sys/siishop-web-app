@@ -6,7 +6,7 @@ import styles from "./ImageUpload.module.css";
 
 const MAX_IMAGES = 10;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
 
 // Helper to get full image URL
 function getFullImageUrl(url) {

@@ -265,7 +265,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
                   theme="outline"
                   size="large"
                   text="continue_with"
-                  width="100%"
+                  width={320}
                 />
               ) : (
                 <button

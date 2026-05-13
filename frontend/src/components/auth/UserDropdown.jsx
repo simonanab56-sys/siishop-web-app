@@ -48,6 +48,13 @@ export default function UserDropdown({ onNavigate }) {
           <button className={styles.menuItem} onClick={() => go("orders")}>📦 My Orders</button>
           <button className={styles.menuItem} onClick={() => go("settings")}>⚙️ Settings</button>
 
+          {/* Info links moved from navbar */}
+          <button className={styles.menuItem} onClick={() => go("about")}>ℹ️ About</button>
+          <button className={styles.menuItem} onClick={() => go("faq")}>❓ FAQ</button>
+          <button className={styles.menuItem} onClick={() => go("contact")}>📞 Contact</button>
+          <button className={styles.menuItem} onClick={() => go("terms")}>📄 Terms</button>
+          <button className={styles.menuItem} onClick={() => go("refund")}>💰 Refund</button>
+
           {/* Vendor dashboard — shown only to approved vendors */}
           {isApprovedVendor && !isAdmin && (
             <button className={`${styles.menuItem} ${styles.vendorItem}`} onClick={() => go("vendor")}>

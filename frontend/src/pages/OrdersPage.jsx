@@ -159,11 +159,11 @@ export default function OrdersPage({ addToast, onRequireAuth }) {
                     if (!item) return null;
                     const price = Number(item.price)||0;
                     const qty   = Number(item.quantity)||0;
-                    /* ✅ NEW: Display product image from order (fetched from DB, not frontend) */
-                    const imageUrl = item.image || "https://via.placeholder.com/50?text=No+Image";
+                    // Use local placeholder
+                    const imageUrl = item.image || "/no-image.svg";
                     return (
                       <div key={i} className={styles.itemRow}>
-                        <img src={imageUrl} alt={item.name||"Item"} className={styles.itemImg} onError={(e) => {e.target.src = "https://via.placeholder.com/50?text=No+Image";}} />
+                        <img src={imageUrl} alt={item.name||"Item"} className={styles.itemImg} onError={(e) => {e.target.src = "/no-image.svg";}} />
                         <span className={styles.itemName}>{item.name || "Unknown item"}</span>
                         <span className={styles.itemQty}>×{qty}</span>
                         <span className={styles.itemPrice}>{fmt(price * qty)}</span>

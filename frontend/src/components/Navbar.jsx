@@ -27,6 +27,18 @@ export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth 
     ["orders",  "My Orders"],
   ];
 
+  const INFO_LINKS = [
+    ["about", "About"],
+    ["faq", "FAQ"],
+    ["contact", "Contact"],
+  ];
+
+  const POLICY_LINKS = [
+    ["privacy", "Privacy"],
+    ["terms", "Terms"],
+    ["refund", "Refund"],
+  ];
+
   return (
     <nav className={styles.nav}>
       <div className={`container ${styles.inner}`}>
@@ -39,6 +51,20 @@ export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth 
         {/* Desktop nav links */}
         <div className={styles.links}>
           {NAV_LINKS.map(([page, label]) => (
+            <button key={page}
+              className={`${styles.link} ${currentPage === page ? styles.active : ""}`}
+              onClick={() => nav(page)}>
+              {label}
+            </button>
+          ))}
+          {INFO_LINKS.map(([page, label]) => (
+            <button key={page}
+              className={`${styles.link} ${currentPage === page ? styles.active : ""}`}
+              onClick={() => nav(page)}>
+              {label}
+            </button>
+          ))}
+          {POLICY_LINKS.map(([page, label]) => (
             <button key={page}
               className={`${styles.link} ${currentPage === page ? styles.active : ""}`}
               onClick={() => nav(page)}>

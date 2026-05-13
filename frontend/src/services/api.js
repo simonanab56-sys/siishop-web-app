@@ -1,17 +1,17 @@
 // services/api.js — Complete API layer with all methods, no duplicates
 
-function getToken() {
+export function getToken() {
   return localStorage.getItem("token");
 }
 
-function getApiBaseUrl() {
+export function getApiBaseUrl() {
   // Use production URL if set, otherwise use local URL
   const prodUrl = import.meta.env.VITE_API_URL_PROD;
   const localUrl = import.meta.env.VITE_API_URL || "http://localhost:10000/api";
   return prodUrl || localUrl;
 }
 
-async function apiRequest(endpoint, options = {}) {
+export async function apiRequest(endpoint, options = {}) {
   const baseURL = getApiBaseUrl();
   const url = `${baseURL}${endpoint}`;
 

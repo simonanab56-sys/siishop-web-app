@@ -1,5 +1,5 @@
 // App.jsx — v8: product detail page with gallery
-import { useState, Component, useEffect } from "react";
+import { useState, Component, useEffect, useCallback } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CurrencyProvider } from "./context/CurrencyContext";
 import Navbar from "./components/Navbar";
@@ -14,6 +14,12 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import VendorDashboard from "./pages/vendor/VendorDashboard";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import ProductDetailPage from "./pages/ProductDetailPage";
+import AboutPage from "./pages/AboutPage";
+import ContactPage from "./pages/ContactPage";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
+import TermsPage from "./pages/TermsPage";
+import RefundPolicyPage from "./pages/RefundPolicyPage";
+import FAQPage from "./pages/FAQPage";
 
 // ── Global Error Boundary ─────────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -74,7 +80,25 @@ function AppInner() {
   const { toasts, addToast } = useToast();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState("login");
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  // Initialize selectedProduct from sessionStorage for refresh persistence
+  const [selectedProduct, setSelectedProduct] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem("selectedProduct");
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
+
+  // Persist selectedProduct to sessionStorage
+  const handleSetSelectedProduct = useCallback((product) => {
+    setSelectedProduct(product);
+    try {
+      if (product) {
+        sessionStorage.setItem("selectedProduct", JSON.stringify(product));
+      } else {
+        sessionStorage.removeItem("selectedProduct");
+      }
+    } catch {}
+  }, []);
 
   function onRequireAuth(view = "login") { setAuthModalView(view); setAuthModalOpen(true); }
 
@@ -93,12 +117,12 @@ function AppInner() {
 
   // Handle view product detail
   function handleViewProduct(product) {
-    setSelectedProduct(product);
+    handleSetSelectedProduct(product);
     setPage("product");
   }
 
   function handleBackFromProduct() {
-    setSelectedProduct(null);
+    handleSetSelectedProduct(null);
     setPage("home");
   }
 
@@ -139,6 +163,12 @@ function AppInner() {
       case "reset-password": return <ResetPasswordPage addToast={addToast} onNavigate={setPage} />;
       case "vendor": return <VendorDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "admin": return <AdminDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
+      case "about": return <AboutPage onNavigate={setPage} />;
+      case "contact": return <ContactPage />;
+      case "privacy": return <PrivacyPolicyPage />;
+      case "terms": return <TermsPage />;
+      case "refund": return <RefundPolicyPage />;
+      case "faq": return <FAQPage />;
       default: return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
     }
   }

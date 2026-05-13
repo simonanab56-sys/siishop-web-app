@@ -1,5 +1,5 @@
 // ProductDetailPage.jsx — Product detail page with gallery
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import ProductGallery from "../components/ProductGallery";
@@ -14,26 +14,42 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
   const [quantity, setQuantity] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [modalInitialIndex, setModalInitialIndex] = useState(0);
+  const mountedRef = useRef(true);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Fetch product if not provided
   useEffect(() => {
-    if (product || !productId) return;
+    // If we already have product, don't fetch
+    if (product) return;
+    // If no productId, can't fetch
+    if (!productId) return;
 
     const fetchProduct = async () => {
       try {
         setLoading(true);
-        const data = await productAPI.getById(productId);
-        setProduct(data);
         setError(null);
+        const data = await productAPI.getById(productId);
+        if (mountedRef.current) {
+          setProduct(data);
+        }
       } catch (err) {
-        setError(err.message || "Failed to load product");
+        if (mountedRef.current) {
+          setError(err.message || "Failed to load product");
+        }
       } finally {
-        setLoading(false);
+        if (mountedRef.current) {
+          setLoading(false);
+        }
       }
     };
 
     fetchProduct();
-  }, [product, productId]);
+  }, [productId]); // Only depend on productId, not product
 
   // Get stock info
   const stock = typeof product?.stock === "number" ? product.stock : 0;

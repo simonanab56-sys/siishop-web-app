@@ -140,6 +140,7 @@ app.use("/api/orders",   require("./routes/orders"));
 app.use("/api/vendor",   require("./routes/vendor"));
 app.use("/api/admin",    require("./routes/admin"));
 app.use("/api/promos",   require("./routes/promos"));
+app.use("/api/contact",  require("./routes/contact"));
 
 /* ───────────────────────── SECURITY HEADERS ───────────────────────── */
 app.use((req, res, next) => {

@@ -2,8 +2,7 @@
 import { useState } from "react";
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./ProductCard.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+import { API_BASE } from "../config/api";
 
 // Helper to get full image URL
 function getFullImageUrl(url) {

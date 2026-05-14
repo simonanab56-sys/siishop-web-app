@@ -1,8 +1,7 @@
 // ProductGallery.jsx — Professional product gallery with thumbnails
 import { useState, useCallback } from "react";
 import styles from "./ProductGallery.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+import { API_BASE } from "../config/api";
 
 // Helper to get full image URL
 function getFullImageUrl(url) {

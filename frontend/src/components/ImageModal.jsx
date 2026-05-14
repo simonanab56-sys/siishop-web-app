@@ -1,7 +1,6 @@
 // ImageModal.jsx — Simple modal for viewing images fullscreen
 import { useEffect, useCallback } from "react";
-
-const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+import { API_BASE } from "../config/api";
 
 function getFullImageUrl(url) {
   if (!url) return "";

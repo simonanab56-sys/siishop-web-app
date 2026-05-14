@@ -7,8 +7,7 @@ import { StatusBadge } from "../components/OrderStatusBadge";
 import OrderTracker   from "../components/OrderTracker";
 import ImageModal from "../components/ImageModal";
 import styles         from "./OrdersPage.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+import { API_BASE } from "../config/api";
 
 const POLL_INTERVAL = 10_000;
 function safeId(id)     { return id ? `#${String(id).slice(-6).toUpperCase()}` : "#------"; }

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SiiShop</string>
+    <string name="title_activity_main">SiiShop</string>
+    <string name="package_name">com.siishop.app</string>
+    <string name="custom_url_scheme">com.siishop.app</string>
+</resources>

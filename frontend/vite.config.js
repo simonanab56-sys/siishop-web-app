@@ -14,4 +14,13 @@ export default defineConfig({
       },
     },
   },
+  // Build configuration for production
+  build: {
+    outDir: "dist",
+    assetsDir: "assets",
+    sourcemap: false,
+    minify: "esbuild",
+  },
+  // Ensure base path is correct for mobile builds
+  base: "./",
 });

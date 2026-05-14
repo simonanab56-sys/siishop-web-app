@@ -8,8 +8,7 @@ import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import styles          from "./AdminDashboard.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+import { API_BASE } from "../../config/api";
 
 const ORDER_STATUSES = ["pending","confirmed","preparing","out_for_delivery","delivered"];
 const EMPTY_PRODUCT  = { name:"", description:"", price:"", category:"", image:"", images:[], available:true, stock:"" };

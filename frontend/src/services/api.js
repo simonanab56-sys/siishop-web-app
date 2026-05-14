@@ -1,14 +1,13 @@
 // services/api.js — Complete API layer with all methods, no duplicates
+import { API_BASE } from "../config/api";
 
 export function getToken() {
   return localStorage.getItem("token");
 }
 
 export function getApiBaseUrl() {
-  // Use production URL if set, otherwise use local URL
-  const prodUrl = import.meta.env.VITE_API_URL_PROD;
-  const localUrl = import.meta.env.VITE_API_URL || "http://localhost:10000/api";
-  return prodUrl || localUrl;
+  // Use centralized config with safe fallback
+  return API_BASE;
 }
 
 export async function apiRequest(endpoint, options = {}) {

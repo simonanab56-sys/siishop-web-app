@@ -1,8 +1,7 @@
 // GalleryModal.jsx — Fullscreen gallery modal with keyboard navigation
 import { useState, useEffect, useCallback, useRef } from "react";
 import styles from "./GalleryModal.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+import { API_BASE } from "../config/api";
 
 // Helper to get full image URL
 function getFullImageUrl(url) {

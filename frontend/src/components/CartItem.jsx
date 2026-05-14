@@ -1,4 +1,4 @@
-// components/CartItem.jsx — v4: handle multiple images
+// components/CartItem.jsx — v5: Fixed image URLs
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./CartItem.module.css";
 
@@ -7,24 +7,59 @@ const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_U
 // Helper to get full image URL
 function getFullImageUrl(url) {
   if (!url) return "";
+  // Handle Base64 data URLs - return as-is
+  if (url.startsWith("data:image")) return url;
+  // Handle full URLs
   if (url.startsWith("http")) return url;
+  // Handle relative paths
   if (url.startsWith("/uploads")) {
     return API_BASE.replace("/api", "") + url;
   }
-  return url;
+  if (url.startsWith("/")) {
+    return API_BASE.replace("/api", "") + url;
+  }
+  // Handle filename only
+  return `${API_BASE.replace("/api", "")}/uploads/products/${url}`;
 }
 
-// Helper to get cart image (supports multiple images)
+// Helper to get cart image (supports multiple images and product references)
 function getCartImage(item) {
-  // Check for single image
-  if (item.image) return getFullImageUrl(item.image);
-  // Check for multiple images array - use first one
-  if (item.images && item.images.length > 0) {
+  if (!item) return null;
+  let img = null;
+
+  // Check for direct image fields
+  if (item.image) {
+    img = item.image;
+  } else if (item.images && item.images.length > 0) {
     const firstImg = item.images[0];
-    // Handle both string and object formats
-    return getFullImageUrl(typeof firstImg === "string" ? firstImg : firstImg.url);
+    img = typeof firstImg === "string" ? firstImg : firstImg?.url;
   }
-  return null;
+
+  // Check product reference (for promos and older orders)
+  if (!img && item.productId) {
+    const productRef = typeof item.productId === "object" ? item.productId : null;
+    if (productRef) {
+      if (productRef.image) {
+        img = productRef.image;
+      } else if (productRef.images && productRef.images.length > 0) {
+        const firstImg = productRef.images[0];
+        img = typeof firstImg === "string" ? firstImg : firstImg?.url;
+      }
+    }
+  }
+
+  // Check product object
+  if (!img && item.product) {
+    if (item.product.image) {
+      img = item.product.image;
+    } else if (item.product.images && item.product.images.length > 0) {
+      const firstImg = item.product.images[0];
+      img = typeof firstImg === "string" ? firstImg : firstImg?.url;
+    }
+  }
+
+  if (!img) return null;
+  return getFullImageUrl(img);
 }
 
 export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {

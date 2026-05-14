@@ -1,15 +1,76 @@
-// pages/OrdersPage.jsx — v3: phone number visible, GHS currency, responsive
+// pages/OrdersPage.jsx — v5: Fixed image URLs
 import { useState, useEffect, useCallback, useRef } from "react";
 import { orderAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { StatusBadge } from "../components/OrderStatusBadge";
 import OrderTracker   from "../components/OrderTracker";
+import ImageModal from "../components/ImageModal";
 import styles         from "./OrdersPage.module.css";
+
+const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
 
 const POLL_INTERVAL = 10_000;
 function safeId(id)     { return id ? `#${String(id).slice(-6).toUpperCase()}` : "#------"; }
 function safeItems(arr) { return Array.isArray(arr) ? arr : []; }
+
+// Helper to properly resolve image URL
+function getImageUrl(image) {
+  if (!image) return "/no-image.svg";
+  // Handle Base64 data URLs - return as-is
+  if (image.startsWith("data:image")) return image;
+  // Handle full URLs
+  if (image.startsWith("http")) return image;
+  // Handle relative paths
+  if (image.startsWith("/uploads")) {
+    return API_BASE.replace("/api", "") + image;
+  }
+  if (image.startsWith("/")) {
+    return API_BASE.replace("/api", "") + image;
+  }
+  // Handle filename only
+  return `${API_BASE.replace("/api", "")}/uploads/products/${image}`;
+}
+
+// Helper to get image from item (supports single image and multiple images)
+function getItemImage(item) {
+  if (!item) return null;
+  let img = null;
+
+  // Check for direct image fields
+  if (item.image) {
+    img = item.image;
+  } else if (item.images && item.images.length > 0) {
+    const firstImg = item.images[0];
+    img = typeof firstImg === "string" ? firstImg : firstImg?.url;
+  }
+
+  // Check product reference (for promos and older orders)
+  if (!img && item.productId) {
+    const productRef = typeof item.productId === "object" ? item.productId : null;
+    if (productRef) {
+      if (productRef.image) {
+        img = productRef.image;
+      } else if (productRef.images && productRef.images.length > 0) {
+        const firstImg = productRef.images[0];
+        img = typeof firstImg === "string" ? firstImg : firstImg?.url;
+      }
+    }
+  }
+
+  // Check product object (another reference format)
+  if (!img && item.product) {
+    if (item.product.image) {
+      img = item.product.image;
+    } else if (item.product.images && item.product.images.length > 0) {
+      const firstImg = item.product.images[0];
+      img = typeof firstImg === "string" ? firstImg : firstImg?.url;
+    }
+  }
+
+  if (!img) return null;
+  return getImageUrl(img);
+}
 
 export default function OrdersPage({ addToast, onRequireAuth }) {
   const { isLoggedIn } = useAuth();
@@ -18,6 +79,7 @@ export default function OrdersPage({ addToast, onRequireAuth }) {
   const [loading,     setLoading]     = useState(true);
   const [selectedId,  setSelectedId]  = useState(() => { try { return localStorage.getItem("lastOrderId")||null; } catch { return null; } });
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [imageModal, setImageModal] = useState({ src: "", alt: "" });
   const mountedRef = useRef(true);
 
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -61,6 +123,10 @@ export default function OrdersPage({ addToast, onRequireAuth }) {
 
   return (
     <div className={`container page-enter ${styles.page}`}>
+      {/* Image fullscreen modal */}
+      {imageModal.src && (
+        <ImageModal src={imageModal.src} alt={imageModal.alt} onClose={() => setImageModal({ src: "", alt: "" })} />
+      )}
       <div className={styles.header}>
         <h1 className={styles.title}>My Orders</h1>
         <div className={styles.headerRight}>
@@ -95,8 +161,8 @@ export default function OrdersPage({ addToast, onRequireAuth }) {
                   </div>
                   <div className={styles.orderCardBottom}>
                     {/* ✅ NEW: Show product thumbnail in order list */}
-                    {safeItems(order.items)?.[0]?.image && (
-                      <img src={safeItems(order.items)[0].image} alt="First item" className={styles.orderCardThumb} onError={(e) => {e.target.style.display = "none";}} />
+                    {getItemImage(safeItems(order.items)?.[0]) && (
+                      <img src={getItemImage(safeItems(order.items)[0])} alt="First item" className={styles.orderCardThumb} onError={(e) => {e.target.style.display = "none";}} onClick={() => setImageModal({ src: getItemImage(safeItems(order.items)[0]), alt: safeItems(order.items)[0]?.name })} style={{ cursor: "pointer" }} />
                     )}
                     <span>{itemCount} item{itemCount !== 1 ? "s" : ""}</span>
                     <span className={styles.orderTotal}>{fmt(typeof order.totalAmount === "number" ? order.totalAmount : 0)}</span>
@@ -159,11 +225,12 @@ export default function OrdersPage({ addToast, onRequireAuth }) {
                     if (!item) return null;
                     const price = Number(item.price)||0;
                     const qty   = Number(item.quantity)||0;
-                    // Use local placeholder
-                    const imageUrl = item.image || "/no-image.svg";
+                    // Use helper to get image from single or multiple images
+                    const imageUrl = getItemImage(item) || "/no-image.svg";
+                    const resolvedImage = getItemImage(item);
                     return (
                       <div key={i} className={styles.itemRow}>
-                        <img src={imageUrl} alt={item.name||"Item"} className={styles.itemImg} onError={(e) => {e.target.src = "/no-image.svg";}} />
+                        <img src={imageUrl} alt={item.name||"Item"} className={styles.itemImg} onError={(e) => {e.target.src = "/no-image.svg";}} onClick={() => resolvedImage && setImageModal({ src: resolvedImage, alt: item.name })} style={{ cursor: resolvedImage ? "pointer" : "default" }} />
                         <span className={styles.itemName}>{item.name || "Unknown item"}</span>
                         <span className={styles.itemQty}>×{qty}</span>
                         <span className={styles.itemPrice}>{fmt(price * qty)}</span>

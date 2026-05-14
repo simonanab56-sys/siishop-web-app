@@ -109,3 +109,43 @@
 
 /* Table scroll wrapper */
 .tableWrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Image Modal */
+.imageModalOverlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 9999;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.imageModalContent {
+  position: relative; max-width: 90vw; max-height: 90vh;
+  display: flex; flex-direction: column; align-items: center;
+  animation: scaleIn 0.2s ease-out;
+}
+@keyframes scaleIn {
+  from { transform: scale(0.95); }
+  to { transform: scale(1); }
+}
+.imageModalClose {
+  position: absolute; top: -45px; right: -10px;
+  background: rgba(255,255,255,0.15); border: none;
+  color: white; font-size: 32px; width: 44px; height: 44px;
+  border-radius: 50%; cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  transition: all 0.2s ease;
+}
+.imageModalClose:hover {
+  background: rgba(255,255,255,0.3);
+  transform: scale(1.1);
+}
+.imageModalImage {
+  max-width: 85vw; max-height: 75vh; object-fit: contain; border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.imageModalTitle {
+  color: rgba(255,255,255,0.9); margin-top: 16px; font-size: 1.1rem;
+  text-align: center; font-weight: 500; letter-spacing: 0.5px;
+}

@@ -11,8 +11,15 @@ const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_U
 // Helper to get full image URL
 function getFullImageUrl(url) {
   if (!url) return "";
+  // Handle Base64 data URLs - return as-is
+  if (url.startsWith("data:image")) return url;
+  // Handle full URLs
   if (url.startsWith("http")) return url;
+  // Handle relative paths
   if (url.startsWith("/uploads")) {
+    return API_BASE.replace("/api", "") + url;
+  }
+  if (url.startsWith("/")) {
     return API_BASE.replace("/api", "") + url;
   }
   return url;

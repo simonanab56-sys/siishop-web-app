@@ -42,7 +42,7 @@ async function verifyPayment(paymentRef, expectedAmount) {
 }
 
 /**
- * ✅ ENHANCED: Attach vendorId AND product image to each item
+ * ✅ ENHANCED: Attach vendorId AND product images to each item
  * SECURITY: Always fetch from DB, never trust frontend images
  * This ensures admin/vendor/customer can see what was actually ordered
  */
@@ -51,13 +51,14 @@ async function attachVendorAndImageToItems(items) {
 
   const products = await Product.find({
     _id: { $in: productIds },
-  }).select("_id vendorId image name description").lean();
+  }).select("_id vendorId image images name description").lean();
 
   const productMap = {};
   products.forEach((p) => {
     productMap[String(p._id)] = {
       vendorId: p.vendorId,
       image: p.image,
+      images: p.images, // Include multiple images array
       name: p.name,
       description: p.description,
     };
@@ -67,6 +68,7 @@ async function attachVendorAndImageToItems(items) {
     ...item,
     vendorId: productMap[String(item.productId)]?.vendorId || null,
     image: productMap[String(item.productId)]?.image || null,
+    images: productMap[String(item.productId)]?.images || null,
     name: productMap[String(item.productId)]?.name || item.name || "Unknown Product",
     description: productMap[String(item.productId)]?.description || null,
   }));

@@ -1,4 +1,4 @@
-// pages/vendor/VendorDashboard.jsx — v7: Multi-image support
+// pages/vendor/VendorDashboard.jsx — v9: Fixed image URLs
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { vendorAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
@@ -9,6 +9,8 @@ import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import styles from "./VendorDashboard.module.css";
 import VendorStatusBanner from "../../components/VendorStatusBanner";
+
+const API_BASE = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL || "http://localhost:10000/api";
 
 const ORDER_STATUSES = [
   "pending",
@@ -33,9 +35,78 @@ function safeId(id) {
   return id ? `#${String(id).slice(-6).toUpperCase()}` : "#------";
 }
 
+// Helper to properly resolve image URL
+function getImageUrl(image) {
+  if (!image) return "/no-image.svg";
+  // Handle Base64 data URLs - return as-is
+  if (image.startsWith("data:image")) return image;
+  // Handle full URLs
+  if (image.startsWith("http")) return image;
+  // Handle relative paths
+  if (image.startsWith("/uploads")) {
+    return API_BASE.replace("/api", "") + image;
+  }
+  if (image.startsWith("/")) {
+    return API_BASE.replace("/api", "") + image;
+  }
+  // Handle filename only
+  return `${API_BASE.replace("/api", "")}/uploads/products/${image}`;
+}
+
+// Helper to get image from item (supports single image and multiple images)
+function getItemImage(item) {
+  if (!item) return null;
+  let img = null;
+
+  // Check for direct image fields
+  if (item.image) {
+    img = item.image;
+  } else if (item.images && item.images.length > 0) {
+    const firstImg = item.images[0];
+    img = typeof firstImg === "string" ? firstImg : firstImg?.url;
+  }
+
+  // Check product reference (for promos and older orders)
+  if (!img && item.productId) {
+    const productRef = typeof item.productId === "object" ? item.productId : null;
+    if (productRef) {
+      if (productRef.image) {
+        img = productRef.image;
+      } else if (productRef.images && productRef.images.length > 0) {
+        const firstImg = productRef.images[0];
+        img = typeof firstImg === "string" ? firstImg : firstImg?.url;
+      }
+    }
+  }
+
+  // Check product object (another reference format)
+  if (!img && item.product) {
+    if (item.product.image) {
+      img = item.product.image;
+    } else if (item.product.images && item.product.images.length > 0) {
+      const firstImg = item.product.images[0];
+      img = typeof firstImg === "string" ? firstImg : firstImg?.url;
+    }
+  }
+
+  if (!img) return null;
+  return getImageUrl(img);
+}
+
 export default function VendorDashboard({ addToast, onRequireAuth }) {
   const { isLoggedIn, isApprovedVendor, isAdmin, user } = useAuth();
   const [tab, setTab] = useState("overview");
+  const [imageModal, setImageModal] = useState({ isOpen: false, src: "", title: "" });
+
+  // Prevent background scroll when modal is open
+  useEffect(() => {
+    if (imageModal.isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [imageModal.isOpen]);
 
   const canManage = isAdmin;
   const isOwnProduct = (p) => isAdmin || String(p.vendorId) === String(user?._id);
@@ -74,6 +145,25 @@ export default function VendorDashboard({ addToast, onRequireAuth }) {
       </div>
       <VendorStatusBanner />
 
+      {/* Image fullscreen modal */}
+      {imageModal.isOpen && (
+        <div
+          className={styles.imageModalOverlay}
+          onClick={() => setImageModal({ isOpen: false, src: "", title: "" })}
+        >
+          <div className={styles.imageModalContent} onClick={(e) => e.stopPropagation()}>
+            <button
+              className={styles.imageModalClose}
+              onClick={() => setImageModal({ isOpen: false, src: "", title: "" })}
+            >
+              ×
+            </button>
+            <img src={imageModal.src} alt={imageModal.title} className={styles.imageModalImage} />
+            <p className={styles.imageModalTitle}>{imageModal.title}</p>
+          </div>
+        </div>
+      )}
+
       <div className={styles.tabs}>
         <button
           className={`${styles.tab} ${tab === "overview" ? styles.tabActive : ""}`}
@@ -96,7 +186,7 @@ export default function VendorDashboard({ addToast, onRequireAuth }) {
       </div>
 
       {tab === "overview" && <VendorOverview addToast={addToast} />}
-      {tab === "orders"   && <VendorOrders   addToast={addToast} />}
+      {tab === "orders"   && <VendorOrders   addToast={addToast} setImageModal={setImageModal} />}
       {tab === "products" && <VendorProducts addToast={addToast} isOwnProduct={isOwnProduct} />}
     </div>
   );
@@ -219,7 +309,7 @@ function VendorOverview({ addToast }) {
 /* ───────────────────────────────────────── */
 /* ORDERS TAB — FIXED WITH EXPAND/COLLAPSE  */
 /* ───────────────────────────────────────── */
-function VendorOrders({ addToast }) {
+function VendorOrders({ addToast, setImageModal }) {
   const { fmt } = useCurrency();
   const [orders,         setOrders]         = useState([]);
   const [loading,        setLoading]        = useState(true);
@@ -334,13 +424,16 @@ function VendorOrders({ addToast }) {
                           {items.length > 0 && (
                             <div className={styles.orderItemsList}>
                               <strong>Items:</strong>
-                              {items.map((item, idx) => (
+                              {items.map((item, idx) => {
+                                const itemImg = getItemImage(item);
+                                return (
                                 <div key={idx} className={styles.orderItemRow}>
-                                  {item.image && <img src={item.image} alt={item.name} style={{width:"40px",height:"40px",borderRadius:"4px",marginRight:"8px",objectFit:"cover"}} />}
+                                  {itemImg && <img src={itemImg} alt={item.name} style={{width:"40px",height:"40px",borderRadius:"4px",marginRight:"8px",objectFit:"cover",cursor:"pointer"}} onClick={() => setImageModal({ isOpen: true, src: itemImg, title: item.name || "Product Image" })} onError={(e) => { e.target.style.display = "none"; }} />}
                                   <span>{item.quantity}x {item.name}</span>
                                   <span>{fmt((typeof item.price === "number" ? item.price : 0) * (typeof item.quantity === "number" ? item.quantity : 1))}</span>
                                 </div>
-                              ))}
+                                );
+                              })}
                               {order.deliveryAddress && (
                                 <p className={styles.deliveryAddr}><strong>Delivery address:</strong> {order.deliveryAddress}</p>
                               )}

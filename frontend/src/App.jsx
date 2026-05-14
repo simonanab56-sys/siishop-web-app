@@ -76,7 +76,21 @@ function AppInner() {
   useEffect(() => {
     localStorage.setItem("app_page", page);
   }, [page]);
-  const [cart, setCart] = useState([]);
+
+  // Initialize cart from localStorage for persistence across refreshes
+  const [cart, setCart] = useState(() => {
+    try {
+      const stored = localStorage.getItem("cart");
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+
+  // Persist cart to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem("cart", JSON.stringify(cart));
+    } catch (e) { /* ignore storage errors */ }
+  }, [cart]);
   const { toasts, addToast } = useToast();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState("login");

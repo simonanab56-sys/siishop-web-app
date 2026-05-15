@@ -1,0 +1,40 @@
+workflows:
+  ios-release:
+    name: SiiShop iOS Release
+    max_build_duration: 120
+
+    environment:
+      node: 20
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      # Move into your React + Vite + Capacitor project
+      - cd frontend
+
+      # Install dependencies
+      - npm ci
+
+      # Build production web assets
+      - npm run build
+
+      # Sync Capacitor with iOS project
+      - npx cap sync ios
+
+      # Install CocoaPods dependencies
+      - cd ios/App
+      - pod install
+
+      # Build iOS IPA for distribution
+      - xcode-project build-ipa \
+          --workspace App.xcworkspace \
+          --scheme App
+
+    artifacts:
+      # Generated iOS application package
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      email:
+        recipients:
+          - $CM_EMAIL

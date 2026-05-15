@@ -25,15 +25,15 @@ workflows:
 
       - name: Verify iOS files
         script: |
-          cd frontend/ios
+          cd frontend/ios/App
           ls
-          ls App
 
       - name: Build IPA
         script: |
-          cd frontend/ios
+          cd frontend/ios/App
+
           xcode-project build-ipa \
-            --workspace App/App.xcworkspace \
+            --project App.xcodeproj \
             --scheme App \
             --archive-flags="-destination generic/platform=iOS"
 

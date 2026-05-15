@@ -15,17 +15,17 @@ workflows:
       # Install dependencies
       - npm ci
 
-      # Build production web assets
+      # Build the production web assets
       - npm run build
 
-      # Sync Capacitor with iOS project
+      # Sync Capacitor with the iOS project
       - npx cap sync ios
 
       # Install CocoaPods dependencies
       - cd ios/App
       - pod install
 
-      # Build iOS IPA for distribution
+      # Build the IPA
       - xcode-project build-ipa \
           --workspace App.xcworkspace \
           --scheme App
@@ -33,8 +33,3 @@ workflows:
     artifacts:
       # Generated iOS application package
       - build/ios/ipa/*.ipa
-
-    publishing:
-      email:
-        recipients:
-          - $CM_EMAIL

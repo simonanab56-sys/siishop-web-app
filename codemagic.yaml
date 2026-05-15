@@ -1,40 +1,67 @@
 workflows:
-  ios-release:
-    name: SiiShop iOS Release
-    max_build_duration: 120
+ios-release:
+name: SiiShop iOS Release
+max_build_duration: 120
 
-    environment:
-      node: 20
-      xcode: latest
-      cocoapods: default
+```
+environment:
+  node: 22
+  xcode: latest
+  cocoapods: default
 
-    scripts:
-      - name: Install dependencies
-        script: |
-          cd frontend
-          npm install
+scripts:
 
-      - name: Build Vite app
-        script: |
-          cd frontend
-          npm run build
+  - name: Verify folders
+    script: |
+      pwd
+      ls
+      ls frontend
 
-      - name: Sync Capacitor
-        script: |
-          cd frontend
-          npx cap sync ios
+  - name: Install frontend dependencies
+    script: |
+      cd frontend
+      npm install
 
-      - name: Install CocoaPods
-        script: |
-          cd frontend/ios/App
-          pod install
+  - name: Verify package scripts
+    script: |
+      cd frontend
+      npm run
 
-      - name: Build IPA
-        script: |
-          cd frontend/ios/App
-          xcode-project build-ipa \
-            --workspace App.xcworkspace \
-            --scheme App
+  - name: Build Vite production app
+    script: |
+      cd frontend
+      npm run build
 
-    artifacts:
-      - frontend/ios/App/build/ios/ipa/*.ipa
+  - name: Verify build output
+    script: |
+      cd frontend
+      ls
+      ls dist
+
+  - name: Sync Capacitor iOS
+    script: |
+      cd frontend
+      npx cap sync ios
+
+  - name: Verify iOS project
+    script: |
+      cd frontend/ios/App
+      ls
+
+  - name: Install CocoaPods dependencies
+    script: |
+      cd frontend/ios/App
+      pod install
+
+  - name: Build iOS IPA
+    script: |
+      cd frontend/ios/App
+
+      xcode-project build-ipa \
+        --workspace App.xcworkspace \
+        --scheme App \
+        --archive-flags="-destination generic/platform=iOS"
+
+artifacts:
+  - frontend/ios/App/build/ios/ipa/*.ipa
+```

@@ -51,9 +51,13 @@ app.use(helmet({
 /* ───────────────────────── CORS (FIXED) ─────────────────────────
  * Supports multiple frontend origins (React + Vite + production)
  */
-const prodFrontendUrl = process.env.FRONTEND_URL_PROD || "https://siishop-web-app.vercel.app";
+/* ───────────────────────── CORS (MOBILE + WEB FIXED) ───────────────────────── */
 
-// Parse CORS_ORIGIN env variable if set (comma-separated URLs)
+const prodFrontendUrl =
+  process.env.FRONTEND_URL_PROD ||
+  "https://siishop-web-app.vercel.app";
+
+// Parse extra origins from env if needed
 const corsOriginsFromEnv = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
   : [];
@@ -61,45 +65,60 @@ const corsOriginsFromEnv = process.env.CORS_ORIGIN
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
+
+  // Capacitor mobile apps
+  "http://localhost",
+  "https://localhost",
+  "capacitor://localhost",
+  "ionic://localhost",
+
+  // Production frontend
   prodFrontendUrl,
-  "https://siishop-web-app-git-main-simonanab56-6856s-projects.vercel.app", // Vercel preview branch
+
+  // Vercel preview deployments
+  "https://siishop-web-app-git-main-simonanab56-6856s-projects.vercel.app",
+
   ...corsOriginsFromEnv,
 ].filter(Boolean);
-
-// Also allow any vercel.app subdomain for flexibility
-const vercelPatterns = [
-  /\.vercel\.app$/,
-  /\.vercel\.app\/.*$/,
-];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (Postman, mobile apps)
-      if (!origin) return callback(null, true);
 
-      // Check exact match
+      // Allow requests without origin
+      // (mobile apps, Postman, server-to-server)
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      // Exact match
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      // Check vercel.app pattern match
-      if (origin.endsWith(".vercel.app") || origin.includes(".vercel.app")) {
+      // Allow ALL Vercel preview deployments
+      if (origin.includes(".vercel.app")) {
         return callback(null, true);
       }
 
       console.error("❌ CORS blocked:", origin);
-      return callback(new Error("Not allowed by CORS"));
+
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
+
     credentials: true,
+
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
   })
 );
 
-// ✅ Handle preflight requests properly
+// Handle preflight
 app.options("*", cors());
-
 /* ───────────────────────── COOKIE PARSER ───────────────────────── */
 app.use(cookieParser());
 

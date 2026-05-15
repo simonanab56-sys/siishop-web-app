@@ -1,11 +1,18 @@
 workflows:
   ios-release:
-    name: SiiShop iOS Release
+    name: SiiShop iOS Production Release
     max_build_duration: 120
 
     environment:
       node: 22
       xcode: latest
+
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.siishop.app
+
+    integrations:
+      app_store_connect: App Store Connect
 
     scripts:
       - name: Install frontend dependencies
@@ -23,19 +30,24 @@ workflows:
           cd frontend
           npx cap sync ios
 
-      - name: Verify iOS files
+      - name: Verify iOS project
         script: |
           cd frontend/ios/App
           ls
 
-      - name: Build IPA
+      - name: Build signed IPA
         script: |
           cd frontend/ios/App
 
+          xcode-project use-profiles
+
           xcode-project build-ipa \
             --project App.xcodeproj \
-            --scheme App \
-            --archive-flags="-destination generic/platform=iOS"
+            --scheme App
 
     artifacts:
       - frontend/ios/App/build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        auth: integration

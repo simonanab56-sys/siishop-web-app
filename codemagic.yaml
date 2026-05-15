@@ -23,11 +23,6 @@ workflows:
           cd frontend
           npx cap sync ios
 
-      - name: Verify iOS files
-        script: |
-          cd frontend/ios/App
-          ls
-
       - name: Build unsigned app
         script: |
           cd frontend/ios/App
@@ -40,4 +35,5 @@ workflows:
             build
 
     artifacts:
-      - frontend/ios/App/build/**/*.app
+      - /tmp/xcodebuild_logs/*.log
+      - ~/Library/Developer/Xcode/DerivedData/**/Build/Products/**/*.app

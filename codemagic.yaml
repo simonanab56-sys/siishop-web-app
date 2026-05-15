@@ -9,22 +9,32 @@ workflows:
       cocoapods: default
 
     scripts:
-      - cd frontend
+      - name: Install dependencies
+        script: |
+          cd frontend
+          npm install
 
-      # FIXED
-      - npm install
+      - name: Build Vite app
+        script: |
+          cd frontend
+          npm run build
 
-      - npm run build
+      - name: Sync Capacitor
+        script: |
+          cd frontend
+          npx cap sync ios
 
-      - npx cap sync ios
+      - name: Install CocoaPods
+        script: |
+          cd frontend/ios/App
+          pod install
 
-      - cd ios/App
-
-      - pod install
-
-      - xcode-project build-ipa \
-          --workspace App.xcworkspace \
-          --scheme App
+      - name: Build IPA
+        script: |
+          cd frontend/ios/App
+          xcode-project build-ipa \
+            --workspace App.xcworkspace \
+            --scheme App
 
     artifacts:
       - frontend/ios/App/build/ios/ipa/*.ipa

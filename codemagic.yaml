@@ -1,45 +1,41 @@
 workflows:
-ios-release:
-name: SiiShop iOS Release
-max_build_duration: 120
+  ios-release:
+    name: SiiShop iOS Release
+    max_build_duration: 120
 
+    environment:
+      node: 22
+      xcode: latest
 
-environment:
-  node: 22
-  xcode: latest
+    scripts:
+      - name: Install frontend dependencies
+        script: |
+          cd frontend
+          npm install
 
-scripts:
+      - name: Build production app
+        script: |
+          cd frontend
+          npm run build
 
-  - name: Install frontend dependencies
-    script: |
-      cd frontend
-      npm install
+      - name: Sync Capacitor iOS
+        script: |
+          cd frontend
+          npx cap sync ios
 
-  - name: Build production app
-    script: |
-      cd frontend
-      npm run build
+      - name: Verify iOS files
+        script: |
+          cd frontend/ios
+          ls
+          ls App
 
-  - name: Sync Capacitor iOS
-    script: |
-      cd frontend
-      npx cap sync ios
+      - name: Build IPA
+        script: |
+          cd frontend/ios
+          xcode-project build-ipa \
+            --workspace App/App.xcworkspace \
+            --scheme App \
+            --archive-flags="-destination generic/platform=iOS"
 
-  - name: Verify iOS files
-    script: |
-      cd frontend/ios
-      ls
-      ls App
-
-  - name: Build IPA
-    script: |
-      cd frontend/ios
-
-      xcode-project build-ipa \
-        --workspace App/App.xcworkspace \
-        --scheme App \
-        --archive-flags="-destination generic/platform=iOS"
-
-artifacts:
-  - frontend/ios/App/build/ios/ipa/*.ipa
-
+    artifacts:
+      - frontend/ios/App/build/ios/ipa/*.ipa

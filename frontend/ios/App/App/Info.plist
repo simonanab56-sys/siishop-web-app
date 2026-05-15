@@ -47,20 +47,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
-	<key>NSCameraUsageDescription</key>
-	<string>SiiShop needs camera access to take product photos</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SiiShop needs photo library access to upload product images</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>SiiShop uses your location for delivery address</string>
-	<key>UIStatusBarHidden</key>
-	<false/>
-	<key>UIRequiresFullScreen</key>
-	<false/>
 </dict>
 </plist>

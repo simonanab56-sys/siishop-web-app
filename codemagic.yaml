@@ -1,65 +1,45 @@
 workflows:
-  ios-release:
-    name: SiiShop iOS Release
-    max_build_duration: 120
+ios-release:
+name: SiiShop iOS Release
+max_build_duration: 120
 
-    environment:
-      node: 22
-      xcode: latest
-      cocoapods: default
 
-    scripts:
+environment:
+  node: 22
+  xcode: latest
 
-      - name: Verify folders
-        script: |
-          pwd
-          ls
-          ls frontend
+scripts:
 
-      - name: Install frontend dependencies
-        script: |
-          cd frontend
-          npm install
+  - name: Install frontend dependencies
+    script: |
+      cd frontend
+      npm install
 
-      - name: Verify package scripts
-        script: |
-          cd frontend
-          npm run
+  - name: Build production app
+    script: |
+      cd frontend
+      npm run build
 
-      - name: Build Vite production app
-        script: |
-          cd frontend
-          npm run build
+  - name: Sync Capacitor iOS
+    script: |
+      cd frontend
+      npx cap sync ios
 
-      - name: Verify build output
-        script: |
-          cd frontend
-          ls
-          ls dist
+  - name: Verify iOS files
+    script: |
+      cd frontend/ios
+      ls
+      ls App
 
-      - name: Sync Capacitor iOS
-        script: |
-          cd frontend
-          npx cap sync ios
+  - name: Build IPA
+    script: |
+      cd frontend/ios
 
-      - name: Verify iOS project
-        script: |
-          cd frontend/ios/App
-          ls
+      xcode-project build-ipa \
+        --workspace App/App.xcworkspace \
+        --scheme App \
+        --archive-flags="-destination generic/platform=iOS"
 
-      - name: Install CocoaPods dependencies
-        script: |
-          cd frontend/ios/App
-          pod install
+artifacts:
+  - frontend/ios/App/build/ios/ipa/*.ipa
 
-      - name: Build iOS IPA
-        script: |
-          cd frontend/ios/App
-
-          xcode-project build-ipa \
-            --workspace App.xcworkspace \
-            --scheme App \
-            --archive-flags="-destination generic/platform=iOS"
-
-    artifacts:
-      - frontend/ios/App/build/ios/ipa/*.ipa

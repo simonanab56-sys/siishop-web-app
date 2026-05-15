@@ -9,27 +9,30 @@ workflows:
       cocoapods: default
 
     scripts:
-      # Move into your React + Vite + Capacitor project
+
+      # Go into frontend project
       - cd frontend
 
       # Install dependencies
       - npm ci
 
-      # Build the production web assets
+      # Build production frontend
       - npm run build
 
-      # Sync Capacitor with the iOS project
+      # Sync Capacitor iOS project
       - npx cap sync ios
 
-      # Install CocoaPods dependencies
+      # Go to iOS project
       - cd ios/App
+
+      # Install CocoaPods
       - pod install
 
-      # Build the IPA
+      # Build IPA
       - xcode-project build-ipa \
           --workspace App.xcworkspace \
-          --scheme App
+          --scheme App \
+          --archive-flags="-destination generic/platform=iOS"
 
     artifacts:
-      # Generated iOS application package
-      - build/ios/ipa/*.ipa
+      - frontend/ios/App/build/ios/ipa/*.ipa

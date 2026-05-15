@@ -9,30 +9,22 @@ workflows:
       cocoapods: default
 
     scripts:
-
-      # Go into frontend project
       - cd frontend
 
-      # Install dependencies
-      - npm ci
+      # FIXED
+      - npm install
 
-      # Build production frontend
       - npm run build
 
-      # Sync Capacitor iOS project
       - npx cap sync ios
 
-      # Go to iOS project
       - cd ios/App
 
-      # Install CocoaPods
       - pod install
 
-      # Build IPA
       - xcode-project build-ipa \
           --workspace App.xcworkspace \
-          --scheme App \
-          --archive-flags="-destination generic/platform=iOS"
+          --scheme App
 
     artifacts:
       - frontend/ios/App/build/ios/ipa/*.ipa

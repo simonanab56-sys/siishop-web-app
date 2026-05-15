@@ -12,49 +12,49 @@ environment:
 scripts:
 
   - name: Verify folders
-    script: |
+    script: 
       pwd
       ls
       ls frontend
 
   - name: Install frontend dependencies
-    script: |
+    script: 
       cd frontend
       npm install
 
   - name: Verify package scripts
-    script: |
+    script: 
       cd frontend
       npm run
 
   - name: Build Vite production app
-    script: |
+    script: 
       cd frontend
       npm run build
 
   - name: Verify build output
-    script: |
+    script: 
       cd frontend
       ls
       ls dist
 
   - name: Sync Capacitor iOS
-    script: |
+    script: 
       cd frontend
       npx cap sync ios
 
   - name: Verify iOS project
-    script: |
+    script: 
       cd frontend/ios/App
       ls
 
   - name: Install CocoaPods dependencies
-    script: |
+    script: 
       cd frontend/ios/App
       pod install
 
   - name: Build iOS IPA
-    script: |
+    script: 
       cd frontend/ios/App
 
       xcode-project build-ipa \

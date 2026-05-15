@@ -14,6 +14,8 @@ export async function apiRequest(endpoint, options = {}) {
   const baseURL = getApiBaseUrl();
   const url = `${baseURL}${endpoint}`;
 
+  console.log(`[API] ➡️ ${endpoint}`, { url, method: options.method || "GET" });
+
   try {
     const response = await fetch(url, {
       ...options,
@@ -24,13 +26,21 @@ export async function apiRequest(endpoint, options = {}) {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: response.statusText }));
-      throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      const errorBody = await response.text();
+      console.error(`[API] ❌ ${endpoint}: HTTP ${response.status}`, errorBody);
+      try {
+        const error = JSON.parse(errorBody);
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+      } catch {
+        throw new Error(errorBody || `HTTP ${response.status}`);
+      }
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log(`[API] ✅ ${endpoint}: OK`);
+    return data;
   } catch (err) {
-    console.error(`[API] ${endpoint}:`, err.message);
+    console.error(`[API] ❌ ${endpoint}:`, err.message);
     throw err;
   }
 }

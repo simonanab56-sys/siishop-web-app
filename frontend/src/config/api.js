@@ -1,25 +1,45 @@
 // api.js - Centralized API Configuration
 // This file provides safe, production-ready API URL configuration
+// Works for: localhost dev, Vercel production, Capacitor Android/iOS
 
 // Production fallback - NEVER remove this
 const PRODUCTION_API_URL = "https://siishop-web-app-backend.onrender.com/api";
 
+// Debug: Log environment details
+function logEnvInfo() {
+  console.log("🔥 ========== API CONFIG DEBUG ==========");
+  console.log("🔥 DEV mode:", import.meta.env.DEV);
+  console.log("🔥 PROD mode:", import.meta.env.PROD);
+  console.log("🔥 VITE_API_URL:", import.meta.env.VITE_API_URL);
+  console.log("🔥 VITE_API_URL_PROD:", import.meta.env.VITE_API_URL_PROD);
+  console.log("🔥 =======================================");
+}
+
 // Get API URL with safe fallback
 function getApiUrl() {
-  const envUrl = import.meta.env.VITE_API_URL;
+  logEnvInfo();
 
-  if (!envUrl) {
-    // No API URL configured - use production as fallback
-    console.warn("⚠️ VITE_API_URL not set. Using production fallback.");
+  // For development (npm run dev) - use localhost
+  if (import.meta.env.DEV) {
+    const envUrl = import.meta.env.VITE_API_URL;
+    if (envUrl) {
+      console.log("🔧 Dev mode - Using API URL:", envUrl);
+      return envUrl;
+    }
+    console.warn("⚠️ VITE_API_URL not set in dev mode. Using production fallback.");
     return PRODUCTION_API_URL;
   }
 
-  // Development mode check
-  if (import.meta.env.DEV) {
-    console.log("🔧 Development mode - API URL:", envUrl);
+  // For production builds (npm run build, Capacitor, Vercel)
+  // Use production API - localhost won't work on mobile devices
+  const prodUrl = import.meta.env.VITE_API_URL_PROD || import.meta.env.VITE_API_URL;
+  if (prodUrl) {
+    console.log("🚀 Production/Capacitor mode - Using API URL:", prodUrl);
+    return prodUrl;
   }
 
-  return envUrl;
+  console.warn("⚠️ No API URL configured. Using production fallback.");
+  return PRODUCTION_API_URL;
 }
 
 // Export the base URL

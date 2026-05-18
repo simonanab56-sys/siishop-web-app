@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { adminAPI, vendorAPI, productAPI, orderAPI, promoAPI } from "../../services/api";
 import { useAuth }     from "../../context/AuthContext";
 import { useCurrency } from "../../context/CurrencyContext";
-import { getImageUrl } from "../../utils/image";
+import { getImageUrl, PLACEHOLDER_IMAGE } from "../../utils/image";
 import ImageUpload     from "../../components/ImageUpload";
 import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
@@ -471,7 +471,7 @@ function AdminVendors({ addToast }) {
                   <div>
                     <p style={{fontSize:"12px",color:"var(--brand-muted)",marginBottom:"8px"}}>Front</p>
                     {selectedVendor.idFrontImage ? (
-                      <img src={selectedVendor.idFrontImage.startsWith('http') ? selectedVendor.idFrontImage : `${import.meta.env.VITE_API_URL.replace('/api', '')}${selectedVendor.idFrontImage}`} alt="ID Front" style={{maxWidth:"100%",maxHeight:"200px",borderRadius:"8px",border:"1px solid var(--border-color)"}} />
+                      <img src={getImageUrl(selectedVendor.idFrontImage)} alt="ID Front" style={{maxWidth:"100%",maxHeight:"200px",borderRadius:"8px",border:"1px solid var(--border-color)"}} />
                     ) : (
                       <div style={{padding:"40px",textAlign:"center",background:"var(--bg-secondary)",borderRadius:"8px",color:"var(--brand-muted)"}}>No image</div>
                     )}
@@ -479,7 +479,7 @@ function AdminVendors({ addToast }) {
                   <div>
                     <p style={{fontSize:"12px",color:"var(--brand-muted)",marginBottom:"8px"}}>Back</p>
                     {selectedVendor.idBackImage ? (
-                      <img src={selectedVendor.idBackImage.startsWith('http') ? selectedVendor.idBackImage : `${import.meta.env.VITE_API_URL.replace('/api', '')}${selectedVendor.idBackImage}`} alt="ID Back" style={{maxWidth:"100%",maxHeight:"200px",borderRadius:"8px",border:"1px solid var(--border-color)"}} />
+                      <img src={getImageUrl(selectedVendor.idBackImage)} alt="ID Back" style={{maxWidth:"100%",maxHeight:"200px",borderRadius:"8px",border:"1px solid var(--border-color)"}} />
                     ) : (
                       <div style={{padding:"40px",textAlign:"center",background:"var(--bg-secondary)",borderRadius:"8px",color:"var(--brand-muted)"}}>No image</div>
                     )}
@@ -573,8 +573,7 @@ function AdminProducts({ addToast, fmt }) {
 
   // Get primary image for table display (support both new and legacy)
   const getPrimaryImage = (p) => {
-    if (p.images && p.images.length > 0) return p.images[0].url;
-    return p.image || "";
+    return getImageUrl(p.images?.[0]?.url || p.image);
   };
 
   return (
@@ -631,7 +630,9 @@ function AdminProducts({ addToast, fmt }) {
                 const primaryImage = getPrimaryImage(p);
                 return (
                   <tr key={p._id}>
-                    <td>{primaryImage?<img src={primaryImage} alt={p.name||"Product"} style={{width:40,height:40,objectFit:"cover",borderRadius:8}}/>:<div style={{width:40,height:40,background:"var(--brand-surface)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>🛍️</div>}</td>
+                    <td>{primaryImage && primaryImage !== PLACEHOLDER_IMAGE
+                      ? <img src={primaryImage} alt={p.name||"Product"} style={{width:40,height:40,objectFit:"cover",borderRadius:8}} onError={(e)=>{e.target.style.display='none'}}/>
+                      : <div style={{width:40,height:40,background:"var(--brand-surface)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>🛍️</div>}</td>
                     <td><strong>{p.name||"—"}</strong></td>
                     <td>{p.category||"—"}</td>
                     <td>{p.vendorName || (typeof p.vendorId === "object" && p.vendorId?.storeName ? p.vendorId.storeName : <em style={{color:"var(--brand-muted)"}}>—</em>)}</td>

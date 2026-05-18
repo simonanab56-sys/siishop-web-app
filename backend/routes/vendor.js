@@ -21,8 +21,15 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
+  destination: (req, file, cb) => {
+    console.log("[MULTER] Saving to:", UPLOAD_DIR);
+    cb(null, UPLOAD_DIR);
+  },
+  filename: (req, file, cb) => {
+    const filename = `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`;
+    console.log("[MULTER] Generated filename:", filename);
+    cb(null, filename);
+  },
 });
 
 const fileFilter = (req, file, cb) => {

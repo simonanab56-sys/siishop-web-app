@@ -564,6 +564,8 @@ function VendorProducts({ addToast, isOwnProduct }) {
         saved = await vendorAPI.createProduct(payload, newFiles);
       }
 
+      console.log("💾 Product saved, images:", saved?.images);
+
       if (!mountedRef.current) return;
 
       setProducts((prev) => {
@@ -726,12 +728,12 @@ function VendorProducts({ addToast, isOwnProduct }) {
             const isUnavailable = p.available === false || stock === 0;
 
             // Get primary image (support both new images array and legacy image)
-            const primaryImage = p.images?.[0]?.url || p.image || "";
+            const primaryImage = getImageUrl(p.images?.[0]?.url || p.image);
 
             return (
               <div key={p._id} className={`card ${styles.productCard}`}>
                 <div className={styles.productImg}>
-                  {primaryImage ? (
+                  {primaryImage && primaryImage !== PLACEHOLDER_IMAGE ? (
                     <img src={primaryImage} alt={p.name || "Product"} />
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: "2rem" }}>📦</div>

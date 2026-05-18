@@ -74,17 +74,24 @@ export function getImageUrl(path) {
   if (path.startsWith("/")) {
     if (isDev) {
       // In dev mode, use relative URLs - Vite proxy handles them
+      console.log("🖼️ getImageUrl DEV relative:", path, "->", path);
       return path;
     }
     // In production, prepend the image base URL
-    return `${IMAGE_BASE}${path}`;
+    const result = `${IMAGE_BASE}${path}`;
+    console.log("🖼️ getImageUrl PROD relative:", path, "->", result);
+    return result;
   }
 
   // Handle filename only (no leading slash)
   if (isDev) {
-    return `/uploads/${path}`;
+    const result = `/uploads/${path}`;
+    console.log("🖼️ getImageUrl DEV filename:", path, "->", result);
+    return result;
   }
-  return `${IMAGE_BASE}/uploads/${path}`;
+  const result = `${IMAGE_BASE}/uploads/${path}`;
+  console.log("🖼️ getImageUrl PROD filename:", path, "->", result);
+  return result;
 }
 
 /**

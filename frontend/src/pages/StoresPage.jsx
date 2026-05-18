@@ -137,10 +137,14 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
                       if (!p?._id) return null;
                       const price = typeof p.price==="number" ? p.price : 0;
                       const stock = typeof p.stock==="number" ? p.stock : 999;
+                      // Get the primary image - support both new images array and legacy image field
+                      const primaryImage = p.images && p.images.length > 0
+                        ? getImageUrl(p.images[0]?.url)
+                        : getImageUrl(p.image);
                       return (
                         <div key={p._id} className={`card ${styles.miniCard}`}>
-                          {p.image
-                            ? <img src={p.image} alt={p.name||"Product"} className={styles.miniImg}/>
+                          {primaryImage && primaryImage !== "/no-image.svg"
+                            ? <img src={primaryImage} alt={p.name||"Product"} className={styles.miniImg}/>
                             : <div className={styles.miniImgPlaceholder}>🛍️</div>
                           }
                           <div className={styles.miniBody}>

@@ -7,18 +7,8 @@
 import { useState, useEffect, useRef } from "react";
 import { promoAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
+import { getImageUrl } from "../utils/image";
 import styles from "./PromoSection.module.css";
-import { API_BASE } from "../config/api";
-
-// Helper to get full image URL
-function getFullImageUrl(url) {
-  if (!url) return "";
-  if (url.startsWith("http")) return url;
-  if (url.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  return url;
-}
 
 // Countdown hook — returns { days, hours, minutes, seconds } until endDate
 function useCountdown(endDate) {
@@ -76,9 +66,9 @@ function PromoCard({ promo, onAddToCart, onViewProduct }) {
       {/* Image */}
       <div className={styles.promoImg}>
         {product.images && product.images.length > 0
-          ? <img src={getFullImageUrl(product.images[0].url)} alt={product.name || "Product"} loading="lazy" />
+          ? <img src={getImageUrl(product.images[0].url)} alt={product.name || "Product"} loading="lazy" />
           : product.image
-            ? <img src={getFullImageUrl(product.image)} alt={product.name || "Product"} loading="lazy" />
+            ? <img src={getImageUrl(product.image)} alt={product.name || "Product"} loading="lazy" />
             : <div className={styles.imgPlaceholder}>🛍️</div>
         }
       </div>

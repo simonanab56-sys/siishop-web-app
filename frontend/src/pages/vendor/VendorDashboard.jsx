@@ -3,13 +3,13 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { vendorAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrency } from "../../context/CurrencyContext";
+import { getImageUrl, PLACEHOLDER_IMAGE } from "../../utils/image";
 import ImageUpload from "../../components/ImageUpload";
 import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import styles from "./VendorDashboard.module.css";
 import VendorStatusBanner from "../../components/VendorStatusBanner";
-import { API_BASE } from "../../config/api";
 
 const ORDER_STATUSES = [
   "pending",
@@ -32,24 +32,6 @@ const EMPTY_PRODUCT = {
 
 function safeId(id) {
   return id ? `#${String(id).slice(-6).toUpperCase()}` : "#------";
-}
-
-// Helper to properly resolve image URL
-function getImageUrl(image) {
-  if (!image) return "/no-image.svg";
-  // Handle Base64 data URLs - return as-is
-  if (image.startsWith("data:image")) return image;
-  // Handle full URLs
-  if (image.startsWith("http")) return image;
-  // Handle relative paths
-  if (image.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + image;
-  }
-  if (image.startsWith("/")) {
-    return API_BASE.replace("/api", "") + image;
-  }
-  // Handle filename only
-  return `${API_BASE.replace("/api", "")}/uploads/products/${image}`;
 }
 
 // Helper to get image from item (supports single image and multiple images)

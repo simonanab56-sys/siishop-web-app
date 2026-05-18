@@ -1,29 +1,12 @@
 // components/MultiImageUpload.jsx
 // Multiple image uploader with file previews - supports up to 10 images
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { getImageUrl as getFullImageUrl } from "../utils/image";
 import styles from "./ImageUpload.module.css";
-import { API_BASE } from "../config/api";
 
 const MAX_IMAGES = 10;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-
-// Helper to get full image URL
-function getFullImageUrl(url) {
-  if (!url) return "";
-  // Handle Base64 data URLs - return as-is
-  if (url.startsWith("data:image")) return url;
-  // Handle full URLs
-  if (url.startsWith("http")) return url;
-  // Handle relative paths
-  if (url.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  if (url.startsWith("/")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  return url;
-}
 
 export default function MultiImageUpload({ images = [], onImagesChange }) {
   const [dragging, setDragging] = useState(false);
@@ -32,12 +15,24 @@ export default function MultiImageUpload({ images = [], onImagesChange }) {
   // Get current images as array
   const imageList = Array.isArray(images) ? images : images ? [images] : [];
 
+  // Cleanup preview URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      // Revoke all preview URLs to prevent memory leaks
+      imageList.forEach(img => {
+        if (img.preview && img.preview.startsWith("blob:")) {
+          URL.revokeObjectURL(img.preview);
+        }
+      });
+    };
+  }, []);
+
   // Validate and add new files
   const handleFiles = useCallback((files) => {
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
-    const currentCount = imageList.filter(img => !img.file).length; // Count non-file images
+    const currentCount = imageList.filter(img => !img.file).length;
     const fileCount = imageList.filter(img => img.file).length;
 
     // Validate each file
@@ -84,14 +79,19 @@ export default function MultiImageUpload({ images = [], onImagesChange }) {
     handleFiles(e.dataTransfer.files);
   }
 
-  // Remove an image
+  // Remove an image and clean up its preview URL
   function removeImage(index) {
+    const imgToRemove = imageList[index];
+    // Revoke the preview URL to prevent memory leak
+    if (imgToRemove?.preview && imgToRemove.preview.startsWith("blob:")) {
+      URL.revokeObjectURL(imgToRemove.preview);
+    }
     const newImages = imageList.filter((_, i) => i !== index);
     onImagesChange?.(newImages);
   }
 
   // Get display URL for an image (either preview or existing URL)
-  function getImageUrl(img) {
+  function getDisplayUrl(img) {
     if (img.preview) return img.preview;
     if (img.url) return getFullImageUrl(img.url);
     if (typeof img === "string") return getFullImageUrl(img);
@@ -136,7 +136,7 @@ export default function MultiImageUpload({ images = [], onImagesChange }) {
       {imageList.length > 0 && (
         <div className={styles.previewGrid}>
           {imageList.map((img, index) => {
-            const url = getImageUrl(img);
+            const url = getDisplayUrl(img);
             if (!url) return null;
 
             return (

@@ -1,34 +1,12 @@
 // ProductGallery.jsx — Professional product gallery with thumbnails
 import { useState, useCallback } from "react";
 import styles from "./ProductGallery.module.css";
-import { API_BASE } from "../config/api";
-
-// Helper to get full image URL
-function getFullImageUrl(url) {
-  if (!url) return "";
-  // Handle Base64 data URLs - return as-is
-  if (url.startsWith("data:image")) return url;
-  // Handle full URLs
-  if (url.startsWith("http")) return url;
-  // Handle relative paths
-  if (url.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  if (url.startsWith("/")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  return url;
-}
+import { getImageUrl, getProductImages } from "../utils/image";
 
 // Helper to get images array from product (supports both new and legacy formats)
 function getImagesArray(product) {
-  if (product.images && product.images.length > 0) {
-    return product.images.map(img => getFullImageUrl(img.url));
-  }
-  if (product.image) {
-    return [getFullImageUrl(product.image)];
-  }
-  return [];
+  const images = getProductImages(product);
+  return images.length > 0 ? images : [];
 }
 
 export default function ProductGallery({ product, onOpenFullscreen }) {

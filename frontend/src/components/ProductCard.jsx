@@ -2,30 +2,20 @@
 import { useState } from "react";
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./ProductCard.module.css";
-import { API_BASE } from "../config/api";
-
-// Helper to get full image URL
-function getFullImageUrl(url) {
-  if (!url) return "";
-  if (url.startsWith("http")) return url;
-  if (url.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  return url;
-}
+import { getImageUrl, getProductImage, PLACEHOLDER_IMAGE } from "../utils/image";
 
 // Helper to get the primary image (supports both new images array and legacy image field)
 function getPrimaryImage(product) {
   if (product.images && product.images.length > 0) {
-    return getFullImageUrl(product.images[0].url);
+    return getImageUrl(product.images[0].url);
   }
-  return getFullImageUrl(product.image);
+  return getImageUrl(product.image) || PLACEHOLDER_IMAGE;
 }
 
 // Helper to get the secondary image for hover effect
 function getSecondaryImage(product) {
   if (product.images && product.images.length > 1) {
-    return getFullImageUrl(product.images[1].url);
+    return getImageUrl(product.images[1].url);
   }
   return null;
 }

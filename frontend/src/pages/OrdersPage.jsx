@@ -3,33 +3,15 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { orderAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useCurrency } from "../context/CurrencyContext";
+import { getImageUrl } from "../utils/image";
 import { StatusBadge } from "../components/OrderStatusBadge";
 import OrderTracker   from "../components/OrderTracker";
 import ImageModal from "../components/ImageModal";
 import styles         from "./OrdersPage.module.css";
-import { API_BASE } from "../config/api";
 
 const POLL_INTERVAL = 10_000;
 function safeId(id)     { return id ? `#${String(id).slice(-6).toUpperCase()}` : "#------"; }
 function safeItems(arr) { return Array.isArray(arr) ? arr : []; }
-
-// Helper to properly resolve image URL
-function getImageUrl(image) {
-  if (!image) return "/no-image.svg";
-  // Handle Base64 data URLs - return as-is
-  if (image.startsWith("data:image")) return image;
-  // Handle full URLs
-  if (image.startsWith("http")) return image;
-  // Handle relative paths
-  if (image.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + image;
-  }
-  if (image.startsWith("/")) {
-    return API_BASE.replace("/api", "") + image;
-  }
-  // Handle filename only
-  return `${API_BASE.replace("/api", "")}/uploads/products/${image}`;
-}
 
 // Helper to get image from item (supports single image and multiple images)
 function getItemImage(item) {

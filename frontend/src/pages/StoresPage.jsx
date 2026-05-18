@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { vendorAPI, productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
+import { getImageUrl } from "../utils/image";
 import styles from "./StoresPage.module.css";
 
 function safeInitials(name) {
@@ -91,7 +92,7 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
                   onClick={() => openStore(v)}>
                   <div className={styles.vendorAvatar}>
                     {v.storeLogo
-                      ? <img src={v.storeLogo} alt={storeName} className={styles.storeLogo}/>
+                      ? <img src={getImageUrl(v.storeLogo)} alt={storeName} className={styles.storeLogo}/>
                       : <span>{safeInitials(v.storeName)}</span>
                     }
                   </div>

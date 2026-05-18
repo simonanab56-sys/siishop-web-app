@@ -1,25 +1,7 @@
 // components/CartItem.jsx — v6: Centralized API config
 import { useCurrency } from "../context/CurrencyContext";
+import { getImageUrl } from "../utils/image";
 import styles from "./CartItem.module.css";
-import { API_BASE } from "../config/api";
-
-// Helper to get full image URL
-function getFullImageUrl(url) {
-  if (!url) return "";
-  // Handle Base64 data URLs - return as-is
-  if (url.startsWith("data:image")) return url;
-  // Handle full URLs
-  if (url.startsWith("http")) return url;
-  // Handle relative paths
-  if (url.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  if (url.startsWith("/")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  // Handle filename only
-  return `${API_BASE.replace("/api", "")}/uploads/products/${url}`;
-}
 
 // Helper to get cart image (supports multiple images and product references)
 function getCartImage(item) {
@@ -58,7 +40,7 @@ function getCartImage(item) {
   }
 
   if (!img) return null;
-  return getFullImageUrl(img);
+  return getImageUrl(img);
 }
 
 export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {

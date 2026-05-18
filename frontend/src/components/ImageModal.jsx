@@ -1,22 +1,9 @@
 // ImageModal.jsx — Simple modal for viewing images fullscreen
 import { useEffect, useCallback } from "react";
-import { API_BASE } from "../config/api";
-
-function getFullImageUrl(url) {
-  if (!url) return "";
-  if (url.startsWith("http")) return url;
-  if (url.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  if (url.startsWith("/")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  // Handle filename only
-  return `${API_BASE.replace("/api", "")}/uploads/products/${url}`;
-}
+import { getImageUrl } from "../utils/image";
 
 export default function ImageModal({ src, alt = "Image", onClose }) {
-  const fullSrc = getFullImageUrl(src);
+  const fullSrc = getImageUrl(src);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === "Escape") onClose?.();

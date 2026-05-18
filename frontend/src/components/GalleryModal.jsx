@@ -1,27 +1,12 @@
 // GalleryModal.jsx — Fullscreen gallery modal with keyboard navigation
 import { useState, useEffect, useCallback, useRef } from "react";
+import { getImageUrl, getProductImages } from "../utils/image";
 import styles from "./GalleryModal.module.css";
-import { API_BASE } from "../config/api";
-
-// Helper to get full image URL
-function getFullImageUrl(url) {
-  if (!url) return "";
-  if (url.startsWith("http")) return url;
-  if (url.startsWith("/uploads")) {
-    return API_BASE.replace("/api", "") + url;
-  }
-  return url;
-}
 
 // Helper to get images array from product
 function getImagesArray(product) {
-  if (product.images && product.images.length > 0) {
-    return product.images.map(img => getFullImageUrl(img.url));
-  }
-  if (product.image) {
-    return [getFullImageUrl(product.image)];
-  }
-  return [];
+  const images = getProductImages(product);
+  return images.length > 0 ? images : [];
 }
 
 export default function GalleryModal({ product, initialIndex = 0, onClose }) {

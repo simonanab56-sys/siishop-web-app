@@ -13,8 +13,28 @@ const isDev = import.meta.env.DEV;
 // In production, use full URLs
 const IMAGE_BASE = isDev ? "" : API_BASE.replace("/api", "");
 
+// Cloudinary base URL for legacy /uploads/ paths (only for recent uploads that may still exist)
+// Old files on Render's ephemeral filesystem are likely gone
+const RENDER_BASE_URL = "https://siishop-web-app-backend.onrender.com";
+
 // Fallback placeholder image
 export const PLACEHOLDER_IMAGE = "/no-image.svg";
+
+/**
+ * Check if URL is a Cloudinary URL
+ */
+function isCloudinaryUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  return url.includes("res.cloudinary.com") || url.includes("cloudinary.com");
+}
+
+/**
+ * Check if URL is a legacy local upload path (/uploads/...)
+ */
+function isLegacyUploadPath(url) {
+  if (!url || typeof url !== "string") return false;
+  return url.startsWith("/uploads/") || url.includes("/uploads/");
+}
 
 /**
  * Get a production-safe image URL from any path format.
@@ -23,7 +43,8 @@ export const PLACEHOLDER_IMAGE = "/no-image.svg";
  * @returns {string} - Production-safe URL (relative in dev, full in prod)
  *
  * Examples:
- * - "/uploads/image.jpg" -> "/uploads/image.jpg" (dev) or "https://domain.com/uploads/image.jpg" (prod)
+ * - Cloudinary URL -> returned as-is (already in cloud)
+ * - "/uploads/image.jpg" -> "/uploads/image.jpg" (dev) or Cloudinary URL (prod tries render, may fail)
  * - "http://localhost:5000/uploads/image.jpg" -> "/uploads/image.jpg"
  * - "https://other.com/image.jpg" -> returned as-is
  * - "data:image/png;base64,..." -> returned as-is
@@ -43,6 +64,11 @@ export function getImageUrl(path) {
 
   // Handle string
   if (typeof path !== "string") return PLACEHOLDER_IMAGE;
+
+  // Handle Cloudinary URLs - return as-is (already in cloud)
+  if (isCloudinaryUrl(path)) {
+    return path;
+  }
 
   // Already a full URL (http/https) - normalize it
   if (path.startsWith("http://") || path.startsWith("https://")) {
@@ -72,24 +98,27 @@ export function getImageUrl(path) {
 
   // Handle relative path starting with /
   if (path.startsWith("/")) {
-    if (isDev) {
-      // In dev mode, use relative URLs - Vite proxy handles them
-      console.log("🖼️ getImageUrl DEV relative:", path, "->", path);
-      return path;
+    // Legacy /uploads/ paths in production
+    if (!isDev) {
+      // In production, /uploads/ paths are from the old Render filesystem
+      // Try the Render URL, but these files likely don't exist anymore
+      // Since we now use Cloudinary, new uploads won't have this path
+      const result = `${RENDER_BASE_URL}${path}`;
+      console.log("🖼️ getImageUrl PROD legacy:", path, "->", result);
+      return result;
     }
-    // In production, prepend the image base URL
-    const result = `${IMAGE_BASE}${path}`;
-    console.log("🖼️ getImageUrl PROD relative:", path, "->", result);
-    return result;
+    // In dev mode, use relative URLs - Vite proxy handles them
+    console.log("🖼️ getImageUrl DEV relative:", path, "->", path);
+    return path;
   }
 
-  // Handle filename only (no leading slash)
+  // Handle filename only (no leading slash) - assume /uploads/
   if (isDev) {
     const result = `/uploads/${path}`;
     console.log("🖼️ getImageUrl DEV filename:", path, "->", result);
     return result;
   }
-  const result = `${IMAGE_BASE}/uploads/${path}`;
+  const result = `${RENDER_BASE_URL}/uploads/${path}`;
   console.log("🖼️ getImageUrl PROD filename:", path, "->", result);
   return result;
 }

@@ -11,30 +11,55 @@ const Promo = require("../models/Promo");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
 const { createProductSchema, updateProductSchema, validate } = require("../utils/joiSchemas");
 
-// ── MULTER CONFIGURATION ───────────────────────────────────────────────────
-const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// ── CLOUDINARY CONFIGURATION ─────────────────────────────────────────────────
+let multiUpload;
+let CLOUDINARY_CONFIGURED = false;
+
+// Check if Cloudinary is configured
+function checkCloudinaryConfig() {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  return !!(cloudName && apiKey && apiSecret && cloudName !== "Root");
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
-});
+function initStorage() {
+  CLOUDINARY_CONFIGURED = checkCloudinaryConfig();
 
-const fileFilter = (req, file, cb) => {
-  const allowed = /jpeg|jpg|webp|png|gif/;
-  const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
-  const mime = allowed.test(file.mimetype);
-  if (ext && mime) return cb(null, true);
-  cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
-};
+  if (CLOUDINARY_CONFIGURED) {
+    console.log("☁️ [ADMIN] Using Cloudinary for image storage");
+    const { productMulter } = require("../config/cloudinary");
+    multiUpload = productMulter.array("images", 10);
+  } else {
+    // Fallback to local disk storage
+    console.log("💾 [ADMIN] Using local disk storage for images");
+    const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
 
-const multiUpload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
-}).array("images", 10);
+    const storage = multer.diskStorage({
+      destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+      filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
+    });
+
+    const fileFilter = (req, file, cb) => {
+      const allowed = /jpeg|jpg|webp|png|gif/;
+      const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
+      const mime = allowed.test(file.mimetype);
+      if (ext && mime) return cb(null, true);
+      cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
+    };
+
+    multiUpload = multer({
+      storage,
+      fileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }).array("images", 10);
+  }
+}
+
+initStorage();
 
 // Multer error handler for admin routes
 const handleMulterError = (err, req, res, next) => {
@@ -161,10 +186,24 @@ router.post("/", requireAuth, requireAdmin, multiUpload, handleMulterError, asyn
     // Handle images from uploaded files
     let images = [];
     if (req.files && req.files.length > 0) {
-      images = req.files.map(file => ({
-        url: `/uploads/${file.filename}`,
-        public_id: "",
-      }));
+      images = req.files.map(file => {
+        let url;
+        let public_id = "";
+
+        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
+        const isCloudinaryUpload = CLOUDINARY_CONFIGURED && (file.secure_url || (file.path && file.path.startsWith("http")));
+
+        if (isCloudinaryUpload) {
+          // Cloudinary - use secure URL
+          url = file.secure_url || file.path;
+          public_id = file.public_id || "";
+        } else {
+          // Local storage
+          url = `/uploads/${file.filename}`;
+        }
+
+        return { url, public_id };
+      });
     }
 
     // Backward compatibility: if no files but legacy image field provided
@@ -231,10 +270,22 @@ router.put("/:id", requireAuth, requireAdmin, multiUpload, handleMulterError, as
 
     // Add new uploaded images
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => ({
-        url: `/uploads/${file.filename}`,
-        public_id: "",
-      }));
+      const newImages = req.files.map(file => {
+        let url;
+        let public_id = "";
+
+        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
+        const isCloudinaryUpload = CLOUDINARY_CONFIGURED && (file.secure_url || (file.path && file.path.startsWith("http")));
+
+        if (isCloudinaryUpload) {
+          url = file.secure_url || file.path;
+          public_id = file.public_id || "";
+        } else {
+          url = `/uploads/${file.filename}`;
+        }
+
+        return { url, public_id };
+      });
       existingImages = [...existingImages, ...newImages];
     }
 

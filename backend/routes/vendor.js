@@ -18,51 +18,65 @@ const { requireAuth, requireVendor } = require("../middleware/auth");
 // Try to use Cloudinary if configured, otherwise fallback to local storage
 let multiUpload;
 let UPLOAD_DIR;
+let CLOUDINARY_CONFIGURED = false;
 
-const CLOUDINARY_CONFIGURED = !!(
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET
-);
+// Check if Cloudinary is configured (after dotenv loaded)
+function checkCloudinaryConfig() {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-if (CLOUDINARY_CONFIGURED) {
-  console.log("☁️ Using Cloudinary for image storage");
-  const { productMulter } = require("../config/cloudinary");
-  multiUpload = productMulter.array("images", 10);
-} else {
-  // Fallback to local disk storage
-  console.log("💾 Using local disk storage for images");
-  UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
-  if (!fs.existsSync(UPLOAD_DIR)) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  }
+  console.log("[CLOUDINARY] Config check:", { cloudName, apiKey: !!apiKey, apiSecret: !!apiSecret });
 
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      console.log("[MULTER] Saving to:", UPLOAD_DIR);
-      cb(null, UPLOAD_DIR);
-    },
-    filename: (req, file, cb) => {
-      const filename = `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`;
-      console.log("[MULTER] Generated filename:", filename);
-      cb(null, filename);
-    },
-  });
-
-  const fileFilter = (req, file, cb) => {
-    const allowed = /jpeg|jpg|webp|png|gif/;
-    const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
-    const mime = allowed.test(file.mimetype);
-    if (ext && mime) return cb(null, true);
-    cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
-  };
-
-  multiUpload = multer({
-    storage,
-    fileFilter,
-    limits: { fileSize: 5 * 1024 * 1024 },
-  }).array("images", 10);
+  return !!(cloudName && apiKey && apiSecret && cloudName !== "Root");
 }
+
+// Initialize storage based on configuration
+function initStorage() {
+  CLOUDINARY_CONFIGURED = checkCloudinaryConfig();
+
+  if (CLOUDINARY_CONFIGURED) {
+    console.log("☁️ Using Cloudinary for image storage");
+    const { productMulter } = require("../config/cloudinary");
+    multiUpload = productMulter.array("images", 10);
+  } else {
+    // Fallback to local disk storage
+    console.log("💾 Using local disk storage for images");
+    UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+
+    const storage = multer.diskStorage({
+      destination: (req, file, cb) => {
+        console.log("[MULTER] Saving to:", UPLOAD_DIR);
+        cb(null, UPLOAD_DIR);
+      },
+      filename: (req, file, cb) => {
+        const filename = `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`;
+        console.log("[MULTER] Generated filename:", filename);
+        cb(null, filename);
+      },
+    });
+
+    const fileFilter = (req, file, cb) => {
+      const allowed = /jpeg|jpg|webp|png|gif/;
+      const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
+      const mime = allowed.test(file.mimetype);
+      if (ext && mime) return cb(null, true);
+      cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
+    };
+
+    multiUpload = multer({
+      storage,
+      fileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }).array("images", 10);
+  }
+}
+
+// Initialize on module load
+initStorage();
 
 function toObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id)
@@ -243,7 +257,10 @@ router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handle
         let url;
         let public_id = "";
 
-        if (CLOUDINARY_CONFIGURED && file.path) {
+        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
+        const isCloudinaryUpload = CLOUDINARY_CONFIGURED && (file.secure_url || (file.path && file.path.startsWith("http")));
+
+        if (isCloudinaryUpload) {
           // Cloudinary - use the cloud URL
           url = file.secure_url || file.path;
           public_id = file.public_id || "";
@@ -355,7 +372,10 @@ router.put("/products/:id", requireAuth, requireApprovedVendor, multiUpload, han
         let url;
         let public_id = "";
 
-        if (CLOUDINARY_CONFIGURED && file.path) {
+        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
+        const isCloudinaryUpload = CLOUDINARY_CONFIGURED && (file.secure_url || (file.path && file.path.startsWith("http")));
+
+        if (isCloudinaryUpload) {
           // Cloudinary
           url = file.secure_url || file.path;
           public_id = file.public_id || "";

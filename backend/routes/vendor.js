@@ -14,37 +14,55 @@ const requireApprovedVendor = require("../middleware/requireApprovedVendor");
 const Order   = require("../models/Order");
 const { requireAuth, requireVendor } = require("../middleware/auth");
 
-// ── MULTER CONFIGURATION ───────────────────────────────────────────────────
-const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// ── CLOUDINARY CONFIGURATION ─────────────────────────────────────────────────
+// Try to use Cloudinary if configured, otherwise fallback to local storage
+let multiUpload;
+let UPLOAD_DIR;
+
+const CLOUDINARY_CONFIGURED = !!(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET
+);
+
+if (CLOUDINARY_CONFIGURED) {
+  console.log("☁️ Using Cloudinary for image storage");
+  const { productMulter } = require("../config/cloudinary");
+  multiUpload = productMulter.array("images", 10);
+} else {
+  // Fallback to local disk storage
+  console.log("💾 Using local disk storage for images");
+  UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      console.log("[MULTER] Saving to:", UPLOAD_DIR);
+      cb(null, UPLOAD_DIR);
+    },
+    filename: (req, file, cb) => {
+      const filename = `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`;
+      console.log("[MULTER] Generated filename:", filename);
+      cb(null, filename);
+    },
+  });
+
+  const fileFilter = (req, file, cb) => {
+    const allowed = /jpeg|jpg|webp|png|gif/;
+    const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
+    const mime = allowed.test(file.mimetype);
+    if (ext && mime) return cb(null, true);
+    cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
+  };
+
+  multiUpload = multer({
+    storage,
+    fileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 },
+  }).array("images", 10);
 }
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    console.log("[MULTER] Saving to:", UPLOAD_DIR);
-    cb(null, UPLOAD_DIR);
-  },
-  filename: (req, file, cb) => {
-    const filename = `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`;
-    console.log("[MULTER] Generated filename:", filename);
-    cb(null, filename);
-  },
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowed = /jpeg|jpg|webp|png|gif/;
-  const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
-  const mime = allowed.test(file.mimetype);
-  if (ext && mime) return cb(null, true);
-  cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
-};
-
-const multiUpload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
-}).array("images", 10);
 
 function toObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id)
@@ -219,10 +237,25 @@ router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handle
     // Process uploaded files into images array
     let images = [];
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-      images = req.files.map(file => ({
-        url: `/uploads/${file.filename}`,
-        public_id: "",
-      }));
+      images = req.files.map(file => {
+        // Cloudinary provides file.path (cloud URL) or file.secure_url
+        // Local storage provides file.filename
+        let url;
+        let public_id = "";
+
+        if (CLOUDINARY_CONFIGURED && file.path) {
+          // Cloudinary - use the cloud URL
+          url = file.secure_url || file.path;
+          public_id = file.public_id || "";
+          console.log("[CREATE PRODUCT] Cloudinary image:", url);
+        } else {
+          // Local storage - use relative path
+          url = `/uploads/${file.filename}`;
+          console.log("[CREATE PRODUCT] Local image:", url);
+        }
+
+        return { url, public_id };
+      });
       console.log("[CREATE PRODUCT] Processed images:", images);
     } else {
       console.log("[CREATE PRODUCT] No files in req.files, req.files =", req.files);
@@ -318,10 +351,21 @@ router.put("/products/:id", requireAuth, requireApprovedVendor, multiUpload, han
 
     // Add new uploaded images
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => ({
-        url: `/uploads/${file.filename}`,
-        public_id: "",
-      }));
+      const newImages = req.files.map(file => {
+        let url;
+        let public_id = "";
+
+        if (CLOUDINARY_CONFIGURED && file.path) {
+          // Cloudinary
+          url = file.secure_url || file.path;
+          public_id = file.public_id || "";
+        } else {
+          // Local storage
+          url = `/uploads/${file.filename}`;
+        }
+
+        return { url, public_id };
+      });
       existingImages = [...existingImages, ...newImages];
     }
 

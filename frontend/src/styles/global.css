@@ -134,8 +134,8 @@ input:focus, textarea:focus, select:focus {
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
 
 @media (max-width: 1024px) { .grid-4 { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 768px)  { .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 520px)  { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+@media (max-width: 768px)  { .grid-3, .grid-4 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 520px)  { .grid-2, .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
 
 /* ── Button system ── */
 .btn {
@@ -337,9 +337,7 @@ input:focus, textarea:focus, select:focus {
   .container { padding: 0 16px; }
   .grid-4 { grid-template-columns: repeat(2,1fr) !important; gap: 12px !important; }
   .grid-3 { grid-template-columns: repeat(2,1fr) !important; gap: 12px !important; }
-}
-@media (max-width: 400px) {
-  .grid-4, .grid-3 { grid-template-columns: 1fr !important; }
+  .grid-2 { grid-template-columns: repeat(2,1fr) !important; gap: 12px !important; }
 }
 
 /* Phone field hint color */
@@ -383,7 +381,7 @@ body.menu-open { overflow: hidden; }
   width: 100%;
   height: auto;
   aspect-ratio: 1 / 1;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 8px;
   background-color: #f5f5f5;
 }

@@ -77,6 +77,11 @@ function AppInner() {
     localStorage.setItem("app_page", page);
   }, [page]);
 
+  // Scroll to top when page changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [page]);
+
   // Initialize cart from localStorage for persistence across refreshes
   const [cart, setCart] = useState(() => {
     try {
@@ -204,7 +209,7 @@ function AppInner() {
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Navbar cartCount={cartCount} currentPage={page} onNavigate={setPage} onOpenAuth={() => onRequireAuth("login")} />
-      <ErrorBoundary key={page}>
+      <ErrorBoundary>
         <main style={{ flex: 1, minHeight: 0, width: "100%" }}>{renderPage()}</main>
       </ErrorBoundary>
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} onSuccess={onAuthSuccess} initialView={authModalView} />

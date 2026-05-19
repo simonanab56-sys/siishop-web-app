@@ -1,5 +1,5 @@
 // pages/StoresPage.jsx — v3: currency-aware, fully responsive
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { vendorAPI, productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import { getImageUrl } from "../utils/image";
@@ -16,10 +16,37 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
   const [vendors,     setVendors]     = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(null);
-  const [selected,    setSelected]    = useState(null);
-  const [products,    setProducts]    = useState([]);
+  // Initialize selected vendor from sessionStorage to preserve across navigations
+  const [selected,    setSelected]    = useState(() => {
+    try {
+      const stored = sessionStorage.getItem("selectedVendor");
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
+  // Initialize products from sessionStorage
+  const [products,    setProducts]    = useState(() => {
+    try {
+      const stored = sessionStorage.getItem("selectedVendorProducts");
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
   const [prodLoading, setProdLoading] = useState(false);
   const mountedRef = useRef(true);
+
+  // Persist selected vendor and products to sessionStorage
+  const handleSetSelectedVendor = useCallback((vendor, prods) => {
+    setSelected(vendor);
+    setProducts(prods || []);
+    try {
+      if (vendor) {
+        sessionStorage.setItem("selectedVendor", JSON.stringify(vendor));
+        sessionStorage.setItem("selectedVendorProducts", JSON.stringify(prods || []));
+      } else {
+        sessionStorage.removeItem("selectedVendor");
+        sessionStorage.removeItem("selectedVendorProducts");
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => { mountedRef.current=true; return ()=>{mountedRef.current=false;}; }, []);
 
@@ -40,10 +67,18 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
 
   async function openStore(vendor) {
     if (!vendor?._id) return;
-    setSelected(vendor); setProducts([]); setProdLoading(true);
+    handleSetSelectedVendor(vendor, []); // Clear products while loading
+    setProdLoading(true);
     try {
       const data = await productAPI.getAll({ vendorId: vendor._id });
-      if(mountedRef.current) setProducts(Array.isArray(data)?data:[]);
+      if(mountedRef.current) {
+        const prods = Array.isArray(data) ? data : [];
+        setProducts(prods);
+        // Persist products to sessionStorage
+        try {
+          sessionStorage.setItem("selectedVendorProducts", JSON.stringify(prods));
+        } catch {}
+      }
     } catch { if(mountedRef.current) setProducts([]); }
     finally  { if(mountedRef.current) setProdLoading(false); }
   }

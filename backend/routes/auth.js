@@ -80,38 +80,18 @@ router.post(
           return res.status(400).json({ error: "ID back image is required for vendors" });
         }
 
-        // ✅ NEW: Verify files were actually saved to disk
+        // ✅ Process uploaded ID documents
         const frontFile = req.files.idFrontImage[0];
         const backFile = req.files.idBackImage[0];
 
-        // ✅ Check file exists and has content
-        if (!fs.existsSync(frontFile.path)) {
-          return res.status(400).json({ error: "Front ID image failed to save" });
-        }
-        if (!fs.existsSync(backFile.path)) {
-          return res.status(400).json({ error: "Back ID image failed to save" });
-        }
+        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
+        const isCloudinaryUpload = (file) => {
+          return file.secure_url || (file.path && file.path.startsWith("http"));
+        };
 
-        // ✅ Verify file size is not zero (corruption check)
-        const frontStats = fs.statSync(frontFile.path);
-        const backStats = fs.statSync(backFile.path);
-
-        if (frontStats.size === 0) {
-          fs.unlinkSync(frontFile.path);  // Delete corrupted file
-          return res.status(400).json({ error: "Front ID image is empty or corrupted" });
-        }
-        if (backStats.size === 0) {
-          fs.unlinkSync(backFile.path);  // Delete corrupted file
-          return res.status(400).json({ error: "Back ID image is empty or corrupted" });
-        }
-
-        // ✅ Verify file size matches what was uploaded
-        if (frontFile.size !== frontStats.size) {
-          console.warn(`⚠️  Front image size mismatch: expected ${frontFile.size}, got ${frontStats.size}`);
-        }
-        if (backFile.size !== backStats.size) {
-          console.warn(`⚠️  Back image size mismatch: expected ${backFile.size}, got ${backStats.size}`);
-        }
+        // Get Cloudinary config status
+        const { isKYCCloudinaryConfigured } = require("../config/multer");
+        const useCloudinary = isKYCCloudinaryConfigured();
       }
 
       // ✅ Prepare user data
@@ -124,8 +104,30 @@ router.post(
       if (isVendor) {
         userData.phoneNumber = value.phoneNumber;
         userData.idType = value.idType;
-        userData.idFrontImage = `/uploads/vendor-docs/${req.files.idFrontImage[0].filename}`;
-        userData.idBackImage = `/uploads/vendor-docs/${req.files.idBackImage[0].filename}`;
+
+        // Handle both Cloudinary and local storage
+        const frontFile = req.files.idFrontImage[0];
+        const backFile = req.files.idBackImage[0];
+
+        // Check if using Cloudinary
+        const { isKYCCloudinaryConfigured } = require("../config/multer");
+        const useCloudinary = isKYCCloudinaryConfigured();
+        const isCloudinaryUpload = (file) => {
+          return useCloudinary && (file.secure_url || (file.path && file.path.startsWith("http")));
+        };
+
+        if (isCloudinaryUpload(frontFile)) {
+          // Cloudinary - use secure URL
+          userData.idFrontImage = frontFile.secure_url || frontFile.path;
+          userData.idBackImage = backFile.secure_url || backFile.path;
+          console.log("[KYC] Cloudinary upload:", { front: userData.idFrontImage, back: userData.idBackImage });
+        } else {
+          // Local storage fallback
+          userData.idFrontImage = `/uploads/vendor-docs/${frontFile.filename}`;
+          userData.idBackImage = `/uploads/vendor-docs/${backFile.filename}`;
+          console.log("[KYC] Local upload:", { front: userData.idFrontImage, back: userData.idBackImage });
+        }
+
         userData.kycStatus = "pending"; // Admin will verify
       }
 
@@ -133,13 +135,21 @@ router.post(
       const token = sign(user);
       res.status(201).json({ user: cleanUser(user), token });
     } catch (err) {
-      // ✅ Clean up uploaded files on error
+      // ✅ Clean up uploaded local files on error (Cloudinary files are already in cloud)
       if (req.files) {
-        if (req.files.idFrontImage?.[0]?.path && fs.existsSync(req.files.idFrontImage[0].path)) {
-          fs.unlinkSync(req.files.idFrontImage[0].path);
-        }
-        if (req.files.idBackImage?.[0]?.path && fs.existsSync(req.files.idBackImage[0].path)) {
-          fs.unlinkSync(req.files.idBackImage[0].path);
+        try {
+          // Only cleanup local files - not Cloudinary URLs
+          const { isKYCCloudinaryConfigured } = require("../config/multer");
+          if (!isKYCCloudinaryConfigured()) {
+            if (req.files.idFrontImage?.[0]?.path && fs.existsSync(req.files.idFrontImage[0].path)) {
+              fs.unlinkSync(req.files.idFrontImage[0].path);
+            }
+            if (req.files.idBackImage?.[0]?.path && fs.existsSync(req.files.idBackImage[0].path)) {
+              fs.unlinkSync(req.files.idBackImage[0].path);
+            }
+          }
+        } catch (cleanupErr) {
+          console.warn("[KYC] Cleanup warning:", cleanupErr.message);
         }
       }
       res.status(400).json({ error: err.message });

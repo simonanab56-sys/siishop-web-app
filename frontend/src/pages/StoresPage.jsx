@@ -142,7 +142,7 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
                         ? getImageUrl(p.images[0]?.url)
                         : getImageUrl(p.image);
                       return (
-                        <div key={p._id} className={`card ${styles.miniCard}`}>
+                        <div key={p._id} className={`card ${styles.miniCard}`} onClick={() => onNavigate?.("product", p)} style={{cursor:"pointer"}}>
                           {primaryImage && primaryImage !== "/no-image.svg"
                             ? <img src={primaryImage} alt={p.name||"Product"} className={styles.miniImg}/>
                             : <div className={styles.miniImgPlaceholder}>🛍️</div>
@@ -153,7 +153,7 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
                             <button
                               className="btn btn-primary btn-sm"
                               style={{width:"100%",borderRadius:"var(--radius-full)"}}
-                              onClick={() => onAddToCart?.(p)}
+                              onClick={(e) => { e.stopPropagation(); onAddToCart?.(p); }}
                               disabled={stock===0}>
                               {stock===0 ? "Sold Out" : "+ Add"}
                             </button>

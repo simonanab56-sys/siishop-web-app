@@ -102,6 +102,9 @@ function AppInner() {
     } catch { return null; }
   });
 
+  // Track previous page for back navigation from product detail
+  const [previousPage, setPreviousPage] = useState("home");
+
   // Persist selectedProduct to sessionStorage
   const handleSetSelectedProduct = useCallback((product) => {
     setSelectedProduct(product);
@@ -129,15 +132,27 @@ function AppInner() {
     }
   }
 
-  // Handle view product detail
+  // Handle view product detail (from HomePage)
   function handleViewProduct(product) {
+    setPreviousPage("home");
     handleSetSelectedProduct(product);
     setPage("product");
   }
 
+  // Handle navigation from StoresPage (supports passing product for detail view)
+  function handleStoresPageNavigate(page, product) {
+    if (page === "product" && product) {
+      setPreviousPage("vendors"); // Track where we came from
+      handleSetSelectedProduct(product);
+      setPage("product");
+    } else {
+      setPage(page);
+    }
+  }
+
   function handleBackFromProduct() {
     handleSetSelectedProduct(null);
-    setPage("home");
+    setPage(previousPage || "home");
   }
 
   function addToCart(product) {
@@ -170,7 +185,7 @@ function AppInner() {
             onAddToCart={addToCart}
           />
         );
-      case "vendors": return <StoresPage onNavigate={setPage} onAddToCart={addToCart} />;
+      case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} />;
       case "cart": return <CartPage cart={cart} onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeFromCart} onClearCart={clearCart} onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "orders": return <OrdersPage addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "settings": return <SettingsPage addToast={addToast} />;

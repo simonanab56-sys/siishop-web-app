@@ -225,8 +225,6 @@ export const orderAPI = {
 
 /* ── Vendor ────────────────────────────────────────────────────────────────── */
 export const vendorAPI = {
-  search: (query) => apiRequest(`/vendor/search?q=${encodeURIComponent(query)}`),
-  getList: () => apiRequest("/vendor/list"),
   dashboard: () =>
     apiRequest("/vendor/dashboard", {
       headers: { Authorization: `Bearer ${getToken()}` },

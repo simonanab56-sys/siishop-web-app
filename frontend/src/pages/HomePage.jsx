@@ -10,25 +10,16 @@ import styles        from "./HomePage.module.css";
 
 const DEBOUNCE_MS = 350;
 
-export default function HomePage({ onAddToCart, onViewProduct, initialSearch = "", onSearchComplete }) {
+export default function HomePage({ onAddToCart, onViewProduct }) {
   const { fmt } = useCurrency();
   const [products,       setProducts]       = useState([]);
   const [categories,     setCategories]     = useState(["All"]);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState(null);
-  const [search,         setSearch]         = useState(initialSearch);
+  const [search,         setSearch]         = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [searchInput,    setSearchInput]    = useState(initialSearch);
+  const [searchInput,    setSearchInput]    = useState("");
   const isFirstRender = useRef(true);
-
-  // Handle initial search from Navbar
-  useEffect(() => {
-    if (initialSearch) {
-      setSearchInput(initialSearch);
-      setSearch(initialSearch);
-      onSearchComplete?.();
-    }
-  }, [initialSearch]);
 
   // ── Initialize category from URL on mount ──────────────────────────────────
   useEffect(() => {
@@ -116,7 +107,16 @@ export default function HomePage({ onAddToCart, onViewProduct, initialSearch = "
           </h1>
           <p className={styles.heroSub}>Thousands of products from verified vendors — delivered to your door.</p>
 
-          {/* Search bar removed - now in Navbar */}
+          <div className={styles.searchBar}>
+            <span className={styles.searchIcon}>🔍</span>
+            <input type="text" placeholder="Search products, brands, categories…"
+              value={searchInput} onChange={e => setSearchInput(e.target.value)}
+              className={styles.searchInput} />
+            {searchInput && (
+              <button className={styles.clearBtn}
+                onClick={() => { setSearchInput(""); setSearch(""); fetchProducts("", activeCategory); }}>✕</button>
+            )}
+          </div>
         </div>
 
         {/* PART 10: Flash Deals promo section */}

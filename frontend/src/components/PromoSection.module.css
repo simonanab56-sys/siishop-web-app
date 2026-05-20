@@ -34,7 +34,7 @@
 }
 
 @media (max-width: 360px) {
-  .promoGrid { grid-template-columns: 1fr; }
+  .promoGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 }
 
 /* Card */

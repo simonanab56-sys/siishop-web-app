@@ -105,6 +105,29 @@ function AppInner() {
   // Track previous page for back navigation from product detail
   const [previousPage, setPreviousPage] = useState("home");
 
+  // Search state for HomePage
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Handle navigation from Navbar (including search)
+  function handleNavbarNavigate(page, data) {
+    if (page === "home" && data?.search) {
+      setSearchQuery(data.search);
+      setPage("home");
+    } else if (page === "product" && data) {
+      setPreviousPage("home");
+      handleSetSelectedProduct(data);
+      setPage("product");
+    } else if (page === "vendors" && data?.vendor) {
+      setPage("vendors");
+      // Store selected vendor in sessionStorage for StoresPage to pick up
+      try {
+        sessionStorage.setItem("selectedVendor", JSON.stringify(data.vendor));
+      } catch {}
+    } else {
+      setPage(page);
+    }
+  }
+
   // Persist selectedProduct to sessionStorage
   const handleSetSelectedProduct = useCallback((product) => {
     setSelectedProduct(product);
@@ -175,7 +198,7 @@ function AppInner() {
   function renderPage() {
     switch (page) {
       case "home":
-        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
+        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} initialSearch={searchQuery} onSearchComplete={() => setSearchQuery("")} />;
       case "product":
         return (
           <ProductDetailPage
@@ -203,7 +226,7 @@ function AppInner() {
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <Navbar cartCount={cartCount} currentPage={page} onNavigate={setPage} onOpenAuth={() => onRequireAuth("login")} />
+      <Navbar cartCount={cartCount} currentPage={page} onNavigate={handleNavbarNavigate} onOpenAuth={() => onRequireAuth("login")} />
       <ErrorBoundary>
         <main style={{ flex: 1, minHeight: 0, width: "100%" }}>{renderPage()}</main>
       </ErrorBoundary>

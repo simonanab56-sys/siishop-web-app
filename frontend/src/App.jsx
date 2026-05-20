@@ -77,11 +77,6 @@ function AppInner() {
     localStorage.setItem("app_page", page);
   }, [page]);
 
-  // Scroll to top when page changes
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [page]);
-
   // Initialize cart from localStorage for persistence across refreshes
   const [cart, setCart] = useState(() => {
     try {

@@ -14,29 +14,30 @@ function safeInitials(name) {
 export default function StoresPage({ onNavigate, onAddToCart }) {
   const { fmt }       = useCurrency();
   const [vendors,     setVendors]     = useState([]);
-  const [loading,     setLoading]     = useState(true);
+  const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState(null);
-  // Initialize selected vendor from sessionStorage to preserve across navigations
-  const [selected,    setSelected]    = useState(() => {
+  const [initialized, setInitialized] = useState(false);
+
+  // Initialize state from sessionStorage
+  const [selected, setSelected] = useState(() => {
     try {
       const stored = sessionStorage.getItem("selectedVendor");
       return stored ? JSON.parse(stored) : null;
     } catch { return null; }
   });
-  // Initialize products from sessionStorage
-  const [products,    setProducts]    = useState(() => {
+
+  const [products, setProducts] = useState(() => {
     try {
       const stored = sessionStorage.getItem("selectedVendorProducts");
       return stored ? JSON.parse(stored) : [];
     } catch { return []; }
   });
+
   const [prodLoading, setProdLoading] = useState(false);
   const mountedRef = useRef(true);
 
-  // Persist selected vendor and products to sessionStorage
-  const handleSetSelectedVendor = useCallback((vendor, prods) => {
-    setSelected(vendor);
-    setProducts(prods || []);
+  // Persist to sessionStorage when state changes
+  const persistToStorage = useCallback((vendor, prods) => {
     try {
       if (vendor) {
         sessionStorage.setItem("selectedVendor", JSON.stringify(vendor));
@@ -48,9 +49,16 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
     } catch {}
   }, []);
 
-  useEffect(() => { mountedRef.current=true; return ()=>{mountedRef.current=false;}; }, []);
+  useEffect(() => {
+    mountedRef.current=true;
+    setInitialized(true);
+    return ()=>{mountedRef.current=false;};
+  }, []);
 
   useEffect(() => {
+    // Only fetch vendors if we don't have them cached
+    if (vendors.length > 0) return;
+
     if (typeof vendorAPI?.getList !== "function") {
       if (mountedRef.current) {
         setError("Store listing is temporarily unavailable.");
@@ -59,25 +67,25 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
       return;
     }
 
+    setLoading(true);
     vendorAPI.getList()
       .then(data => { if(mountedRef.current) setVendors(Array.isArray(data)?data:[]); })
       .catch(err  => { if(mountedRef.current){ setError(err.message||"Failed to load stores"); setVendors([]); } })
       .finally(() => { if(mountedRef.current) setLoading(false); });
-  }, []);
+  }, [vendors.length]);
 
   async function openStore(vendor) {
     if (!vendor?._id) return;
-    handleSetSelectedVendor(vendor, []); // Clear products while loading
+    setSelected(vendor);
+    setProducts([]);
+    persistToStorage(vendor, []);
     setProdLoading(true);
     try {
       const data = await productAPI.getAll({ vendorId: vendor._id });
       if(mountedRef.current) {
-        const prods = Array.isArray(data) ? data : [];
+        const prods = Array.isArray(data)?data:[];
         setProducts(prods);
-        // Persist products to sessionStorage
-        try {
-          sessionStorage.setItem("selectedVendorProducts", JSON.stringify(prods));
-        } catch {}
+        persistToStorage(vendor, prods);
       }
     } catch { if(mountedRef.current) setProducts([]); }
     finally  { if(mountedRef.current) setProdLoading(false); }
@@ -172,7 +180,6 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
                       if (!p?._id) return null;
                       const price = typeof p.price==="number" ? p.price : 0;
                       const stock = typeof p.stock==="number" ? p.stock : 999;
-                      // Get the primary image - support both new images array and legacy image field
                       const primaryImage = p.images && p.images.length > 0
                         ? getImageUrl(p.images[0]?.url)
                         : getImageUrl(p.image);

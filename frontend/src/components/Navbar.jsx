@@ -1,30 +1,98 @@
-// components/Navbar.jsx — v4: currency switcher, fully responsive
+// components/Navbar.jsx — v5: with search bar
 import { useState, useRef, useEffect } from "react";
 import { useAuth }     from "../context/AuthContext";
 import { useCurrency } from "../context/CurrencyContext";
+import { productAPI, vendorAPI } from "../services/api";
+import { getImageUrl } from "../utils/image";
 import UserDropdown    from "./auth/UserDropdown";
 import styles          from "./Navbar.module.css";
+
+const DEBOUNCE_MS = 300;
 
 export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth }) {
   const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
   const { currency, setCurrency, currencies }      = useCurrency();
   const [menuOpen, setMenuOpen]       = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
-  const currencyRef = useRef(null);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState({ products: [], vendors: [] });
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef(null);
 
   // Close currency dropdown on outside click
   useEffect(() => {
-    function handle(e) { if (currencyRef.current && !currencyRef.current.contains(e.target)) setCurrencyOpen(false); }
+    function handle(e) {
+      if (currencyRef.current && !currencyRef.current.contains(e.target)) {
+        setCurrencyOpen(false);
+      }
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+    }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
-  function nav(page) { onNavigate(page); setMenuOpen(false); }
+  // Debounced search
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults({ products: [], vendors: [] });
+      setSearchOpen(false);
+      return;
+    }
+
+    setSearchLoading(true);
+    setSearchOpen(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        // Search products (by name, description, category)
+        const products = await productAPI.getAll({ search: searchQuery, limit: 5 });
+        // Search vendors (by store name, name, description)
+        const vendors = await vendorAPI.search(searchQuery);
+
+        setSearchResults({
+          products: Array.isArray(products) ? products.slice(0, 5) : [],
+          vendors: Array.isArray(vendors) ? vendors.slice(0, 3) : [],
+        });
+      } catch (err) {
+        console.error("Search error:", err);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  function nav(page, data) {
+    setSearchOpen(false);
+    setSearchQuery("");
+    if (data) {
+      onNavigate(page, data);
+    } else {
+      onNavigate(page);
+    }
+    setMenuOpen(false);
+  }
+
+  function handleSearchSubmit(e) {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    // Navigate to home with search query
+    onNavigate("home", { search: searchQuery });
+    setSearchOpen(false);
+  }
 
   const NAV_LINKS = [
     ["home",    "Shop"],
     ["vendors", "Stores"],
   ];
+
+  const totalResults = searchResults.products.length + searchResults.vendors.length;
 
   return (
     <nav className={styles.nav}>
@@ -34,6 +102,85 @@ export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth 
           <span className={styles.logoIcon}>🛍️</span>
           <span>Sii<strong>Shop</strong></span>
         </button>
+
+        {/* Search Bar */}
+        <div className={styles.searchWrap} ref={searchRef}>
+          <form onSubmit={handleSearchSubmit} className={styles.searchForm}>
+            <span className={styles.searchIcon}>🔍</span>
+            <input
+              type="text"
+              placeholder="Search products, stores, categories..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className={styles.searchInput}
+              onFocus={() => searchQuery.trim() && setSearchOpen(true)}
+            />
+            {searchQuery && (
+              <button type="button" className={styles.searchClear} onClick={() => { setSearchQuery(""); setSearchOpen(false); }}>
+                ✕
+              </button>
+            )}
+          </form>
+
+          {/* Search Results Dropdown */}
+          {searchOpen && searchQuery.trim() && (
+            <div className={styles.searchDropdown}>
+              {searchLoading ? (
+                <div className={styles.searchLoading}>Searching...</div>
+              ) : totalResults === 0 ? (
+                <div className={styles.searchEmpty}>No results found for "{searchQuery}"</div>
+              ) : (
+                <>
+                  {/* Products */}
+                  {searchResults.products.length > 0 && (
+                    <div className={styles.searchSection}>
+                      <div className={styles.searchSectionTitle}>Products</div>
+                      {searchResults.products.map(p => (
+                        <button key={p._id} className={styles.searchResult} onClick={() => nav("product", p)}>
+                          <img
+                            src={getImageUrl(p.images?.[0]?.url || p.image)}
+                            alt={p.name}
+                            className={styles.searchResultImg}
+                          />
+                          <div className={styles.searchResultInfo}>
+                            <div className={styles.searchResultName}>{p.name}</div>
+                            <div className={styles.searchResultMeta}>{p.category} • ₵{p.price}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Vendors */}
+                  {searchResults.vendors.length > 0 && (
+                    <div className={styles.searchSection}>
+                      <div className={styles.searchSectionTitle}>Stores</div>
+                      {searchResults.vendors.map(v => (
+                        <button key={v._id} className={styles.searchResult} onClick={() => nav("vendors", { vendor: v })}>
+                          <div className={styles.searchResultVendorImg}>
+                            {v.storeLogo
+                              ? <img src={getImageUrl(v.storeLogo)} alt={v.storeName} />
+                              : <span>🏪</span>
+                            }
+                          </div>
+                          <div className={styles.searchResultInfo}>
+                            <div className={styles.searchResultName}>{v.storeName}</div>
+                            <div className={styles.searchResultMeta}>{v.storeDescription?.slice(0, 50)}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* View All Link */}
+                  <button className={styles.searchViewAll} onClick={() => nav("home", { search: searchQuery })}>
+                    View all results for "{searchQuery}" →
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Desktop nav links */}
         <div className={styles.links}>
@@ -94,6 +241,18 @@ export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth 
       {/* Mobile menu */}
       {menuOpen && (
         <div className={styles.mobileMenu}>
+          {/* Mobile Search */}
+          <div className={styles.mobileSearch}>
+            <span className={styles.searchIcon}>🔍</span>
+            <input
+              type="text"
+              placeholder="Search products, stores..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className={styles.mobileSearchInput}
+            />
+          </div>
+
           {NAV_LINKS.map(([page, label]) => (
             <button key={page} className={`${styles.mobileLink} ${currentPage===page ? styles.mobileLinkActive : ""}`}
               onClick={() => nav(page)}>

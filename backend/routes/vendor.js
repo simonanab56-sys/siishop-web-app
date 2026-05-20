@@ -101,6 +101,32 @@ router.get("/list", async (req, res) => {
   }
 });
 
+/* PUBLIC — search vendors (by store name, name, description) */
+router.get("/search", async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json([]);
+
+    const searchRegex = new RegExp(q, "i");
+    const vendors = await User.find({
+      isVendor: true,
+      vendorStatus: "approved",
+      $or: [
+        { storeName: { $regex: searchRegex } },
+        { name: { $regex: searchRegex } },
+        { storeDescription: { $regex: searchRegex } },
+      ],
+    })
+      .select("name storeName storeDescription storeLogo email")
+      .limit(20)
+      .lean();
+
+    res.json(vendors || []);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to search vendors" });
+  }
+});
+
 /* PUBLIC — vendor profile by ID */
 router.get("/profile/:id", async (req, res) => {
   try {

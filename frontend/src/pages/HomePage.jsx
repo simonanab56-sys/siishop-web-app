@@ -1,4 +1,4 @@
-// pages/HomePage.jsx — v4: SEO generation, category URL routing, structured data
+// pages/HomePage.jsx — v5: SEO generation, category URL routing, structured data
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Helmet } from "react-helmet-async";
 import { productAPI } from "../services/api";
@@ -19,7 +19,33 @@ export default function HomePage({ onAddToCart, onViewProduct }) {
   const [search,         setSearch]         = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchInput,    setSearchInput]    = useState("");
+  const mountedRef = useRef(true);
   const isFirstRender = useRef(true);
+
+  // ── Fetch Products Function ─────────────────────────────────────────────────
+  // Defined BEFORE useEffect hooks that call it
+  const fetchProducts = useCallback(async (q, cat) => {
+    if (!mountedRef.current) return;
+    setLoading(true); setError(null);
+    try {
+      const params = {};
+      if (q)               params.search   = q;
+      if (cat && cat !== "All") params.category = cat;
+      const data = await productAPI.getAll(params);
+      if (mountedRef.current) {
+        setProducts(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(err.message || "Failed to load products");
+        setProducts([]);
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
 
   // ── Initialize category from URL on mount ──────────────────────────────────
   useEffect(() => {
@@ -29,35 +55,59 @@ export default function HomePage({ onAddToCart, onViewProduct }) {
     }
   }, []);
 
+  // ── Fetch categories ────────────────────────────────────────────────────────
   useEffect(() => {
     productAPI.getCategories()
-      .then(cats => setCategories(["All", ...(Array.isArray(cats) ? cats : [])]))
-      .catch(() => setCategories(["All"]));
+      .then(cats => {
+        if (mountedRef.current) {
+          setCategories(["All", ...(Array.isArray(cats) ? cats : [])]);
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setCategories(["All"]);
+        }
+      });
   }, []);
 
-  const fetchProducts = useCallback(async (q, cat) => {
-    setLoading(true); setError(null);
-    try {
-      const params = {};
-      if (q)               params.search   = q;
-      if (cat && cat !== "All") params.category = cat;
-      const data = await productAPI.getAll(params);
-      setProducts(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setError(err.message || "Failed to load products");
-      setProducts([]);
-    } finally {
-      setLoading(false);
+  // ── Initial product fetch on mount ─────────────────────────────────────────
+  useEffect(() => {
+    fetchProducts("", "All");
+  }, [fetchProducts]);
+
+  // ── Initialize search from mobile header or global search ───────────────────
+  useEffect(() => {
+    const mobileSearch = localStorage.getItem("mobile_search");
+    const globalSearch = localStorage.getItem("global_search");
+    if (mobileSearch) {
+      setSearchInput(mobileSearch);
+      setSearch(mobileSearch);
+      localStorage.removeItem("mobile_search");
+      // Fetch with search query - no dependency on fetchProducts
+      fetchProducts(mobileSearch, "All");
+    } else if (globalSearch) {
+      setSearchInput(globalSearch);
+      setSearch(globalSearch);
+      localStorage.removeItem("global_search");
+      // Fetch with search query
+      fetchProducts(globalSearch, "All");
     }
-  }, []);
+  }, []); // Empty deps - fetchProducts is stable due to useCallback
 
-  useEffect(() => { fetchProducts("", "All"); }, [fetchProducts]);
-
+  // ── Debounced search and category changes ───────────────────────────────────
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
-    const t = setTimeout(() => { setSearch(searchInput); fetchProducts(searchInput, activeCategory); }, DEBOUNCE_MS);
+    const t = setTimeout(() => {
+      setSearch(searchInput);
+      fetchProducts(searchInput, activeCategory);
+    }, DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [searchInput, activeCategory, fetchProducts]);
+
+  // ── Cleanup on unmount ────────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   function handleCategory(cat) {
     setActiveCategory(cat);
@@ -79,19 +129,19 @@ export default function HomePage({ onAddToCart, onViewProduct }) {
         <meta name="description" content={seoData.description} />
         <meta name="keywords" content={seoData.keywords} />
         <link rel="canonical" href={seoData.canonical} />
-        
+
         {/* Open Graph tags */}
         <meta property="og:title" content={seoData.ogTitle} />
         <meta property="og:description" content={seoData.ogDescription} />
         <meta property="og:type" content={seoData.ogType} />
         <meta property="og:url" content={seoData.ogUrl} />
         <meta property="og:site_name" content="SiiShop" />
-        
+
         {/* Twitter Card tags */}
         <meta name="twitter:card" content={seoData.twitterCard} />
         <meta name="twitter:title" content={seoData.twitterTitle} />
         <meta name="twitter:description" content={seoData.twitterDescription} />
-        
+
         {/* Structured Data (JSON-LD) */}
         <script type="application/ld+json">
           {JSON.stringify(seoData.structuredData)}

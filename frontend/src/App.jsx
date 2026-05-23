@@ -1,8 +1,9 @@
-// App.jsx — v8: product detail page with gallery
+// App.jsx — v10: global search support
 import { useState, Component, useEffect, useCallback } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CurrencyProvider } from "./context/CurrencyContext";
 import Navbar from "./components/Navbar";
+import MobileLayoutWrapper from "./components/mobile/MobileLayoutWrapper";
 import AuthModal from "./components/auth/AuthModal";
 import { useToast, ToastContainer } from "./components/Toast";
 import HomePage from "./pages/HomePage";
@@ -69,6 +70,7 @@ function AuthGuard({ children }) {
 }
 // ── Main App inner ────────────────────────────────────────────────────────────
 function AppInner() {
+  const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
   const [page, setPage] = useState(() => {
     return localStorage.getItem("app_page") || "home";
   });
@@ -104,6 +106,29 @@ function AppInner() {
 
   // Track previous page for back navigation from product detail
   const [previousPage, setPreviousPage] = useState("home");
+
+  // Global search state - persists across page changes
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Handle global search from navbar
+  const handleGlobalSearch = useCallback((query) => {
+    const trimmed = query?.trim() || "";
+    setSearchQuery(trimmed);
+    // Store in localStorage for page persistence
+    if (trimmed) {
+      localStorage.setItem("global_search", trimmed);
+    } else {
+      localStorage.removeItem("global_search");
+    }
+  }, []);
+
+  // Load search from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem("global_search");
+    if (stored) {
+      setSearchQuery(stored);
+    }
+  }, []);
 
   // Persist selectedProduct to sessionStorage
   const handleSetSelectedProduct = useCallback((product) => {
@@ -203,10 +228,21 @@ function AppInner() {
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <Navbar cartCount={cartCount} currentPage={page} onNavigate={setPage} onOpenAuth={() => onRequireAuth("login")} />
-      <ErrorBoundary>
-        <main style={{ flex: 1, minHeight: 0, width: "100%" }}>{renderPage()}</main>
-      </ErrorBoundary>
+      <MobileLayoutWrapper
+        cartCount={cartCount}
+        currentPage={page}
+        onNavigate={setPage}
+        onOpenAuth={() => onRequireAuth("login")}
+        isLoggedIn={isLoggedIn}
+        isAdmin={isAdmin}
+        isApprovedVendor={isApprovedVendor}
+        onSearch={handleGlobalSearch}
+        searchQuery={searchQuery}
+      >
+        <ErrorBoundary>
+          {renderPage()}
+        </ErrorBoundary>
+      </MobileLayoutWrapper>
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} onSuccess={onAuthSuccess} initialView={authModalView} />
       <ToastContainer toasts={toasts} />
     </div>

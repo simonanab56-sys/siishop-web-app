@@ -84,13 +84,27 @@ function toObjectId(id) {
     : null;
 }
 
-/* PUBLIC — list approved vendors (for StoresPage) */
+/* PUBLIC — list approved vendors (for StoresPage) with optional search */
 router.get("/list", async (req, res) => {
   try {
-    const vendors = await User.find({
+    const filter = {
       isVendor: true,
       vendorStatus: "approved",
-    })
+    };
+
+    // ── SEARCH: Search by store name, name, or description ────────────────
+    if (req.query.search) {
+      const searchTerm = req.query.search.trim();
+      const searchRegex = new RegExp(searchTerm, "i"); // case-insensitive
+
+      filter.$or = [
+        { storeName: { $regex: searchRegex } },
+        { name: { $regex: searchRegex } },
+        { storeDescription: { $regex: searchRegex } }
+      ];
+    }
+
+    const vendors = await User.find(filter)
       .select("name storeName storeDescription storeLogo email")
       .sort({ createdAt: -1 })
       .lean();

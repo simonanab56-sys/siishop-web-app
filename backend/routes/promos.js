@@ -35,6 +35,45 @@ router.get("/active", async (req, res) => {
   }
 });
 
+/* SEARCH PROMOS */
+router.get("/search", async (req, res) => {
+  try {
+    const { search } = req.query;
+    const now = new Date();
+
+    const filter = {
+      active: true,
+      startDate: { $lte: now },
+      endDate: { $gt: now },
+    };
+
+    // Search by promo title
+    if (search) {
+      const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      filter.$or = [
+        { title: { $regex: searchRegex } },
+      ];
+    }
+
+    const promos = await Promo.find(filter)
+      .populate("productId")
+      .sort({ endDate: 1 })
+      .lean();
+
+    const live = (promos || []).filter(
+      (p) =>
+        p.productId &&
+        p.productId.isDeleted === false &&
+        p.productId.available !== false
+    );
+
+    res.json(live);
+  } catch (err) {
+    console.error("[promos/search]", err.message);
+    res.status(500).json({ error: "Failed to search promos" });
+  }
+});
+
 /* ADMIN PROMOS */
 router.get("/admin", requireAuth, requireAdmin, async (req, res) => {
   try {

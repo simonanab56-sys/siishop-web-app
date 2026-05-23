@@ -89,35 +89,55 @@ function isAdmin(req) {
 router.get("/", async (req, res) => {
   try {
     const filter = { isDeleted: { $ne: true } };
-    
-    // ── SEARCH: Search by product name or description ──────────────────────
+
+    // ── COMPREHENSIVE SEARCH: Search by name, description, category, brand, tags, vendor ─
     if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search, "i"); // case-insensitive
+      const searchTerm = req.query.search.trim();
+      const searchRegex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"); // escape special chars
+
+      // First, find vendors matching the search term
+      const Vendor = require("../models/User");
+      const matchingVendors = await Vendor.find({
+        isVendor: true,
+        vendorStatus: "approved",
+        $or: [
+          { storeName: { $regex: searchRegex } },
+          { name: { $regex: searchRegex } }
+        ]
+      }).select("_id").lean();
+
+      const vendorIds = matchingVendors.map(v => v._id);
+
+      // Search products with vendor ID match OR text fields
       filter.$or = [
         { name: { $regex: searchRegex } },
         { description: { $regex: searchRegex } },
-        { category: { $regex: searchRegex } }
+        { category: { $regex: searchRegex } },
+        { brand: { $regex: searchRegex } },
+        { tags: { $regex: searchRegex } },
+        // Also match by vendor ID if vendors were found
+        ...(vendorIds.length > 0 ? [{ vendorId: { $in: vendorIds } }] : [])
       ];
     }
-    
+
     // ── CATEGORY: Filter by category ──────────────────────────────────────
     if (req.query.category && req.query.category !== "All") {
       filter.category = new RegExp(`^${req.query.category}$`, "i"); // exact match, case-insensitive
     }
-    
+
     // ── VENDOR: Filter by vendor (if specified) ───────────────────────────
     if (req.query.vendorId) {
       filter.vendorId = req.query.vendorId;
     }
-    
+
     // ── PAGINATION (optional) ─────────────────────────────────────────────
     const limit = Math.min(Number(req.query.limit) || 100, 1000);
     const skip = Number(req.query.skip) || 0;
-    
+
     // ── SORTING ───────────────────────────────────────────────────────────
     const sortBy = req.query.sortBy || "_id";
     const sortOrder = req.query.sortOrder === "desc" ? -1 : 1;
-    
+
     // ── FETCH PRODUCTS ────────────────────────────────────────────────────
     const products = await Product.find(filter)
       .populate("vendorId", "storeName name email")
@@ -125,7 +145,7 @@ router.get("/", async (req, res) => {
       .limit(limit)
       .skip(skip)
       .lean();
-    
+
     // ── RETURN RESULTS ────────────────────────────────────────────────────
     res.json(products || []);
   } catch (err) {

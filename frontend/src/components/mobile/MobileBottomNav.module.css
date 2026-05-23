@@ -1,0 +1,249 @@
+.nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: #ffffff;
+  padding: 0 8px;
+  padding-bottom: env(safe-area-inset-bottom, 8px);
+  /* Top rounded corners for app-like appearance */
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  /* Smooth shadow */
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* Safe area padding for notched phones */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .nav {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+}
+
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  height: 64px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+/* Navigation Item */
+.navItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 12px;
+  color: var(--brand-muted, #78716c);
+  min-width: 56px;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.navItem:hover {
+  background: rgba(249, 115, 22, 0.06);
+  color: var(--brand-primary, #f97316);
+}
+
+.navItem.active {
+  color: var(--brand-primary, #f97316);
+}
+
+/* Active state background indicator */
+.navItem.active::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 4px;
+  background: var(--brand-primary, #f97316);
+  border-radius: 2px;
+}
+
+/* Icon Wrapper */
+.iconWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon {
+  transition: transform 0.15s ease;
+}
+
+.navItem.active .icon {
+  transform: scale(1.1);
+}
+
+/* Badge for cart count */
+.badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  background: var(--brand-danger, #ef4444);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+}
+
+/* Label */
+.label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Animation for tap feedback */
+.navItem:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+/* Hide on larger mobile devices in landscape if needed */
+@media (max-height: 450px) and (orientation: landscape) {
+  .nav {
+    display: none;
+  }
+}
+
+/* Profile Menu Overlay */
+.menuOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.menuDropdown {
+  background: white;
+  width: 100%;
+  max-width: 400px;
+  border-radius: 20px 20px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+  animation: slideUp 0.25s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.menuHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--brand-border, #e7e5e4);
+}
+
+.menuTitle {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--brand-dark, #1c1917);
+}
+
+.menuClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-surface, #fafaf9);
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  color: var(--brand-muted, #78716c);
+}
+
+.menuClose:hover {
+  background: var(--brand-border, #e7e5e4);
+  color: var(--brand-dark, #1c1917);
+}
+
+.menuItems {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  border-radius: 12px;
+  color: var(--brand-dark, #1c1917);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.menuItem:hover {
+  background: var(--brand-surface, #fafaf9);
+  color: var(--brand-primary, #f97316);
+}
+
+.menuItem svg {
+  color: var(--brand-muted, #78716c);
+  flex-shrink: 0;
+}
+
+.menuItem:hover svg {
+  color: var(--brand-primary, #f97316);
+}
+
+.menuDivider {
+  height: 1px;
+  background: var(--brand-border, #e7e5e4);
+  margin: 8px 0;
+}
+
+.menuItemLogout {
+  color: var(--brand-danger, #ef4444);
+}
+
+.menuItemLogout:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--brand-danger, #ef4444);
+}
+
+.menuItemLogout svg {
+  color: var(--brand-danger, #ef4444);
+}

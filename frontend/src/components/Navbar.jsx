@@ -1,16 +1,72 @@
-// components/Navbar.jsx — v4: currency switcher, fully responsive
-import { useState, useRef, useEffect } from "react";
+// components/Navbar.jsx — v5: with desktop search
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth }     from "../context/AuthContext";
 import { useCurrency } from "../context/CurrencyContext";
 import UserDropdown    from "./auth/UserDropdown";
 import styles          from "./Navbar.module.css";
 
-export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth }) {
+const DEBOUNCE_MS = 350;
+
+export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth, onSearch, searchQuery }) {
   const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
   const { currency, setCurrency, currencies }      = useCurrency();
   const [menuOpen, setMenuOpen]       = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState(searchQuery || "");
   const currencyRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
+
+  // Sync with prop
+  useEffect(() => {
+    if (searchQuery !== undefined) {
+      setSearchInput(searchQuery);
+    }
+  }, [searchQuery]);
+
+  // Debounced search
+  const handleSearchChange = useCallback((value) => {
+    setSearchInput(value);
+
+    // Clear existing timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced search
+    if (onSearch) {
+      searchTimeoutRef.current = setTimeout(() => {
+        onSearch(value);
+      }, DEBOUNCE_MS);
+    }
+  }, [onSearch]);
+
+  // Handle search submit (Enter key or button click)
+  const handleSearchSubmit = useCallback((e) => {
+    e?.preventDefault();
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    if (onSearch) {
+      onSearch(searchInput);
+    }
+  }, [onSearch, searchInput]);
+
+  // Handle clear search
+  const handleClearSearch = useCallback(() => {
+    setSearchInput("");
+    if (onSearch) {
+      onSearch("");
+    }
+  }, [onSearch]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Close currency dropdown on outside click
   useEffect(() => {
@@ -45,6 +101,37 @@ export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth 
             </button>
           ))}
         </div>
+
+        {/* Desktop Search Bar */}
+        <form className={styles.searchForm} onSubmit={handleSearchSubmit}>
+          <div className={styles.searchWrapper}>
+            <span className={styles.searchIcon}>🔍</span>
+            <input
+              type="text"
+              className={styles.searchInput}
+              placeholder="Search products, brands..."
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
+            />
+            {searchInput && (
+              <button
+                type="button"
+                className={styles.clearBtn}
+                onClick={handleClearSearch}
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+            <button
+              type="submit"
+              className={styles.searchBtn}
+              aria-label="Search"
+            >
+              🔍
+            </button>
+          </div>
+        </form>
 
         {/* Right actions */}
         <div className={styles.actions}>

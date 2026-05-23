@@ -14,9 +14,11 @@ function safeInitials(name) {
 export default function StoresPage({ onNavigate, onAddToCart }) {
   const { fmt }       = useCurrency();
   const [vendors,     setVendors]     = useState([]);
+  const [allVendors, setAllVendors]  = useState([]); // Keep original list for filtering
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState(null);
   const [initialized, setInitialized] = useState(false);
+  const [search,      setSearch]     = useState("");
 
   // Initialize state from sessionStorage
   const [selected, setSelected] = useState(() => {
@@ -55,10 +57,8 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
     return ()=>{mountedRef.current=false;};
   }, []);
 
-  useEffect(() => {
-    // Only fetch vendors if we don't have them cached
-    if (vendors.length > 0) return;
-
+  // Fetch vendors from API with optional search
+  const fetchVendors = useCallback(async (searchQuery = "") => {
     if (typeof vendorAPI?.getList !== "function") {
       if (mountedRef.current) {
         setError("Store listing is temporarily unavailable.");
@@ -68,11 +68,49 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
     }
 
     setLoading(true);
-    vendorAPI.getList()
-      .then(data => { if(mountedRef.current) setVendors(Array.isArray(data)?data:[]); })
-      .catch(err  => { if(mountedRef.current){ setError(err.message||"Failed to load stores"); setVendors([]); } })
-      .finally(() => { if(mountedRef.current) setLoading(false); });
-  }, [vendors.length]);
+    try {
+      const params = searchQuery ? { search: searchQuery } : {};
+      const data = await vendorAPI.getList(params);
+      if (mountedRef.current) {
+        const vendorList = Array.isArray(data) ? data : [];
+        setAllVendors(vendorList);
+        setVendors(vendorList);
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(err.message || "Failed to load stores");
+        setVendors([]);
+        setAllVendors([]);
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    setInitialized(true);
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    // Only fetch vendors if we don't have them cached and no search
+    if (vendors.length > 0 && !search) return;
+    fetchVendors(search);
+  }, [vendors.length, search, fetchVendors]);
+
+  // ── Initialize search from mobile header or global search ───────────────────
+  useEffect(() => {
+    const mobileSearch = localStorage.getItem("mobile_search");
+    const globalSearch = localStorage.getItem("global_search");
+    if (mobileSearch) {
+      setSearch(mobileSearch);
+      localStorage.removeItem("mobile_search");
+    } else if (globalSearch) {
+      setSearch(globalSearch);
+      localStorage.removeItem("global_search");
+    }
+  }, []);
 
   async function openStore(vendor) {
     if (!vendor?._id) return;
@@ -112,8 +150,22 @@ export default function StoresPage({ onNavigate, onAddToCart }) {
   return (
     <div className={`container page-enter ${styles.page}`}>
       <div className="page-header">
-        <h1>All Stores</h1>
-        <p>{safeVendors.length} verified vendor{safeVendors.length!==1?"s":""} on SiiShop</p>
+        <h1>{search ? "Search Results" : "All Stores"}</h1>
+        <p>
+          {search
+            ? `${safeVendors.length} result${safeVendors.length !== 1 ? "s" : ""} for "${search}"`
+            : `${safeVendors.length} verified vendor${safeVendors.length !== 1 ? "s" : ""} on SiiShop`
+          }
+        </p>
+        {search && (
+          <button
+            className="btn btn-secondary btn-sm"
+            style={{ marginTop: 8 }}
+            onClick={() => { setSearch(""); }}
+          >
+            Clear Search
+          </button>
+        )}
       </div>
 
       {safeVendors.length === 0 ? (

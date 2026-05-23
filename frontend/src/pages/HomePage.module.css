@@ -79,3 +79,9 @@
 @media (max-width: 400px) {
   .heroTitle { font-size: 1.4rem; }
 }
+/* Hide homepage search bar on mobile - use navbar search instead */
+@media (max-width: 767px) {
+  .searchBar {
+    display: none;
+  }
+}

@@ -310,8 +310,10 @@ export const vendorAPI = {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
   // Vendor listing for customers
-  getList: () =>
-    apiRequest("/vendor/list"),
+  getList: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/vendor/list${query ? "?" + query : ""}`);
+  },
   // Admin methods for vendor management
   adminGetAll: () =>
     apiRequest("/admin/vendors", {

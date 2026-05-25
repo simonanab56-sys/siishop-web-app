@@ -12,6 +12,7 @@ const {
   createCashOrder,
   createPaidOrder,
 } = require("../services/order.service");
+const { notifyOrderStatusUpdate } = require("../services/notification.service");
 
 /* ─── INITIALIZE PAYMENT ────────────────────────────────────────── */
 /* POST /api/orders/initialize-payment
@@ -197,8 +198,14 @@ router.patch(
       return res.status(403).json({ error: "Not authorized" });
     }
 
+    const oldStatus = order.orderStatus;
     order.orderStatus = orderStatus;
     await order.save();
+
+    // Send status update notification to customer (async, don't block response)
+    notifyOrderStatusUpdate(order._id, oldStatus, orderStatus).catch((err) => {
+      console.error(`[Order] Failed to send status notification:`, err.message);
+    });
 
     res.json(order);
   })

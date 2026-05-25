@@ -13,6 +13,7 @@ const Product = require("../models/Product");
 const requireApprovedVendor = require("../middleware/requireApprovedVendor");
 const Order   = require("../models/Order");
 const { requireAuth, requireVendor } = require("../middleware/auth");
+const { notifyOrderStatusUpdate } = require("../services/notification.service");
 
 // ── CLOUDINARY CONFIGURATION ─────────────────────────────────────────────────
 // Try to use Cloudinary if configured, otherwise fallback to local storage
@@ -206,8 +207,14 @@ router.patch(
         return res.status(403).json({ error: "Not authorized for this order" });
       }
 
+      const oldStatus = order.orderStatus;
       order.orderStatus = orderStatus;
       await order.save();
+
+      // Send status update notification to customer (async, don't block response)
+      notifyOrderStatusUpdate(order._id, oldStatus, orderStatus).catch((err) => {
+        console.error(`[Vendor] Failed to send status notification:`, err.message);
+      });
 
       res.json(order);
     } catch (err) {

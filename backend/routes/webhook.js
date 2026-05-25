@@ -5,6 +5,7 @@ const router = express.Router();
 const crypto = require("crypto");
 const Order = require("../models/Order");
 const { updateRevenueForPaidOrder } = require("../services/revenue");
+const { notifyOrderCreated } = require("../services/notification.service");
 
 /* ─── PAYSTACK WEBHOOK ────────────────────────────────────────────────────────
  * Paystack calls this when a transaction is completed.
@@ -72,7 +73,7 @@ router.post(
           existingOrder.orderStatus = "confirmed";
           await existingOrder.save();
           console.log(`[Webhook] Order ${existingOrder._id} marked PAID via webhook for ref ${ref}`);
-          
+
           // ✅ ADDED: Update vendor revenue when order is paid
           const revenueResult = await updateRevenueForPaidOrder(existingOrder._id);
           if (revenueResult.success) {
@@ -80,6 +81,11 @@ router.post(
           } else {
             console.warn(`[Webhook] Revenue update failed: ${revenueResult.message}`);
           }
+
+          // Send email notifications (async, don't block)
+          notifyOrderCreated(existingOrder).catch((err) => {
+            console.error(`[Webhook] Failed to send notifications:`, err.message);
+          });
         } else {
           console.log(`[Webhook] Order ${existingOrder._id} already paid, skipping`);
         }

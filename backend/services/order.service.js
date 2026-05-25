@@ -5,6 +5,7 @@ const Order = require("../models/Order");
 const Product = require("../models/Product");
 const { validateAndCalculateItems, reduceStockTransactional } = require("./product.service");
 const { verifyPaystackPayment } = require("./paystack.service");
+const { notifyOrderCreated } = require("./notification.service");
 
 /**
  * Verify Paystack payment before order creation.
@@ -51,7 +52,7 @@ async function attachVendorAndImageToItems(items) {
 
   const products = await Product.find({
     _id: { $in: productIds },
-  }).select("_id vendorId image images name description").lean();
+  }).select("_id vendorId image images name description price").lean();
 
   const productMap = {};
   products.forEach((p) => {
@@ -61,17 +62,30 @@ async function attachVendorAndImageToItems(items) {
       images: p.images, // Include multiple images array
       name: p.name,
       description: p.description,
+      price: p.price, // Get price from database
     };
   });
 
-  return items.map((item) => ({
-    ...item,
-    vendorId: productMap[String(item.productId)]?.vendorId || null,
-    image: productMap[String(item.productId)]?.image || null,
-    images: productMap[String(item.productId)]?.images || null,
-    name: productMap[String(item.productId)]?.name || item.name || "Unknown Product",
-    description: productMap[String(item.productId)]?.description || null,
-  }));
+  return items.map((item) => {
+    const product = productMap[String(item.productId)];
+    // Use quantity from frontend or default to 1
+    const quantity = item.quantity || 1;
+    // Use price from DB product (not frontend) - this ensures accuracy
+    const price = product?.price || item.price || 0;
+
+    console.log(`[Order] Item ${product?.name}: qty=${quantity}, price=${price}`);
+
+    return {
+      ...item,
+      quantity, // Ensure quantity is set
+      price, // Use DB price (more reliable)
+      vendorId: product?.vendorId || null,
+      image: product?.image || null,
+      images: product?.images || null,
+      name: product?.name || item.name || "Unknown Product",
+      description: product?.description || null,
+    };
+  });
 }
 
 /**
@@ -148,6 +162,12 @@ async function createOrder(data, { paymentMethod, paymentRef = null }) {
     session.endSession();
 
     console.log(`[Order] Created ${paymentMethod} order ${order._id} for ${totalAmount}`);
+
+    // Send email notifications asynchronously (don't block the response)
+    // Use fire-and-forget pattern - errors are logged inside the function
+    notifyOrderCreated(order).catch((err) => {
+      console.error(`[Order] Failed to send notifications for order ${order._id}:`, err.message);
+    });
 
     return order;
 

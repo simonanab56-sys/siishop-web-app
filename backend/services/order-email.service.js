@@ -53,6 +53,13 @@ let resendClient = null;
 function initTransporter() {
   if (transporter) return transporter;
 
+  // Debug: Log email config status
+  console.log("[Email] Checking email configuration...");
+  console.log("[Email] RESEND_API_KEY set:", !!process.env.RESEND_API_KEY);
+  console.log("[Email] GMAIL_USER set:", !!process.env.GMAIL_USER);
+  console.log("[Email] GMAIL_PASSWORD set:", !!process.env.GMAIL_PASSWORD);
+  console.log("[Email] EMAIL_FROM:", process.env.EMAIL_FROM);
+
   // Check for Resend API first (preferred for production)
   if (process.env.RESEND_API_KEY) {
     resendClient = new Resend(process.env.RESEND_API_KEY);

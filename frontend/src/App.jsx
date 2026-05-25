@@ -75,6 +75,43 @@ function AppInner() {
     return localStorage.getItem("app_page") || "home";
   });
 
+  // Handle URL query parameters from email links (e.g., ?page=orders)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlPage = params.get("page");
+      const orderId = params.get("orderId");
+      const section = params.get("section");
+
+      // If URL has a page parameter, navigate to it
+      if (urlPage && urlPage !== page) {
+        // Validate the page is valid before navigating
+        const validPages = ["home", "product", "vendors", "cart", "orders", "settings", "reset-password", "vendor", "admin", "about", "contact", "privacy", "terms", "refund", "faq"];
+        if (validPages.includes(urlPage)) {
+          // For protected pages, we still set the page - auth guard will handle protection
+          setPage(urlPage);
+          // Store in localStorage
+          localStorage.setItem("app_page", urlPage);
+
+          // If there's an orderId, store it for the orders page
+          if (orderId) {
+            sessionStorage.setItem("emailOrderId", orderId);
+          }
+
+          // If there's a section (for vendor/admin dashboards), store it
+          if (section) {
+            sessionStorage.setItem("emailSection", section);
+          }
+
+          // Clear URL params to clean up the address bar
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    } catch (e) {
+      console.log("[App] Error parsing URL params:", e.message);
+    }
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("app_page", page);
   }, [page]);

@@ -7,6 +7,46 @@ const { Resend } = require("resend");
  * Order Email Service using Resend API or Gmail SMTP
  */
 
+// URL Helper - Get the correct app URL for emails
+function getAppUrl() {
+  // Use production URL if set, otherwise use dev URL, otherwise fallback
+  return (
+    process.env.FRONTEND_URL_PROD ||
+    process.env.FRONTEND_URL ||
+    "https://siishop-web-app.vercel.app"
+  );
+}
+
+// Generate customer order tracking URL
+function getOrderTrackingUrl(orderId) {
+  return `${getAppUrl()}?page=orders&orderId=${orderId}`;
+}
+
+// Generate customer orders list URL
+function getCustomerOrdersUrl() {
+  return `${getAppUrl()}?page=orders`;
+}
+
+// Generate vendor dashboard URL
+function getVendorDashboardUrl() {
+  return `${getAppUrl()}?page=vendor`;
+}
+
+// Generate vendor orders URL
+function getVendorOrdersUrl() {
+  return `${getAppUrl()}?page=vendor&section=orders`;
+}
+
+// Generate admin dashboard URL
+function getAdminDashboardUrl() {
+  return `${getAppUrl()}?page=admin`;
+}
+
+// Generate admin orders URL
+function getAdminOrdersUrl() {
+  return `${getAppUrl()}?page=admin&section=orders`;
+}
+
 let transporter = null;
 let resendClient = null;
 
@@ -212,7 +252,7 @@ async function sendOrderConfirmationEmail(email, order, customer) {
                       <table width="100%" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
                         <tr>
                           <td align="center">
-                            <a href="${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/orders" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">Track Your Order</a>
+                            <a href="${getCustomerOrdersUrl()}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">Track Your Order</a>
                           </td>
                         </tr>
                       </table>
@@ -231,7 +271,7 @@ async function sendOrderConfirmationEmail(email, order, customer) {
         </body>
         </html>
       `,
-      text: `Order Confirmed!\n\nOrder #${order?._id}\nTotal: ₵${totalAmount}\n\nThank you for your order! Track it at: ${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/orders`,
+      text: `Order Confirmed!\n\nOrder #${order?._id}\nTotal: ₵${totalAmount}\n\nThank you for your order! Track it at: ${getCustomerOrdersUrl()}`,
     };
 
     const result = await trans.sendMail(mailOptions);
@@ -352,7 +392,7 @@ async function sendVendorOrderNotificationEmail(email, order, vendor) {
                       <table width="100%" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
                         <tr>
                           <td align="center">
-                            <a href="${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/vendor/orders" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">View Orders</a>
+                            <a href="${getVendorOrdersUrl()}" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">View Orders</a>
                           </td>
                         </tr>
                       </table>
@@ -365,7 +405,7 @@ async function sendVendorOrderNotificationEmail(email, order, vendor) {
         </body>
         </html>
       `,
-      text: `New Order Received!\n\nOrder #${order?._id}\nYour Items Total: ₵${vendorTotal.toFixed(2)}\n\nCustomer: ${order?.customerName}\nPhone: ${order?.customerPhone}\n\nView in vendor portal: ${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/vendor/orders`,
+      text: `New Order Received!\n\nOrder #${order?._id}\nYour Items Total: ₵${vendorTotal.toFixed(2)}\n\nCustomer: ${order?.customerName}\nPhone: ${order?.customerPhone}\n\nView in vendor portal: ${getVendorOrdersUrl()}`,
     };
 
     const result = await trans.sendMail(mailOptions);
@@ -467,7 +507,7 @@ async function sendAdminOrderNotificationEmail(email, order, admin) {
                       <table width="100%" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
                         <tr>
                           <td align="center">
-                            <a href="${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/admin/orders" style="background: #dc3545; color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">View All Orders</a>
+                            <a href="${getAdminOrdersUrl()}" style="background: #dc3545; color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">View All Orders</a>
                           </td>
                         </tr>
                       </table>
@@ -480,7 +520,7 @@ async function sendAdminOrderNotificationEmail(email, order, admin) {
         </body>
         </html>
       `,
-      text: `New Order Alert!\n\nOrder #${order?._id}\nTotal: ₵${totalAmount}\nCustomer: ${order?.customerName}\nPhone: ${order?.customerPhone}\nPayment: ${order?.paymentMethod === "paystack" ? "Paid" : "COD"} - ${order?.paymentStatus}\n\nView in admin: ${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/admin/orders`,
+      text: `New Order Alert!\n\nOrder #${order?._id}\nTotal: ₵${totalAmount}\nCustomer: ${order?.customerName}\nPhone: ${order?.customerPhone}\nPayment: ${order?.paymentMethod === "paystack" ? "Paid" : "COD"} - ${order?.paymentStatus}\n\nView in admin: ${getAdminOrdersUrl()}`,
     };
 
     const result = await trans.sendMail(mailOptions);
@@ -574,7 +614,7 @@ async function sendOrderStatusUpdateEmail(email, order, oldStatus, newStatus) {
                       <table width="100%" cellpadding="0" cellspacing="0" style="margin: 25px 0;">
                         <tr>
                           <td align="center">
-                            <a href="${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/orders" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">Track Order</a>
+                            <a href="${getCustomerOrdersUrl()}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 14px 30px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">Track Order</a>
                           </td>
                         </tr>
                       </table>
@@ -587,7 +627,7 @@ async function sendOrderStatusUpdateEmail(email, order, oldStatus, newStatus) {
         </body>
         </html>
       `,
-      text: `Order Status Update!\n\nOrder #${order?._id}\nStatus changed from ${oldLabel} to ${statusLabel}\n\nTrack your order: ${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/orders`,
+      text: `Order Status Update!\n\nOrder #${order?._id}\nStatus changed from ${oldLabel} to ${statusLabel}\n\nTrack your order: ${getCustomerOrdersUrl()}`,
     };
 
     const result = await trans.sendMail(mailOptions);
@@ -646,7 +686,7 @@ async function sendOrderDeliveredEmail(email, order) {
 
                       <div style="text-align: center; margin: 25px 0;">
                         <p style="color: #666; margin-bottom: 15px;">How was your experience?</p>
-                        <a href="${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/orders" style="background: #11998e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">Leave a Review</a>
+                        <a href="${getCustomerOrdersUrl()}" style="background: #11998e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">Leave a Review</a>
                       </div>
                     </td>
                   </tr>
@@ -657,7 +697,7 @@ async function sendOrderDeliveredEmail(email, order) {
         </body>
         </html>
       `,
-      text: `Order Delivered! ✓\n\nOrder #${order?._id}\nTotal: ₵${totalAmount}\n\nThank you for shopping with SiiShop!\nLeave a review: ${process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL || "https://siishop.com"}/orders`,
+      text: `Order Delivered! ✓\n\nOrder #${order?._id}\nTotal: ₵${totalAmount}\n\nThank you for shopping with SiiShop!\nLeave a review: ${getCustomerOrdersUrl()}`,
     };
 
     const result = await trans.sendMail(mailOptions);

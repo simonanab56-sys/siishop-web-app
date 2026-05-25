@@ -110,6 +110,7 @@ function initTransporter() {
   }
   // Check if Gmail credentials are provided
   else if (process.env.GMAIL_USER && process.env.GMAIL_PASSWORD) {
+    console.log("[Email] Initializing Gmail SMTP with user:", process.env.GMAIL_USER);
     transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {

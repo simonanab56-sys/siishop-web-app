@@ -5,7 +5,7 @@ import { useCurrency } from "../context/CurrencyContext";
 import UserDropdown    from "./auth/UserDropdown";
 import styles          from "./Navbar.module.css";
 
-const DEBOUNCE_MS = 350;
+const DEBOUNCE_MS = 100; // Fast response for instant filtering
 
 export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth, onSearch, searchQuery }) {
   const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
@@ -23,7 +23,7 @@ export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth,
     }
   }, [searchQuery]);
 
-  // Debounced search
+  // Instant search on typing
   const handleSearchChange = useCallback((value) => {
     setSearchInput(value);
 
@@ -32,8 +32,13 @@ export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth,
       clearTimeout(searchTimeoutRef.current);
     }
 
-    // Set new timeout for debounced search
+    // Trigger search immediately on typing
     if (onSearch) {
+      onSearch(value);
+    }
+
+    // Also set debounced search for potential future use
+    if (value && onSearch) {
       searchTimeoutRef.current = setTimeout(() => {
         onSearch(value);
       }, DEBOUNCE_MS);

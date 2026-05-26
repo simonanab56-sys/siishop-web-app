@@ -1,18 +1,19 @@
-// pages/HomePage.jsx — v5: SEO generation, category URL routing, structured data
-import { useState, useEffect, useCallback, useRef } from "react";
+// pages/HomePage.jsx — v7: Global search integration, enhanced filtering, mobile cleanup, promo search
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Helmet } from "react-helmet-async";
-import { productAPI } from "../services/api";
+import { productAPI, promoAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import ProductCard   from "../components/ProductCard";
 import PromoSection  from "../components/PromoSection";
 import { generateCategorySEO, extractCategoryFromURL, updateCategoryURL } from "../utils/seo";
 import styles        from "./HomePage.module.css";
 
-const DEBOUNCE_MS = 350;
+const DEBOUNCE_MS = 100; // Faster response for better UX
 
-export default function HomePage({ onAddToCart, onViewProduct }) {
+export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery, onClearGlobalSearch }) {
   const { fmt } = useCurrency();
   const [products,       setProducts]       = useState([]);
+  const [promoProducts,   setPromoProducts]   = useState([]);
   const [categories,     setCategories]     = useState(["All"]);
   const [loading,        setLoading]        = useState(true);
   const [error,          setError]          = useState(null);
@@ -21,6 +22,7 @@ export default function HomePage({ onAddToCart, onViewProduct }) {
   const [searchInput,    setSearchInput]    = useState("");
   const mountedRef = useRef(true);
   const isFirstRender = useRef(true);
+  const prevGlobalSearchRef = useRef(globalSearchQuery);
 
   // ── Fetch Products Function ─────────────────────────────────────────────────
   // Defined BEFORE useEffect hooks that call it
@@ -70,29 +72,51 @@ export default function HomePage({ onAddToCart, onViewProduct }) {
       });
   }, []);
 
+  // ── Fetch promo products ─────────────────────────────────────────────────────
+  useEffect(() => {
+    promoAPI.getActive()
+      .then((promos) => {
+        if (mountedRef.current && Array.isArray(promos)) {
+          // Extract products from promos
+          const promoItems = promos
+            .map((p) => p.productId)
+            .filter(Boolean);
+          setPromoProducts(promoItems);
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setPromoProducts([]);
+        }
+      });
+  }, []);
+
   // ── Initial product fetch on mount ─────────────────────────────────────────
   useEffect(() => {
     fetchProducts("", "All");
   }, [fetchProducts]);
 
-  // ── Initialize search from mobile header or global search ───────────────────
+  // ── Initialize search from global search query ─────────────────────────────
   useEffect(() => {
-    const mobileSearch = localStorage.getItem("mobile_search");
-    const globalSearch = localStorage.getItem("global_search");
-    if (mobileSearch) {
-      setSearchInput(mobileSearch);
-      setSearch(mobileSearch);
-      localStorage.removeItem("mobile_search");
-      // Fetch with search query - no dependency on fetchProducts
-      fetchProducts(mobileSearch, "All");
-    } else if (globalSearch) {
-      setSearchInput(globalSearch);
-      setSearch(globalSearch);
-      localStorage.removeItem("global_search");
-      // Fetch with search query
-      fetchProducts(globalSearch, "All");
+    const prevQuery = prevGlobalSearchRef.current;
+    const currentQuery = globalSearchQuery ? String(globalSearchQuery).trim() : "";
+
+    // If global search changed
+    if (globalSearchQuery !== prevQuery) {
+      if (currentQuery) {
+        // New search query
+        setSearchInput(currentQuery);
+        setSearch(currentQuery);
+        fetchProducts(currentQuery, activeCategory);
+      } else if (prevQuery && !currentQuery) {
+        // Search was cleared externally
+        setSearchInput("");
+        setSearch("");
+        fetchProducts("", activeCategory);
+      }
+      prevGlobalSearchRef.current = globalSearchQuery;
     }
-  }, []); // Empty deps - fetchProducts is stable due to useCallback
+  }, [globalSearchQuery, activeCategory, fetchProducts]);
 
   // ── Debounced search and category changes ───────────────────────────────────
   useEffect(() => {
@@ -116,7 +140,44 @@ export default function HomePage({ onAddToCart, onViewProduct }) {
     fetchProducts(search, cat);
   }
 
-  const safeProducts = Array.isArray(products) ? products : [];
+  // ── Enhanced filter function with multiple search fields ──────────────────
+  const filteredProducts = useMemo(() => {
+    const query = search?.trim()?.toLowerCase();
+
+    // Combine regular products with promo products for search
+    const allProducts = [...products];
+    const promoIds = new Set(promoProducts.map((p) => p?._id));
+
+    // Add promo products that aren't already in the list
+    promoProducts.forEach((promo) => {
+      if (promo && !promoIds.has(promo._id)) {
+        allProducts.push({ ...promo, _isPromo: true });
+      }
+    });
+
+    // If no search query, return all products
+    if (!query) return allProducts;
+
+    return allProducts.filter((product) => {
+      if (!product) return false;
+
+      // Search across multiple fields
+      const searchFields = [
+        product?.name,
+        product?.brand,
+        product?.category,
+        product?.description,
+        product?.keywords?.join(" "),
+        product?.vendorName,
+        product?.storeName,
+        product?.vendorId?.toString(),
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      return searchFields.includes(query) || searchFields.includes(query);
+    });
+  }, [products, promoProducts, search]);
+
+  const safeProducts = Array.isArray(filteredProducts) ? filteredProducts : [];
 
   // ── Generate SEO data for current category ────────────────────────────────
   const seoData = generateCategorySEO(activeCategory !== "All" ? activeCategory : null);
@@ -164,13 +225,13 @@ export default function HomePage({ onAddToCart, onViewProduct }) {
               className={styles.searchInput} />
             {searchInput && (
               <button className={styles.clearBtn}
-                onClick={() => { setSearchInput(""); setSearch(""); fetchProducts("", activeCategory); }}>✕</button>
+                onClick={() => { setSearchInput(""); setSearch(""); setProducts([]); fetchProducts("", activeCategory); if (onClearGlobalSearch) onClearGlobalSearch(); }}>✕</button>
             )}
           </div>
         </div>
 
-        {/* PART 10: Flash Deals promo section */}
-        <PromoSection onAddToCart={onAddToCart} onViewProduct={onViewProduct} />
+        {/* PART 10: Flash Deals promo section - hide when searching */}
+        {!search && <PromoSection onAddToCart={onAddToCart} onViewProduct={onViewProduct} />}
 
         {/* Category pills */}
         {categories.length > 1 && (
@@ -200,7 +261,7 @@ export default function HomePage({ onAddToCart, onViewProduct }) {
             <div className="empty-icon">{search ? "🔎" : "🛍️"}</div>
             <h3>{search ? `No results for "${search}"` : "No products yet"}</h3>
             <p>{search ? "Try a different search." : "Check back later or ask a vendor to list products."}</p>
-            {search && <button className="btn btn-secondary btn-sm" style={{marginTop:14}} onClick={() => { setSearchInput(""); setSearch(""); fetchProducts("", activeCategory); }}>Clear Search</button>}
+            {search && <button className="btn btn-secondary btn-sm" style={{marginTop:14}} onClick={() => { setSearchInput(""); setSearch(""); setProducts([]); fetchProducts("", activeCategory); if (onClearGlobalSearch) onClearGlobalSearch(); }}>Clear Search</button>}
           </div>
         ) : (
           <>

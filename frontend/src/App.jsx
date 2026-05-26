@@ -237,7 +237,7 @@ function AppInner() {
   function renderPage() {
     switch (page) {
       case "home":
-        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
+        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} globalSearchQuery={searchQuery} onClearGlobalSearch={() => setSearchQuery("")} />;
       case "product":
         return (
           <ProductDetailPage

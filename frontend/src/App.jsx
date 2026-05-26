@@ -7,6 +7,7 @@ import MobileLayoutWrapper from "./components/mobile/MobileLayoutWrapper";
 import AuthModal from "./components/auth/AuthModal";
 import { useToast, ToastContainer } from "./components/Toast";
 import HomePage from "./pages/HomePage";
+import CategoriesPage from "./pages/CategoriesPage";
 import CartPage from "./pages/CartPage";
 import OrdersPage from "./pages/OrdersPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -238,6 +239,8 @@ function AppInner() {
     switch (page) {
       case "home":
         return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} globalSearchQuery={searchQuery} onClearGlobalSearch={() => setSearchQuery("")} />;
+      case "categories":
+        return <CategoriesPage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
       case "product":
         return (
           <ProductDetailPage

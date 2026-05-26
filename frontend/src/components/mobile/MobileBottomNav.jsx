@@ -4,7 +4,7 @@ import styles from "./MobileBottomNav.module.css";
 
 const BASE_NAV_ITEMS = [
   { id: "home", label: "Home", icon: Home, route: "home" },
-  { id: "categories", label: "Categories", icon: Grid3X3, route: "vendors" },
+  { id: "categories", label: "Categories", icon: Grid3X3, route: "categories" },
   { id: "stores", label: "Stores", icon: Store, route: "vendors" },
   { id: "cart", label: "Cart", icon: ShoppingCart, route: "cart" },
 ];
@@ -23,7 +23,8 @@ export default function MobileBottomNav({
 
   const getPageId = (page) => {
     if (page === "home") return "home";
-    if (page === "vendors") return "categories";
+    if (page === "categories") return "categories";
+    if (page === "vendors") return "stores";
     if (page === "cart") return "cart";
     if (page === "settings" || page === "orders" || page === "vendor" || page === "admin") return "profile";
     return page;

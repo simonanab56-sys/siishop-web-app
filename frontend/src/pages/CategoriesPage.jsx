@@ -132,7 +132,7 @@ export default function CategoriesPage({ onAddToCart, onViewProduct }) {
                     <div key={product._id} className={styles.productItem}>
                       <div
                         className={styles.productInfo}
-                        onClick={() => onViewProduct?.(product)}
+                        onClick={() => onViewProduct?.(product, "categories")}
                       >
                         <img
                           src={product.image || "/placeholder.png"}

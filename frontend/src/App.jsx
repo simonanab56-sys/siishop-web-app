@@ -195,9 +195,9 @@ function AppInner() {
     }
   }
 
-  // Handle view product detail (from HomePage)
-  function handleViewProduct(product) {
-    setPreviousPage("home");
+  // Handle view product detail (from any page)
+  function handleViewProduct(product, source = "home") {
+    setPreviousPage(source);
     handleSetSelectedProduct(product);
     setPage("product");
   }

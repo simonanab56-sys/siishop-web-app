@@ -84,4 +84,7 @@
   .searchBar {
     display: none;
   }
+  .filterBar {
+    display: none;
+  }
 }

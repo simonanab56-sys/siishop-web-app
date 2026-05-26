@@ -5,7 +5,7 @@ import Navbar from "../Navbar";
 import MobileTopHeader from "./MobileTopHeader";
 import MobileBottomNav from "./MobileBottomNav";
 
-const DEBOUNCE_MS = 350;
+const DEBOUNCE_MS = 100; // Fast response for mobile
 
 export default function MobileLayoutWrapper({
   children,
@@ -42,19 +42,20 @@ export default function MobileLayoutWrapper({
     setMobileMenuOpen(false);
   }, []);
 
-  // Handle search input change (mobile)
+  // Handle search input change (mobile) - instant search
   const handleSearchChange = useCallback((value) => {
     setLocalSearchQuery(value);
 
-    // Debounce the search
+    // Clear existing timeout
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    searchTimeoutRef.current = setTimeout(() => {
-      // Just update the local state for typing; actual search happens on submit
-    }, DEBOUNCE_MS);
-  }, []);
+    // Trigger search immediately on typing
+    if (onSearch) {
+      onSearch(value);
+    }
+  }, [onSearch]);
 
   // Handle search submit
   const handleSearchSubmit = useCallback((query) => {

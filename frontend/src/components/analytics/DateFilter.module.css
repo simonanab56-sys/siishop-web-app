@@ -1,0 +1,108 @@
+/* components/analytics/DateFilter.module.css */
+.filter {
+  margin-bottom: 16px;
+}
+
+.periodButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.periodBtn {
+  padding: 8px 14px;
+  background: #fff;
+  border: 1px solid var(--brand-border, #e5e5e5);
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--brand-dark, #1c1917);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.periodBtn:hover {
+  border-color: var(--brand-primary, #f97316);
+  color: var(--brand-primary, #f97316);
+}
+
+.periodBtn.active {
+  background: var(--brand-primary, #f97316);
+  border-color: var(--brand-primary, #f97316);
+  color: white;
+}
+
+.customRange {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--brand-bg, #fff7ed);
+  border-radius: 8px;
+}
+
+.customInputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.customField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.customField label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--brand-muted, #78716c);
+}
+
+.customField input {
+  padding: 8px 12px;
+  border: 1px solid var(--brand-border, #e5e5e5);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.applyBtn {
+  padding: 8px 20px;
+  background: var(--brand-primary, #f97316);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.applyBtn:hover {
+  background: var(--brand-dark, #1c1917);
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .periodButtons {
+    gap: 6px;
+  }
+
+  .periodBtn {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+
+  .customInputs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .customField input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .applyBtn {
+    width: 100%;
+  }
+}

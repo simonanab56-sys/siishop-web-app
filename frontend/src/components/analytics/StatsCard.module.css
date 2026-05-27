@@ -1,0 +1,88 @@
+/* components/analytics/StatsCard.module.css */
+.card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  border-radius: 12px;
+  background: var(--brand-bg, #fff7ed);
+}
+
+.card.primary .icon {
+  background: #fef3c7;
+}
+
+.card.success .icon {
+  background: #dcfce7;
+}
+
+.card.warning .icon {
+  background: #fef3c7;
+}
+
+.card.info .icon {
+  background: #e0f2fe;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--brand-muted, #78716c);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--brand-dark, #1c1917);
+  line-height: 1.2;
+}
+
+.sub {
+  font-size: 0.75rem;
+  color: var(--brand-muted, #78716c);
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .card {
+    padding: 12px;
+  }
+
+  .icon {
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+  }
+
+  .value {
+    font-size: 1.1rem;
+  }
+}

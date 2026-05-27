@@ -36,6 +36,45 @@
 }
 .shareBar span { font-size: 0.76rem; font-weight: 600; color: var(--brand-muted); white-space: nowrap; }
 
+/* Analytics Navigation */
+.analyticsNav { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.analyticsBtn {
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid var(--brand-border);
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--brand-dark);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.analyticsBtn:hover { border-color: var(--brand-primary); color: var(--brand-primary); }
+.analyticsBtnActive { background: var(--brand-primary); border-color: var(--brand-primary); color: white; }
+
+/* Calendar */
+.calendarWrap { margin-bottom: 20px; }
+.dailyDetails { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.dailyTitle { font-size: 1rem; font-weight: 700; margin-bottom: 16px; color: var(--brand-dark); }
+
+/* Stats Grid for Analytics */
+.statsGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 1024px) { .statsGrid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px) { .statsGrid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .statsGrid { grid-template-columns: 1fr; } }
+
+/* Top Section */
+.topSection { margin-top: 20px; }
+.topSection h5 { font-size: 0.95rem; font-weight: 600; margin-bottom: 12px; color: var(--brand-dark); }
+
+/* Chart */
+.chartWrap { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.chartTitle { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: var(--brand-dark); }
+.chartContainer { display: flex; align-items: flex-end; gap: 4px; height: 200px; overflow-x: auto; padding: 10px 0; }
+.chartBar { flex: 1; min-width: 20px; max-width: 40px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.barFill { width: 100%; background: var(--brand-primary); border-radius: 4px 4px 0 0; transition: height 0.3s; }
+.barLabel { font-size: 0.6rem; color: var(--brand-muted); white-space: nowrap; transform: rotate(-45deg); }
+
 /* Toolbar */
 .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .searchInput {

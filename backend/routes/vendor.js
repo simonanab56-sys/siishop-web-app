@@ -461,4 +461,334 @@ router.delete("/products/:id", requireAuth, requireApprovedVendor, async (req, r
   }
 });
 
+/* ───────────────────────── ANALYTICS - CALENDAR DATA ───────────────────────── */
+router.get("/analytics/calendar", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const { year, month } = req.query;
+    const now = new Date();
+    const targetYear = parseInt(year) || now.getFullYear();
+    const targetMonth = parseInt(month) || now.getMonth();
+
+    const startDate = new Date(targetYear, targetMonth, 1);
+    const endDate = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59);
+
+    // Aggregate vendor's orders by day for the month
+    const calendarData = await Order.aggregate([
+      {
+        $match: {
+          vendorId: vendorId,
+          createdAt: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+          },
+          totalOrders: { $sum: 1 },
+          totalRevenue: { $sum: "$totalAmount" },
+          paidOrders: {
+            $sum: { $cond: [{ $eq: ["$paymentStatus", "paid"] }, 1, 0] },
+          },
+          pendingOrders: {
+            $sum: { $cond: [{ $eq: ["$paymentStatus", "pending"] }, 1, 0] },
+          },
+          deliveredOrders: {
+            $sum: { $cond: [{ $eq: ["$orderStatus", "delivered"] }, 1, 0] },
+          },
+          codOrders: {
+            $sum: { $cond: [{ $eq: ["$paymentMethod", "cash"] }, 1, 0] },
+          },
+          paystackOrders: {
+            $sum: { $cond: [{ $eq: ["$paymentMethod", "paystack"] }, 1, 0] },
+          },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Format for calendar display
+    const calendarMap = {};
+    calendarData.forEach((day) => {
+      calendarMap[day._id] = {
+        totalOrders: day.totalOrders || 0,
+        totalRevenue: Number(day.totalRevenue || 0),
+        paidOrders: day.paidOrders || 0,
+        pendingOrders: day.pendingOrders || 0,
+        deliveredOrders: day.deliveredOrders || 0,
+        codOrders: day.codOrders || 0,
+        paystackOrders: day.paystackOrders || 0,
+      };
+    });
+
+    res.json({
+      year: targetYear,
+      month: targetMonth,
+      data: calendarMap,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to get calendar data" });
+  }
+});
+
+/* ───────────────────────── ANALYTICS - DAILY DETAILS ───────────────────────── */
+router.get("/analytics/daily", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({ error: "Date is required (YYYY-MM-DD)" });
+    }
+
+    const targetDate = new Date(date);
+    const nextDate = new Date(targetDate);
+    nextDate.setDate(nextDate.getDate() + 1);
+
+    const orders = await Order.find({
+      vendorId: vendorId,
+      createdAt: { $gte: targetDate, $lt: nextDate },
+    })
+      .populate("userId", "name email")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Calculate metrics
+    const metrics = {
+      totalOrders: orders.length,
+      totalRevenue: 0,
+      paidRevenue: 0,
+      pendingRevenue: 0,
+      deliveredRevenue: 0,
+      codCount: 0,
+      paystackCount: 0,
+      pendingOrders: 0,
+      confirmedOrders: 0,
+      preparingOrders: 0,
+      outForDelivery: 0,
+      deliveredOrders: 0,
+    };
+
+    const topProducts = {};
+
+    orders.forEach((order) => {
+      const amount = Number(order.totalAmount || 0);
+      metrics.totalRevenue += amount;
+
+      if (order.paymentStatus === "paid") {
+        metrics.paidRevenue += amount;
+      } else if (order.paymentStatus === "pending") {
+        metrics.pendingRevenue += amount;
+      }
+
+      if (order.paymentMethod === "cash") {
+        metrics.codCount++;
+      } else if (order.paymentMethod === "paystack") {
+        metrics.paystackCount++;
+      }
+
+      // Status counts
+      switch (order.orderStatus) {
+        case "pending":
+          metrics.pendingOrders++;
+          break;
+        case "confirmed":
+          metrics.confirmedOrders++;
+          break;
+        case "preparing":
+          metrics.preparingOrders++;
+          break;
+        case "out_for_delivery":
+          metrics.outForDelivery++;
+          break;
+        case "delivered":
+          metrics.deliveredOrders++;
+          metrics.deliveredRevenue += amount;
+          break;
+      }
+
+      // Top products (vendor-specific)
+      (order.items || []).forEach((item) => {
+        // Only count items from this vendor
+        if (String(item.vendorId) === String(vendorId)) {
+          const key = item.name || "Unknown";
+          if (!topProducts[key]) {
+            topProducts[key] = { name: key, quantity: 0, revenue: 0 };
+          }
+          topProducts[key].quantity += item.quantity || 1;
+          topProducts[key].revenue += (item.price || 0) * (item.quantity || 1);
+        }
+      });
+    });
+
+    // Sort top products
+    const topProductsList = Object.values(topProducts)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    res.json({
+      date,
+      metrics,
+      orders: orders.map((o) => ({
+        _id: o._id,
+        customerName: o.customerName,
+        customerEmail: o.customerEmail,
+        customerPhone: o.customerPhone,
+        totalAmount: o.totalAmount,
+        paymentMethod: o.paymentMethod,
+        paymentStatus: o.paymentStatus,
+        orderStatus: o.orderStatus,
+        createdAt: o.createdAt,
+        items: o.items?.filter((i) => String(i.vendorId) === String(vendorId)),
+      })),
+      topProducts: topProductsList,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to get daily analytics" });
+  }
+});
+
+/* ───────────────────────── ANALYTICS - SUMMARY STATS ───────────────────────── */
+router.get("/analytics/summary", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const { period = "all" } = req.query;
+    let dateFilter = { vendorId: vendorId };
+
+    const now = new Date();
+    switch (period) {
+      case "today":
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        dateFilter.createdAt = { $gte: todayStart };
+        break;
+      case "yesterday":
+        const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        dateFilter.createdAt = { $gte: yesterdayStart, $lt: yesterdayEnd };
+        break;
+      case "7days":
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        dateFilter.createdAt = { $gte: weekAgo };
+        break;
+      case "30days":
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        dateFilter.createdAt = { $gte: monthAgo };
+        break;
+      case "month":
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        dateFilter.createdAt = { $gte: monthStart };
+        break;
+      case "lastMonth":
+        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        dateFilter.createdAt = { $gte: lastMonthStart, $lte: lastMonthEnd };
+        break;
+      default:
+        // "all" - remove date filter for all time
+        delete dateFilter.createdAt;
+        break;
+    }
+
+    // Get totals for this vendor
+    const [
+      totalOrders,
+      totalRevenue,
+      paidOrders,
+      paidRevenue,
+      pendingOrders,
+      codOrders,
+      paystackOrders,
+      deliveredOrders,
+    ] = await Promise.all([
+      Order.countDocuments(dateFilter),
+      Order.aggregate([
+        { $match: dateFilter },
+        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+      ]),
+      Order.countDocuments({ ...dateFilter, paymentStatus: "paid" }),
+      Order.aggregate([
+        { $match: { ...dateFilter, paymentStatus: "paid" } },
+        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+      ]),
+      Order.countDocuments({ ...dateFilter, paymentStatus: "pending" }),
+      Order.countDocuments({ ...dateFilter, paymentMethod: "cash" }),
+      Order.countDocuments({ ...dateFilter, paymentMethod: "paystack" }),
+      Order.countDocuments({ ...dateFilter, orderStatus: "delivered" }),
+    ]);
+
+    // Get average order value
+    const avgOrderValue =
+      totalOrders > 0 ? Number(totalRevenue[0]?.total || 0) / totalOrders : 0;
+
+    res.json({
+      period,
+      totalOrders,
+      totalRevenue: Number(totalRevenue[0]?.total || 0),
+      paidOrders,
+      paidRevenue: Number(paidRevenue[0]?.total || 0),
+      pendingOrders,
+      codOrders,
+      paystackOrders,
+      deliveredOrders,
+      avgOrderValue,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to get summary stats" });
+  }
+});
+
+/* ───────────────────────── ANALYTICS - CHART DATA ───────────────────────── */
+router.get("/analytics/chart", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const { type = "daily", days = 30 } = req.query;
+    const numDays = parseInt(days) || 30;
+    const now = new Date();
+    const startDate = new Date(now.getTime() - numDays * 24 * 60 * 60 * 1000);
+
+    let groupBy;
+    switch (type) {
+      case "weekly":
+        groupBy = {
+          $dateToString: { format: "%Y-W%V", date: "$createdAt" },
+        };
+        break;
+      case "monthly":
+        groupBy = {
+          $dateToString: { format: "%Y-%m", date: "$createdAt" },
+        };
+        break;
+      default:
+        // daily
+        groupBy = {
+          $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+        };
+    }
+
+    const chartData = await Order.aggregate([
+      { $match: { vendorId: vendorId, createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: groupBy,
+          totalOrders: { $sum: 1 },
+          totalRevenue: { $sum: "$totalAmount" },
+          paidOrders: { $sum: { $cond: [{ $eq: ["$paymentStatus", "paid"] }, 1, 0] } },
+          deliveredOrders: { $sum: { $cond: [{ $eq: ["$orderStatus", "delivered"] }, 1, 0] } },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    res.json(chartData.map((d) => ({
+      period: d._id,
+      totalOrders: d.totalOrders,
+      totalRevenue: Number(d.totalRevenue || 0),
+      paidOrders: d.paidOrders,
+      deliveredOrders: d.deliveredOrders,
+    })));
+  } catch (err) {
+    res.status(500).json({ error: "Failed to get chart data" });
+  }
+});
+
 module.exports = router;

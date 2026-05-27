@@ -329,6 +329,23 @@ export const vendorAPI = {
       method: "PATCH",
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  // Analytics
+  getCalendar: (year, month) =>
+    apiRequest(`/vendor/analytics/calendar?year=${year}&month=${month}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getDailyAnalytics: (date) =>
+    apiRequest(`/vendor/analytics/daily?date=${date}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getSummary: (period = "all") =>
+    apiRequest(`/vendor/analytics/summary?period=${period}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getChartData: (type = "daily", days = 30) =>
+    apiRequest(`/vendor/analytics/chart?type=${type}&days=${days}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
 };
 
 /* ── Admin ─────────────────────────────────────────────────────────────────── */
@@ -370,6 +387,23 @@ export const adminAPI = {
     }),
   getOrders: () =>
     apiRequest("/admin/orders", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  // Analytics
+  getCalendar: (year, month) =>
+    apiRequest(`/admin/analytics/calendar?year=${year}&month=${month}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getDailyAnalytics: (date) =>
+    apiRequest(`/admin/analytics/daily?date=${date}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getSummary: (period = "all") =>
+    apiRequest(`/admin/analytics/summary?period=${period}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getChartData: (type = "daily", days = 30) =>
+    apiRequest(`/admin/analytics/chart?type=${type}&days=${days}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
 };

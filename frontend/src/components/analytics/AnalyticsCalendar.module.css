@@ -1,0 +1,197 @@
+/* components/analytics/AnalyticsCalendar.module.css */
+.calendar {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.navBtn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--brand-bg, #fff7ed);
+  border-radius: 8px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--brand-dark, #1c1917);
+  transition: background 0.2s;
+}
+
+.navBtn:hover {
+  background: var(--brand-primary, #f97316);
+  color: white;
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.monthName {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--brand-dark, #1c1917);
+}
+
+.yearName {
+  font-size: 0.85rem;
+  color: var(--brand-muted, #78716c);
+}
+
+.todayBtn {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 12px;
+  background: none;
+  border: 1px solid var(--brand-border, #e5e5e5);
+  border-radius: 6px;
+  color: var(--brand-primary, #f97316);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.todayBtn:hover {
+  background: #fff7ed;
+}
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--brand-muted, #78716c);
+  padding: 4px;
+}
+
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 4px 2px;
+  border-radius: 6px;
+  cursor: default;
+  min-height: 56px;
+  transition: all 0.2s;
+}
+
+.day.otherMonth {
+  opacity: 0.3;
+}
+
+.day.hasOrders {
+  background: #fef3c7;
+  cursor: pointer;
+}
+
+.day.hasOrders:hover {
+  background: #fde68a;
+}
+
+.day.selected {
+  background: var(--brand-primary, #f97316) !important;
+}
+
+.day.selected .dayNumber,
+.day.selected .orderCount,
+.day.selected .revenue {
+  color: white !important;
+}
+
+.dayNumber {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-dark, #1c1917);
+}
+
+.dayStats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.orderCount {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--brand-primary, #f97316);
+  white-space: nowrap;
+}
+
+.revenue {
+  font-size: 0.55rem;
+  color: var(--brand-muted, #78716c);
+  white-space: nowrap;
+}
+
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--brand-border, #e5e5e5);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--brand-muted, #78716c);
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  background: #fef3c7;
+  border-radius: 2px;
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .calendar {
+    padding: 12px;
+  }
+
+  .day {
+    min-height: 48px;
+    padding: 2px;
+  }
+
+  .dayNumber {
+    font-size: 0.75rem;
+  }
+
+  .orderCount {
+    font-size: 0.5rem;
+  }
+
+  .revenue {
+    display: none;
+  }
+}

@@ -1,4 +1,4 @@
-// pages/vendor/VendorDashboard.jsx — v9: Fixed image URLs
+// pages/vendor/VendorDashboard.jsx — v10: Analytics tab
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { vendorAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
@@ -8,6 +8,7 @@ import ImageUpload from "../../components/ImageUpload";
 import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
+import { AnalyticsCalendar, DateFilter, StatsCard } from "../../components/analytics";
 import styles from "./VendorDashboard.module.css";
 import VendorStatusBanner from "../../components/VendorStatusBanner";
 
@@ -164,11 +165,18 @@ export default function VendorDashboard({ addToast, onRequireAuth }) {
         >
           📦 Products
         </button>
+        <button
+          className={`${styles.tab} ${tab === "analytics" ? styles.tabActive : ""}`}
+          onClick={() => setTab("analytics")}
+        >
+          📈 Analytics
+        </button>
       </div>
 
       {tab === "overview" && <VendorOverview addToast={addToast} />}
       {tab === "orders"   && <VendorOrders   addToast={addToast} setImageModal={setImageModal} />}
       {tab === "products" && <VendorProducts addToast={addToast} isOwnProduct={isOwnProduct} />}
+      {tab === "analytics" && <VendorAnalytics addToast={addToast} />}
     </div>
   );
 }
@@ -778,6 +786,236 @@ function VendorProducts({ addToast, isOwnProduct }) {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ───────────────────────────────────────── */
+/* ANALYTICS TAB                             */
+/* ───────────────────────────────────────── */
+function VendorAnalytics({ addToast }) {
+  const { fmt } = useCurrency();
+  const [view, setView] = useState("calendar");
+  const [period, setPeriod] = useState("30days");
+  const [calendarData, setCalendarData] = useState({});
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [dailyData, setDailyData] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [chartData, setChartData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // Fetch calendar data on mount
+  useEffect(() => {
+    const fetchCalendar = async () => {
+      if (!mountedRef.current) return;
+      setLoading(true);
+      try {
+        const now = new Date();
+        const data = await vendorAPI.getCalendar(now.getFullYear(), now.getMonth());
+        if (mountedRef.current) {
+          setCalendarData(data?.data || {});
+        }
+      } catch (err) {
+        if (mountedRef.current) addToast?.(err.message, "error");
+      } finally {
+        if (mountedRef.current) setLoading(false);
+      }
+    };
+    fetchCalendar();
+  }, [addToast]);
+
+  // Handle period change
+  const handlePeriodChange = async (newPeriod) => {
+    if (!mountedRef.current) return;
+    setPeriod(newPeriod);
+    setSummaryLoading(true);
+    try {
+      const data = await vendorAPI.getSummary(newPeriod);
+      if (mountedRef.current) {
+        setSummary(data);
+      }
+    } catch (err) {
+      if (mountedRef.current) addToast?.(err.message, "error");
+    } finally {
+      if (mountedRef.current) setSummaryLoading(false);
+    }
+  };
+
+  // Fetch chart data
+  const handleViewChange = async (newView) => {
+    if (!mountedRef.current) return;
+    setView(newView);
+
+    if (newView === "chart") {
+      setChartLoading(true);
+      try {
+        const data = await vendorAPI.getChartData("daily", 30);
+        if (mountedRef.current) {
+          setChartData(data || []);
+        }
+      } catch (err) {
+        if (mountedRef.current) addToast?.(err.message, "error");
+      } finally {
+        if (mountedRef.current) setChartLoading(false);
+      }
+    } else if (newView === "summary" && !summary) {
+      handlePeriodChange(period);
+    }
+  };
+
+  // Handle date selection
+  const handleDateSelect = async (dateStr) => {
+    if (!mountedRef.current) return;
+    setSelectedDate(dateStr);
+    setDailyLoading(true);
+    try {
+      const data = await vendorAPI.getDailyAnalytics(dateStr);
+      if (mountedRef.current) {
+        setDailyData(data);
+      }
+    } catch (err) {
+      if (mountedRef.current) addToast?.(err.message, "error");
+    } finally {
+      if (mountedRef.current) setDailyLoading(false);
+    }
+  };
+
+  // Initial summary fetch
+  useEffect(() => {
+    handlePeriodChange("30days");
+  }, []);
+
+  return (
+    <div className={styles.analyticsTab}>
+      <div className={styles.analyticsNav}>
+        <button className={`${styles.analyticsBtn} ${view === "calendar" ? styles.analyticsBtnActive : ""}`} onClick={() => handleViewChange("calendar")}>
+          📅 Calendar
+        </button>
+        <button className={`${styles.analyticsBtn} ${view === "summary" ? styles.analyticsBtnActive : ""}`} onClick={() => handleViewChange("summary")}>
+          📊 Summary
+        </button>
+        <button className={`${styles.analyticsBtn} ${view === "chart" ? styles.analyticsBtnActive : ""}`} onClick={() => handleViewChange("chart")}>
+          📈 Charts
+        </button>
+      </div>
+
+      {/* Calendar View */}
+      {view === "calendar" && (
+        <>
+          {loading ? (
+            <div className="loading-center"><div className="spinner" /></div>
+          ) : (
+            <div className={styles.calendarWrap}>
+              <AnalyticsCalendar
+                calendarData={calendarData}
+                onDateSelect={handleDateSelect}
+                selectedDate={selectedDate}
+                fmt={fmt}
+              />
+            </div>
+          )}
+
+          {selectedDate && (
+            <div className={styles.dailyDetails}>
+              <h4 className={styles.dailyTitle}>
+                Orders for {new Date(selectedDate).toLocaleDateString()}
+              </h4>
+              {dailyLoading ? (
+                <div className="loading-center"><div className="spinner" /></div>
+              ) : dailyData ? (
+                <>
+                  <div className={styles.statsGrid}>
+                    <StatsCard icon="🛒" label="Total Orders" value={dailyData.metrics?.totalOrders || 0} />
+                    <StatsCard icon="💰" label="Total Revenue" value={fmt(dailyData.metrics?.totalRevenue || 0)} color="primary" />
+                    <StatsCard icon="✅" label="Paid Revenue" value={fmt(dailyData.metrics?.paidRevenue || 0)} color="success" />
+                    <StatsCard icon="📦" label="Delivered" value={dailyData.metrics?.deliveredOrders || 0} color="info" />
+                  </div>
+
+                  {dailyData.topProducts?.length > 0 && (
+                    <div className={styles.topSection}>
+                      <h5>Top Products</h5>
+                      <div className="table-wrap">
+                        <table className="data-table">
+                          <thead><tr><th>Product</th><th>Qty</th><th>Revenue</th></tr></thead>
+                          <tbody>
+                            {dailyData.topProducts.map((p, i) => (
+                              <tr key={i}>
+                                <td>{p.name}</td>
+                                <td>{p.quantity}</td>
+                                <td>{fmt(p.revenue)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Summary View */}
+      {view === "summary" && (
+        <>
+          <DateFilter onPeriodChange={handlePeriodChange} selectedPeriod={period} />
+          {summaryLoading ? (
+            <div className="loading-center"><div className="spinner" /></div>
+          ) : summary ? (
+            <div className={styles.statsGrid}>
+              <StatsCard icon="💰" label="Total Revenue" value={fmt(summary.totalRevenue || 0)} color="primary" />
+              <StatsCard icon="🛒" label="Total Orders" value={summary.totalOrders || 0} />
+              <StatsCard icon="📦" label="Delivered Orders" value={summary.deliveredOrders || 0} color="success" />
+              <StatsCard icon="⏳" label="Pending Orders" value={summary.pendingOrders || 0} color="warning" />
+              <StatsCard icon="💵" label="COD Orders" value={summary.codOrders || 0} />
+              <StatsCard icon="💳" label="Paystack" value={summary.paystackOrders || 0} color="info" />
+              <StatsCard icon="📈" label="Avg Order Value" value={fmt(summary.avgOrderValue || 0)} />
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">📊</div>
+              <h3>No summary data</h3>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Chart View */}
+      {view === "chart" && (
+        <>
+          {chartLoading ? (
+            <div className="loading-center"><div className="spinner" /></div>
+          ) : chartData.length > 0 ? (
+            <div className={styles.chartWrap}>
+              <h4 className={styles.chartTitle}>Daily Sales (Last 30 Days)</h4>
+              <div className={styles.chartContainer}>
+                {chartData.map((item, i) => (
+                  <div key={i} className={styles.chartBar}>
+                    <div className={styles.barFill} style={{ height: `${Math.min(100, (item.totalRevenue / Math.max(...chartData.map(d => d.totalRevenue))) * 100)}%` }} />
+                    <span className={styles.barLabel}>{item.period?.slice(-5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">📈</div>
+              <h3>No chart data</h3>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

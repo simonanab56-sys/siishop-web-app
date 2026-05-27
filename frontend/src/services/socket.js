@@ -1,7 +1,9 @@
 // services/socket.js - Socket.IO client for delivery tracking
 import { io } from "socket.io-client";
+import { API_BASE } from "../config/api";
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+// Strip /api from URL for socket connection (socket uses root namespace)
+const SOCKET_URL = API_BASE.replace(/\/api$/, "");
 
 class SocketService {
   constructor() {

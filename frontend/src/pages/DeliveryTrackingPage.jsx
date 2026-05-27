@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { deliveryAPI } from "../services/api";
 import { socketService } from "../services/socket";
 import { StatusBadge } from "../components/OrderStatusBadge";
+import { DeliveryTrackingMap } from "../components/maps";
 import styles from "./DeliveryTrackingPage.module.css";
 
 const ORDER_STEPS = [
@@ -30,12 +31,6 @@ export default function DeliveryTrackingPage({ onNavigate }) {
   const [error, setError] = useState(null);
   const [riderLocation, setRiderLocation] = useState(null);
   const [eta, setEta] = useState(null);
-
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const riderMarkerRef = useRef(null);
-  const customerMarkerRef = useRef(null);
-  const directionRendererRef = useRef(null);
 
   const mountedRef = useRef(true);
 
@@ -141,130 +136,6 @@ export default function DeliveryTrackingPage({ onNavigate }) {
     };
   }, [order, orderId, isLoggedIn, user]);
 
-  // Initialize map
-  useEffect(() => {
-    if (!order || typeof window === "undefined") return;
-
-    const initMap = async () => {
-      // Check for Google Maps
-      if (!window.google?.maps) {
-        console.log("[DeliveryTracking] Google Maps not loaded");
-        return;
-      }
-
-      const mapEl = mapRef.current;
-      if (!mapEl) return;
-
-      // Default center (Accra, Ghana)
-      const defaultCenter = { lat: 5.6037, lng: -0.187 };
-
-      const map = new window.google.maps.Map(mapEl, {
-        center: defaultCenter,
-        zoom: 14,
-        disableDefaultUI: true,
-        zoomControl: true,
-        fullscreenControl: true,
-      });
-
-      mapInstanceRef.current = map;
-
-      // Customer marker (destination)
-      if (order.deliveryAddressCoords?.lat) {
-        customerMarkerRef.current = new window.google.maps.Marker({
-          position: {
-            lat: order.deliveryAddressCoords.lat,
-            lng: order.deliveryAddressCoords.lng,
-          },
-          map,
-          title: "Delivery Location",
-          icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 10,
-            fillColor: "#22c55e",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-          },
-        });
-        map.setCenter(customerMarkerRef.current.getPosition());
-      }
-
-      // Rider marker
-      if (riderLocation?.lat) {
-        riderMarkerRef.current = new window.google.maps.Marker({
-          position: { lat: riderLocation.lat, lng: riderLocation.lng },
-          map,
-          title: "Rider",
-          icon: {
-            path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z",
-            fillColor: "#f97316",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-            scale: 1.5,
-            anchor: new window.google.maps.Point(12, 24),
-          },
-        });
-
-        // Draw route
-        if (customerMarkerRef.current) {
-          const directionsService = new window.google.maps.DirectionsService();
-          const directionsRenderer = new window.google.maps.DirectionsRenderer({
-            map,
-            suppressMarkers: true,
-            polylineOptions: {
-              strokeColor: "#f97316",
-              strokeWeight: 4,
-            },
-          });
-
-          directionsService.route(
-            {
-              origin: { lat: riderLocation.lat, lng: riderLocation.lng },
-              destination: customerMarkerRef.current.getPosition(),
-              travelMode: window.google.maps.TravelMode.DRIVING,
-            },
-            (result, status) => {
-              if (status === "OK") {
-                directionsRenderer.setDirections(result);
-                directionRendererRef.current = directionsRenderer;
-              }
-            }
-          );
-        }
-      }
-    };
-
-    initMap();
-  }, [order]);
-
-  // Update rider marker when location changes
-  useEffect(() => {
-    if (!riderLocation?.lat || !riderMarkerRef.current) return;
-
-    riderMarkerRef.current.setPosition({
-      lat: riderLocation.lat,
-      lng: riderLocation.lng,
-    });
-
-    // Also update route if renderer exists
-    if (directionRendererRef.current && customerMarkerRef.current) {
-      const directionsService = new window.google.maps.DirectionsService();
-      directionsService.route(
-        {
-          origin: { lat: riderLocation.lat, lng: riderLocation.lng },
-          destination: customerMarkerRef.current.getPosition(),
-          travelMode: window.google.maps.TravelMode.DRIVING,
-        },
-        (result, status) => {
-          if (status === "OK") {
-            directionRendererRef.current.setDirections(result);
-          }
-        }
-      );
-    }
-  }, [riderLocation]);
-
   const getStepIndex = (status) => {
     return ORDER_STEPS.findIndex((s) => s.key === status);
   };
@@ -339,7 +210,12 @@ export default function DeliveryTrackingPage({ onNavigate }) {
       {/* Map Section */}
       {isOutForDelivery && (
         <div className={styles.mapContainer}>
-          <div ref={mapRef} className={styles.map} />
+          <DeliveryTrackingMap
+            riderLocation={riderLocation}
+            customerLocation={order.deliveryAddressCoords}
+            vendorLocation={null}
+            height="250px"
+          />
           <div className={styles.mapOverlay}>
             {eta && (
               <div className={styles.etaBadge}>

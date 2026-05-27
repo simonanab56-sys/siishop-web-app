@@ -1,12 +1,13 @@
 // ProductDetailPage.jsx — Product detail page with gallery
 import { useState, useEffect, useCallback, useRef } from "react";
 import { productAPI } from "../services/api";
+import { chatAPIConversations } from "../services/chatApi";
 import { useCurrency } from "../context/CurrencyContext";
 import ProductGallery from "../components/ProductGallery";
 import GalleryModal from "../components/GalleryModal";
 import styles from "./ProductDetailPage.module.css";
 
-export default function ProductDetailPage({ product: initialProduct, productId, onBack, onAddToCart }) {
+export default function ProductDetailPage({ product: initialProduct, productId, onBack, onAddToCart, onNavigate }) {
   const { fmt } = useCurrency();
   const [product, setProduct] = useState(initialProduct);
   const [loading, setLoading] = useState(!initialProduct);
@@ -201,6 +202,25 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
               disabled={isOutOfStock}
             >
               {isOutOfStock ? "Out of Stock" : "Add to Cart"}
+            </button>
+
+            <button
+              className={`btn btn-outline ${styles.addToCartBtn}`}
+              onClick={async () => {
+                try {
+                  const res = await chatAPIConversations.create({
+                    participantId: product.vendorId?._id || product.vendorId,
+                    productId: product._id,
+                  });
+                  if (res.data.success) {
+                    onNavigate?.("chat");
+                  }
+                } catch (err) {
+                  console.error("Failed to start chat:", err);
+                }
+              }}
+            >
+              💬 Ask Vendor
             </button>
           </div>
         </div>

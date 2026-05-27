@@ -1,6 +1,7 @@
 // pages/OrdersPage.jsx — v5: Fixed image URLs
 import { useState, useEffect, useCallback, useRef } from "react";
 import { orderAPI } from "../services/api";
+import { chatAPIConversations } from "../services/chatApi";
 import { useAuth } from "../context/AuthContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { getImageUrl } from "../utils/image";
@@ -184,6 +185,26 @@ export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
                     </button>
                   </div>
                 )}
+
+                {/* Message Vendor Button */}
+                <div style={{ marginTop: 12 }}>
+                  <button
+                    className="btn btn-outline"
+                    style={{ width: "100%" }}
+                    onClick={async () => {
+                      try {
+                        const res = await chatAPIConversations.createForOrder(selectedOrder._id);
+                        if (res.data.success) {
+                          onNavigate?.("chat");
+                        }
+                      } catch (err) {
+                        console.error("Failed to start chat:", err);
+                      }
+                    }}
+                  >
+                    💬 Message Vendor
+                  </button>
+                </div>
 
                 <div className={styles.divider} />
 

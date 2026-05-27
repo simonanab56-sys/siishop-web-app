@@ -230,13 +230,201 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ─────────────────────────────────────────────────────────
+  // CHAT SOCKET EVENTS
+  // ─────────────────────────────────────────────────────────
+
+  // User joins chat (authenticated)
+  socket.on("chat-join", async (data) => {
+    const { userId, conversationId } = data;
+    if (userId && conversationId) {
+      // Join user's personal room
+      socket.join(`user:${userId}`);
+
+      // Join conversation room
+      socket.join(`chat:${conversationId}`);
+
+      // Update user's online status
+      await User.findByIdAndUpdate(userId, {
+        isOnline: true,
+        lastSeen: new Date(),
+      });
+
+      // Notify others that user is online
+      socket.broadcast.emit("user-online", { userId });
+
+      console.log(`[Chat] User ${userId} joined chat ${conversationId}`);
+    }
+  });
+
+  // User leaves chat
+  socket.on("chat-leave", async (data) => {
+    const { userId, conversationId } = data;
+    if (userId && conversationId) {
+      socket.leave(`chat:${conversationId}`);
+
+      // Update user's online status
+      await User.findByIdAndUpdate(userId, {
+        isOnline: false,
+        lastSeen: new Date(),
+      });
+
+      // Notify others
+      socket.broadcast.emit("user-offline", { userId });
+    }
+  });
+
+  // Send chat message
+  socket.on("chat-message", async (data) => {
+    const { conversationId, senderId, text, messageType, metadata } = data;
+    if (conversationId && senderId && text) {
+      const Conversation = require("./models/Conversation");
+      const Message = require("./models/Message");
+
+      // Get conversation
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) return;
+
+      // Create message
+      const sender = await User.findById(senderId);
+      const senderRole = sender.isVendor ? "vendor" : sender.isAdmin ? "admin" : sender.isRider ? "rider" : "customer";
+
+      const message = await Message.create({
+        conversationId,
+        senderId,
+        senderRole,
+        messageType: messageType || "text",
+        text,
+        metadata,
+        deliveredStatus: conversation.participants.map((p) => ({
+          userId: p.userId,
+          deliveredAt: new Date(),
+        })),
+      });
+
+      await message.populate("senderId", "name email avatar");
+
+      // Update conversation
+      conversation.lastMessage = {
+        text: text.substring(0, 100),
+        senderId,
+        messageType: messageType || "text",
+        createdAt: message.createdAt,
+      };
+
+      for (const participant of conversation.participants) {
+        if (participant.userId.toString() !== senderId.toString()) {
+          const unreadEntry = conversation.unreadCounts.find(
+            (u) => u.userId.toString() === participant.userId.toString()
+          );
+          if (unreadEntry) {
+            unreadEntry.count += 1;
+          }
+        }
+      }
+
+      await conversation.save();
+
+      // Emit to conversation room
+      io.to(`chat:${conversationId}`).emit("chat-message", {
+        conversationId,
+        message: message.toObject(),
+      });
+
+      // Also emit personal notification
+      for (const participant of conversation.participants) {
+        if (participant.userId.toString() !== senderId.toString()) {
+          io.to(`user:${participant.userId}`).emit("chat-notification", {
+            conversationId,
+            message: message.toObject(),
+            senderId,
+          });
+        }
+      }
+    }
+  });
+
+  // Typing indicator
+  socket.on("chat-typing", (data) => {
+    const { conversationId, userId, userName } = data;
+    if (conversationId && userId) {
+      socket.to(`chat:${conversationId}`).emit("chat-typing", {
+        conversationId,
+        userId,
+        userName,
+        isTyping: true,
+      });
+    }
+  });
+
+  // Stop typing
+  socket.on("chat-typing-stop", (data) => {
+    const { conversationId, userId } = data;
+    if (conversationId && userId) {
+      socket.to(`chat:${conversationId}`).emit("chat-typing", {
+        conversationId,
+        userId,
+        isTyping: false,
+      });
+    }
+  });
+
+  // Message read receipt
+  socket.on("chat-read", async (data) => {
+    const { conversationId, userId } = data;
+    if (conversationId && userId) {
+      const Message = require("./models/Message");
+
+      // Mark messages as read
+      const unreadMessages = await Message.find({
+        conversationId,
+        "readStatus.userId": { $ne: userId },
+        senderId: { $ne: userId },
+        isDeleted: false,
+      });
+
+      for (const msg of unreadMessages) {
+        msg.readStatus.push({ userId });
+        await msg.save();
+      }
+
+      // Emit read receipt
+      socket.to(`chat:${conversationId}`).emit("chat-read", {
+        conversationId,
+        readBy: userId,
+        messageCount: unreadMessages.length,
+      });
+    }
+  });
+
   // Disconnect
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     console.log(`[Socket] Client disconnected: ${socket.id}`);
+
+    // Handle rider disconnect
     for (const [riderId, rider] of activeRiders) {
       if (rider.socketId === socket.id) {
         activeRiders.delete(riderId);
         console.log(`[Socket] Rider disconnected: ${riderId}`);
+        break;
+      }
+    }
+
+    // Handle user chat disconnect - set offline
+    // We need to find the user by their socket rooms
+    const userRooms = Array.from(socket.rooms);
+    for (const room of userRooms) {
+      if (room.startsWith("user:")) {
+        const userId = room.replace("user:", "");
+        try {
+          await User.findByIdAndUpdate(userId, {
+            isOnline: false,
+            lastSeen: new Date(),
+          });
+          socket.broadcast.emit("user-offline", { userId });
+        } catch (e) {
+          // Ignore errors
+        }
         break;
       }
     }
@@ -246,6 +434,12 @@ io.on("connection", (socket) => {
 app.set("io", io);
 app.set("activeRiders", activeRiders);
 console.log("✅ Socket.IO initialized");
+
+// Middleware to attach io to requests
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
 
 /* ───────────────────────── COOKIE PARSER ───────────────────────── */
 app.use(cookieParser());
@@ -289,6 +483,7 @@ app.use("/api/admin",    require("./routes/admin"));
 app.use("/api/promos",   require("./routes/promos"));
 app.use("/api/contact",  require("./routes/contact"));
 app.use("/api/delivery", require("./routes/delivery"));
+app.use("/api/chat",     require("./routes/chat"));
 
 /* ───────────────────────── SECURITY HEADERS ───────────────────────── */
 app.use((req, res, next) => {

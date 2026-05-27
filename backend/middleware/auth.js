@@ -19,16 +19,23 @@ async function requireAuth(req, res, next) {
     }
 
     const token = extractToken(req);
-    if (!token) return res.status(401).json({ message: "Auth required" });
+    console.log("[AUTH] Token extracted:", token ? "present" : "missing");
+    if (!token) {
+      console.log("[AUTH] No token found, headers:", req.headers.authorization);
+      return res.status(401).json({ message: "Auth required" });
+    }
 
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch {
+      console.log("[AUTH] Decoded token:", decoded);
+    } catch (err) {
+      console.log("[AUTH] Token verification failed:", err.message);
       return res.status(401).json({ message: "Invalid token" });
     }
 
     const user = await User.findById(decoded.userId).lean();
+    console.log("[AUTH] User found:", user ? user.name : "NOT FOUND");
     if (!user) return res.status(401).json({ message: "User not found" });
 
     req.user = {

@@ -86,6 +86,52 @@ class SocketService {
     }
   }
 
+  // ─────────────────────────────────────────────────────────
+  // CHAT METHODS
+  // ─────────────────────────────────────────────────────────
+
+  // Join chat conversation
+  chatJoin(userId, conversationId) {
+    if (this.socket?.connected) {
+      this.socket.emit("chat-join", { userId, conversationId });
+    }
+  }
+
+  // Leave chat conversation
+  chatLeave(userId, conversationId) {
+    if (this.socket?.connected) {
+      this.socket.emit("chat-leave", { userId, conversationId });
+    }
+  }
+
+  // Send chat message
+  chatSend(data) {
+    if (this.socket?.connected) {
+      this.socket.emit("chat-message", data);
+    }
+  }
+
+  // Send typing indicator
+  chatTyping(conversationId, userId, userName) {
+    if (this.socket?.connected) {
+      this.socket.emit("chat-typing", { conversationId, userId, userName });
+    }
+  }
+
+  // Stop typing indicator
+  chatTypingStop(conversationId, userId) {
+    if (this.socket?.connected) {
+      this.socket.emit("chat-typing-stop", { conversationId, userId });
+    }
+  }
+
+  // Mark messages as read
+  chatRead(conversationId, userId) {
+    if (this.socket?.connected) {
+      this.socket.emit("chat-read", { conversationId, userId });
+    }
+  }
+
   // Listen to events
   on(event, callback) {
     if (this.socket) {

@@ -18,6 +18,7 @@ export default function MobileLayoutWrapper({
   isApprovedVendor,
   onSearch,
   searchQuery,
+  chatUnreadCount = 0,
 }) {
   const isMobile = useIsMobile();
   const { logout } = useAuth();
@@ -188,6 +189,7 @@ export default function MobileLayoutWrapper({
     <>
       <Navbar
         cartCount={cartCount}
+        chatUnreadCount={chatUnreadCount}
         currentPage={currentPage}
         onNavigate={onNavigate}
         onOpenAuth={onOpenAuth}

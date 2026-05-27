@@ -49,7 +49,15 @@ const userSchema = new mongoose.Schema(
     /* ── OAuth Fields ── */
     googleId: String,
     appleId: String,
-    
+
+    /* ── Chat Status ── */
+    isOnline: { type: Boolean, default: false },
+    lastSeen: { type: Date, default: null },
+    chatSettings: {
+      notificationsEnabled: { type: Boolean, default: true },
+      soundEnabled: { type: Boolean, default: true },
+    },
+
     /* ── Vendor Revenue Tracking ── */
     revenue: {
       type: Number,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, Grid3X3, Store, ShoppingCart, User, LogOut, Package, Store as StoreIcon, Settings, X } from "lucide-react";
+import { Home, Grid3X3, Store, ShoppingCart, User, LogOut, Package, Store as StoreIcon, Settings, X, MessageCircle } from "lucide-react";
 import styles from "./MobileBottomNav.module.css";
 
 const BASE_NAV_ITEMS = [
@@ -121,6 +121,11 @@ export default function MobileBottomNav({
             </div>
 
             <div className={styles.menuItems}>
+              <button className={styles.menuItem} onClick={() => handleNav("chat")}>
+                <MessageCircle size={20} />
+                <span>Messages</span>
+              </button>
+
               <button className={styles.menuItem} onClick={() => handleNav("orders")}>
                 <Package size={20} />
                 <span>My Orders</span>

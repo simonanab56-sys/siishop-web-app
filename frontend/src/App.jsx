@@ -23,6 +23,8 @@ import TermsPage from "./pages/TermsPage";
 import RefundPolicyPage from "./pages/RefundPolicyPage";
 import FAQPage from "./pages/FAQPage";
 import DeliveryTrackingPage from "./pages/DeliveryTrackingPage";
+import ChatPage from "./pages/ChatPage";
+import { ChatProvider, useChat } from "./components/chat/ChatContext";
 
 // ── Global Error Boundary ─────────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -73,6 +75,7 @@ function AuthGuard({ children }) {
 // ── Main App inner ────────────────────────────────────────────────────────────
 function AppInner() {
   const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
+  const { unreadCount: chatUnreadCount } = useChat();
   const [page, setPage] = useState(() => {
     return localStorage.getItem("app_page") || "home";
   });
@@ -249,6 +252,7 @@ function AppInner() {
             productId={selectedProduct?._id}
             onBack={handleBackFromProduct}
             onAddToCart={addToCart}
+            onNavigate={setPage}
           />
         );
       case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} />;
@@ -265,6 +269,7 @@ function AppInner() {
       case "refund": return <RefundPolicyPage />;
       case "faq": return <FAQPage />;
       case "delivery-tracking": return <DeliveryTrackingPage onNavigate={setPage} />;
+      case "chat": return <ChatPage onNavigate={setPage} />;
       default: return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
     }
   }
@@ -272,6 +277,7 @@ function AppInner() {
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <MobileLayoutWrapper
         cartCount={cartCount}
+        chatUnreadCount={chatUnreadCount}
         currentPage={page}
         onNavigate={setPage}
         onOpenAuth={() => onRequireAuth("login")}
@@ -296,9 +302,11 @@ export default function App() {
     <ErrorBoundary>
       <CurrencyProvider>
         <AuthProvider>
-          <AuthGuard>
-            <AppInner />
-          </AuthGuard>
+          <ChatProvider>
+            <AuthGuard>
+              <AppInner />
+            </AuthGuard>
+          </ChatProvider>
         </AuthProvider>
       </CurrencyProvider>
     </ErrorBoundary>

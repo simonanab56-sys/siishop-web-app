@@ -7,7 +7,7 @@ import styles          from "./Navbar.module.css";
 
 const DEBOUNCE_MS = 100; // Fast response for instant filtering
 
-export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth, onSearch, searchQuery }) {
+export default function Navbar({ cartCount, chatUnreadCount = 0, currentPage, onNavigate, onOpenAuth, onSearch, searchQuery }) {
   const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
   const { currency, setCurrency, currencies }      = useCurrency();
   const [menuOpen, setMenuOpen]       = useState(false);
@@ -167,6 +167,15 @@ export default function Navbar({ cartCount, currentPage, onNavigate, onOpenAuth,
             {cartCount > 0 && <span className={styles.cartBadge}>{cartCount > 99 ? "99+" : cartCount}</span>}
             <span className={styles.cartLabel}>Cart</span>
           </button>
+
+          {/* Messages/Chat */}
+          {isLoggedIn && (
+            <button className={styles.cartBtn} onClick={() => nav("chat")}>
+              <span>💬</span>
+              {chatUnreadCount > 0 && <span className={styles.cartBadge}>{chatUnreadCount > 99 ? "99+" : chatUnreadCount}</span>}
+              <span className={styles.cartLabel}>Messages</span>
+            </button>
+          )}
 
           {/* Auth */}
           {isLoggedIn

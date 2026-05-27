@@ -53,7 +53,7 @@ function getItemImage(item) {
   return getImageUrl(img);
 }
 
-export default function OrdersPage({ addToast, onRequireAuth }) {
+export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
   const { isLoggedIn } = useAuth();
   const { fmt }        = useCurrency();
   const [orders,      setOrders]      = useState([]);
@@ -168,6 +168,23 @@ export default function OrdersPage({ addToast, onRequireAuth }) {
                 </div>
 
                 <OrderTracker orderStatus={selectedOrder.orderStatus || "pending"} />
+
+                {/* Track Delivery Button - Show when order is out for delivery */}
+                {selectedOrder.orderStatus === "out_for_delivery" && (
+                  <div style={{ marginTop: 16 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: "100%" }}
+                      onClick={() => {
+                        sessionStorage.setItem("trackingOrderId", selectedOrder._id);
+                        onNavigate?.("delivery-tracking");
+                      }}
+                    >
+                      🚴 Track Delivery
+                    </button>
+                  </div>
+                )}
+
                 <div className={styles.divider} />
 
                 <div className={styles.infoGrid}>

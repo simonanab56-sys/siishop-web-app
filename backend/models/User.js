@@ -8,6 +8,12 @@ const userSchema = new mongoose.Schema(
     password: { type: String, select: false },
     isAdmin: { type: Boolean, default: false },
     isVendor: { type: Boolean, default: false },
+    isRider: { type: Boolean, default: false },
+    riderStatus: {
+      type: String,
+      enum: ["inactive", "active", "busy"],
+      default: "inactive",
+    },
     storeName: String,
     storeDescription: String,
     storeLogo: String,

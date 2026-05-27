@@ -55,6 +55,25 @@ const orderSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    /* ── Delivery Tracking Fields ── */
+    riderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+    riderLocation: {
+      lat: Number,
+      lng: Number,
+      speed: Number,
+      heading: Number,
+      updatedAt: Date,
+    },
+    deliveryStartedAt: Date,
+    deliveredAt: Date,
+    estimatedArrival: Date,
+    deliveryAddressCoords: {
+      lat: Number,
+      lng: Number,
+      address: String,
+    },
+    liveTrackingEnabled: { type: Boolean, default: false },
+    deliveryCode: String, // For COD verification
   },
   { timestamps: true }
 );
@@ -79,4 +98,7 @@ orderSchema.index({ paymentStatus: 1 });          // For payment queries
 orderSchema.index({ orderStatus: 1 });            // For status queries
 orderSchema.index({ createdAt: -1 });             // For sorting by date
 orderSchema.index({ "items.vendorId": 1 });      // For vendor order queries
+// ✅ Delivery indexes
+orderSchema.index({ riderId: 1, orderStatus: 1 }); // For rider orders
+orderSchema.index({ deliveryStartedAt: -1 });     // For delivery monitoring
 module.exports = mongoose.model("Order", orderSchema);

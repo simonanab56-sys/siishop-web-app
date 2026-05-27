@@ -22,6 +22,7 @@ import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsPage from "./pages/TermsPage";
 import RefundPolicyPage from "./pages/RefundPolicyPage";
 import FAQPage from "./pages/FAQPage";
+import DeliveryTrackingPage from "./pages/DeliveryTrackingPage";
 
 // ── Global Error Boundary ─────────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -252,7 +253,7 @@ function AppInner() {
         );
       case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} />;
       case "cart": return <CartPage cart={cart} onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeFromCart} onClearCart={clearCart} onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} />;
-      case "orders": return <OrdersPage addToast={addToast} onRequireAuth={onRequireAuth} />;
+      case "orders": return <OrdersPage addToast={addToast} onRequireAuth={onRequireAuth} onNavigate={setPage} />;
       case "settings": return <SettingsPage addToast={addToast} />;
       case "reset-password": return <ResetPasswordPage addToast={addToast} onNavigate={setPage} />;
       case "vendor": return <VendorDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
@@ -263,6 +264,7 @@ function AppInner() {
       case "terms": return <TermsPage />;
       case "refund": return <RefundPolicyPage />;
       case "faq": return <FAQPage />;
+      case "delivery-tracking": return <DeliveryTrackingPage onNavigate={setPage} />;
       default: return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
     }
   }

@@ -448,3 +448,60 @@ export const webhookAPI = {
       body: JSON.stringify(body),
     }),
 };
+
+/* ── Delivery Tracking ─────────────────────────────────────────────────────────── */
+export const deliveryAPI = {
+  trackOrder: (orderId) =>
+    apiRequest(`/delivery/track/${orderId}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  updateLocation: (data) =>
+    apiRequest("/delivery/update-location", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getETA: (orderId) =>
+    apiRequest(`/delivery/eta/${orderId}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  // Rider APIs
+  getRiderOrders: (status) => {
+    const query = status ? `?status=${status}` : "";
+    return apiRequest(`/delivery/rider/orders${query}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+  },
+  startDelivery: (orderId) =>
+    apiRequest("/delivery/rider/start-delivery", {
+      method: "POST",
+      body: JSON.stringify({ orderId }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  completeDelivery: (orderId, deliveryCode) =>
+    apiRequest("/delivery/rider/complete-delivery", {
+      method: "POST",
+      body: JSON.stringify({ orderId, deliveryCode }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  // Admin APIs
+  assignRider: (orderId, riderId) =>
+    apiRequest("/delivery/assign-rider", {
+      method: "POST",
+      body: JSON.stringify({ orderId, riderId }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getAdminLive: () =>
+    apiRequest("/delivery/admin/live", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  getRiders: () =>
+    apiRequest("/delivery/admin/riders", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  // Vendor APIs
+  getVendorLive: () =>
+    apiRequest("/delivery/vendor/live", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+};

@@ -1,0 +1,309 @@
+/* pages/DeliveryTrackingPage.module.css */
+.page {
+  padding: 20px 0 80px;
+}
+
+.header {
+  margin-bottom: 20px;
+}
+
+.backBtn {
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin-bottom: 4px;
+}
+
+.orderId {
+  font-size: 0.9rem;
+  color: var(--brand-muted);
+}
+
+/* Map */
+.mapContainer {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.map {
+  width: 100%;
+  height: 250px;
+  background: #f0f0f0;
+}
+
+.mapOverlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+}
+
+.etaBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 10px 14px;
+  border-radius: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.etaIcon {
+  font-size: 1.2rem;
+}
+
+.etaTime {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+}
+
+.etaDistance {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--brand-muted);
+}
+
+/* Timeline */
+.timeline {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 0 8px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  flex: 1;
+}
+
+.step:not(:last-child) {
+  flex: 1;
+}
+
+.stepIcon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-border);
+  border-radius: 50%;
+  font-size: 1.2rem;
+  z-index: 1;
+  transition: all 0.3s;
+}
+
+.step.completed .stepIcon {
+  background: var(--brand-primary);
+}
+
+.step.current .stepIcon {
+  background: var(--brand-primary);
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.2);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(249, 115, 22, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+  }
+}
+
+.stepLabel {
+  margin-top: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--brand-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.step.completed .stepLabel {
+  color: var(--brand-primary);
+}
+
+.stepLine {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--brand-border);
+  z-index: 0;
+}
+
+.stepLine.completed {
+  background: var(--brand-primary);
+}
+
+/* Order Card */
+.orderCard {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  margin-bottom: 16px;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--brand-border);
+}
+
+.cardHeader h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+}
+
+.orderInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.infoLabel {
+  font-size: 0.85rem;
+  color: var(--brand-muted);
+}
+
+.infoValue {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-dark);
+  text-align: right;
+  max-width: 60%;
+}
+
+/* Rider Info */
+.riderInfo {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--brand-border);
+}
+
+.riderInfo h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--brand-dark);
+  margin-bottom: 12px;
+}
+
+.riderDetails {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.riderAvatar {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-bg);
+  border-radius: 50%;
+  font-size: 1.5rem;
+}
+
+.riderText {
+  display: flex;
+  flex-direction: column;
+}
+
+.riderName {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--brand-dark);
+}
+
+.riderPhone {
+  font-size: 0.85rem;
+  color: var(--brand-primary);
+  text-decoration: none;
+}
+
+/* Delivered Message */
+.deliveredMessage {
+  text-align: center;
+  padding: 32px;
+  background: #dcfce7;
+  border-radius: 12px;
+  margin-top: 16px;
+}
+
+.deliveredIcon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+
+.deliveredMessage h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #166534;
+  margin-bottom: 8px;
+}
+
+.deliveredMessage p {
+  color: #15803d;
+}
+
+/* Mobile Responsive */
+@media (max-width: 480px) {
+  .map {
+    height: 200px;
+  }
+
+  .timeline {
+    padding: 0;
+  }
+
+  .stepLabel {
+    font-size: 0.6rem;
+  }
+
+  .stepIcon {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+
+  .stepLine {
+    top: 16px;
+  }
+}

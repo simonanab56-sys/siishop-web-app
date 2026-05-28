@@ -781,18 +781,36 @@ router.get("/admin/conversations", requireAuth, async (req, res) => {
       query.conversationType = type;
     }
 
+    // Search by participant name or store name
+    if (search) {
+      const users = await User.find({
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { storeName: { $regex: search, $options: "i" } },
+        ],
+      }).select("_id");
+
+      const userIds = users.map((u) => u._id);
+      query["participants.userId"] = { $in: userIds };
+    }
+
     const conversations = await Conversation.find(query)
       .sort({ updatedAt: -1 })
       .skip(parseInt(skip))
       .limit(parseInt(limit))
       .populate("participants.userId", "name email phone storeName isVendor isAdmin")
       .populate("orderId", "orderNumber status")
+      .populate("productId", "name images price")
       .lean();
+
+    // Get total count
+    const total = await Conversation.countDocuments(query);
 
     res.json({
       success: true,
       conversations,
       pagination: {
+        total,
         limit: parseInt(limit),
         skip: parseInt(skip),
       },
@@ -800,6 +818,120 @@ router.get("/admin/conversations", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("[Chat] Admin conversations error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch conversations" });
+  }
+});
+
+// GET /api/chat/admin/conversations/:id - Admin view single conversation with messages
+router.get("/admin/conversations/:id", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user.isAdmin) {
+      return res.status(403).json({ success: false, message: "Admin access required" });
+    }
+
+    const { id } = req.params;
+
+    const conversation = await Conversation.findById(id)
+      .populate("participants.userId", "name email phone avatar storeName isVendor isAdmin isOnline lastSeen")
+      .populate("orderId")
+      .populate("productId", "name images price")
+      .lean();
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: "Conversation not found" });
+    }
+
+    // Get messages for this conversation
+    const messages = await Message.find({ conversationId: id })
+      .sort({ createdAt: 1 })
+      .populate("senderId", "name email phone avatar storeName isVendor")
+      .lean();
+
+    res.json({
+      success: true,
+      conversation,
+      messages,
+    });
+  } catch (error) {
+    console.error("[Chat] Admin conversation detail error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch conversation" });
+  }
+});
+
+// GET /api/chat/admin/messages/:conversationId - Admin view messages in a conversation
+router.get("/admin/messages/:conversationId", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user.isAdmin) {
+      return res.status(403).json({ success: false, message: "Admin access required" });
+    }
+
+    const { conversationId } = req.params;
+    const { limit = 100, skip = 0 } = req.query;
+
+    const messages = await Message.find({ conversationId })
+      .sort({ createdAt: -1 })
+      .skip(parseInt(skip))
+      .limit(parseInt(limit))
+      .populate("senderId", "name email phone storeName isVendor")
+      .lean();
+
+    // Reverse to show chronological order
+    messages.reverse();
+
+    res.json({
+      success: true,
+      messages,
+    });
+  } catch (error) {
+    console.error("[Chat] Admin messages error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch messages" });
+  }
+});
+
+// GET /api/chat/admin/stats - Admin chat statistics
+router.get("/admin/stats", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user.isAdmin) {
+      return res.status(403).json({ success: false, message: "Admin access required" });
+    }
+
+    // Get total conversations
+    const totalConversations = await Conversation.countDocuments({ isActive: true });
+
+    // Get total messages
+    const totalMessages = await Message.countDocuments();
+
+    // Get messages today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const messagesToday = await Message.countDocuments({ createdAt: { $gte: today } });
+
+    // Get conversations today
+    const conversationsToday = await Conversation.countDocuments({
+      createdAt: { $gte: today },
+      isActive: true,
+    });
+
+    // Get active users (sent messages in last 24h)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const activeUsers = await Message.distinct("senderId", { createdAt: { $gte: yesterday } });
+
+    res.json({
+      success: true,
+      stats: {
+        totalConversations,
+        totalMessages,
+        messagesToday,
+        conversationsToday,
+        activeUsers: activeUsers.length,
+      },
+    });
+  } catch (error) {
+    console.error("[Chat] Admin stats error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch stats" });
   }
 });
 

@@ -64,6 +64,23 @@ export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
   const [imageModal, setImageModal] = useState({ src: "", alt: "" });
   const mountedRef = useRef(true);
 
+  // Handle message vendor - require authentication
+  const handleMessageVendor = useCallback(async (orderId) => {
+    if (!isLoggedIn) {
+      onRequireAuth?.();
+      return;
+    }
+
+    try {
+      const res = await chatAPIConversations.createForOrder(orderId);
+      if (res.data.success) {
+        onNavigate?.("chat");
+      }
+    } catch (err) {
+      console.error("Failed to start chat:", err);
+    }
+  }, [isLoggedIn, onNavigate, onRequireAuth]);
+
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const fetchOrders = useCallback(async (silent = false) => {
@@ -191,16 +208,7 @@ export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
                   <button
                     className="btn btn-outline"
                     style={{ width: "100%" }}
-                    onClick={async () => {
-                      try {
-                        const res = await chatAPIConversations.createForOrder(selectedOrder._id);
-                        if (res.data.success) {
-                          onNavigate?.("chat");
-                        }
-                      } catch (err) {
-                        console.error("Failed to start chat:", err);
-                      }
-                    }}
+                    onClick={() => handleMessageVendor(selectedOrder._id)}
                   >
                     💬 Message Vendor
                   </button>

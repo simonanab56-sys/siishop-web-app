@@ -15,6 +15,7 @@ import StoresPage from "./pages/StoresPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import VendorDashboard from "./pages/vendor/VendorDashboard";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminChatPage from "./pages/admin/AdminChatPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import AboutPage from "./pages/AboutPage";
 import ContactPage from "./pages/ContactPage";
@@ -253,6 +254,7 @@ function AppInner() {
             onBack={handleBackFromProduct}
             onAddToCart={addToCart}
             onNavigate={setPage}
+            onRequireAuth={onRequireAuth}
           />
         );
       case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} />;
@@ -270,6 +272,7 @@ function AppInner() {
       case "faq": return <FAQPage />;
       case "delivery-tracking": return <DeliveryTrackingPage onNavigate={setPage} />;
       case "chat": return <ChatPage onNavigate={setPage} />;
+      case "admin-chat": return <AdminChatPage onNavigate={setPage} addToast={addToast} />;
       default: return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
     }
   }

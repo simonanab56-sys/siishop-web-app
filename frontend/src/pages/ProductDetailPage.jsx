@@ -7,7 +7,7 @@ import ProductGallery from "../components/ProductGallery";
 import GalleryModal from "../components/GalleryModal";
 import styles from "./ProductDetailPage.module.css";
 
-export default function ProductDetailPage({ product: initialProduct, productId, onBack, onAddToCart, onNavigate }) {
+export default function ProductDetailPage({ product: initialProduct, productId, onBack, onAddToCart, onNavigate, onRequireAuth }) {
   const { fmt } = useCurrency();
   const [product, setProduct] = useState(initialProduct);
   const [loading, setLoading] = useState(!initialProduct);
@@ -87,6 +87,33 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
   const handleCloseModal = useCallback(() => {
     setShowModal(false);
   }, []);
+
+  // Handle message vendor - require authentication
+  const handleMessageVendor = useCallback(async () => {
+    if (!onRequireAuth) {
+      // Fallback: require auth directly
+      onRequireAuth?.();
+      return;
+    }
+
+    // Try to start chat - backend will return 401 if not logged in
+    try {
+      const res = await chatAPIConversations.create({
+        participantId: product.vendorId?._id || product.vendorId,
+        productId: product._id,
+      });
+      if (res.data.success) {
+        onNavigate?.("chat");
+      }
+    } catch (err) {
+      // If unauthorized or any error, prompt login
+      if (err.response?.status === 401 || err.response?.status === 403 || err.message?.includes("authorized")) {
+        onRequireAuth?.();
+      } else {
+        console.error("Failed to start chat:", err);
+      }
+    }
+  }, [product, onNavigate, onRequireAuth]);
 
   // Loading state
   if (loading) {
@@ -206,19 +233,7 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
 
             <button
               className={`btn btn-outline ${styles.addToCartBtn}`}
-              onClick={async () => {
-                try {
-                  const res = await chatAPIConversations.create({
-                    participantId: product.vendorId?._id || product.vendorId,
-                    productId: product._id,
-                  });
-                  if (res.data.success) {
-                    onNavigate?.("chat");
-                  }
-                } catch (err) {
-                  console.error("Failed to start chat:", err);
-                }
-              }}
+              onClick={handleMessageVendor}
             >
               💬 Ask Vendor
             </button>

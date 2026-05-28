@@ -9,6 +9,7 @@ import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import { AnalyticsCalendar, DateFilter, StatsCard } from "../../components/analytics";
+import AdminChatPage   from "./AdminChatPage";
 import styles          from "./AdminDashboard.module.css";
 
 const ORDER_STATUSES = ["pending","confirmed","preparing","out_for_delivery","delivered"];
@@ -75,7 +76,7 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
   if (!isLoggedIn) return <GateScreen msg="Sign in to access the Admin Dashboard" onAuth={onRequireAuth} icon="🔐" />;
   if (!isAdmin)    return <GateScreen msg="Admin access required." icon="🚫" />;
 
-  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["analytics","📈 Analytics"],["promos","🏷️ Promos"]];
+  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["analytics","📈 Analytics"],["promos","🏷️ Promos"],["chat","💬 Chat"]];
 
   return (
     <React.Fragment>
@@ -113,6 +114,7 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
       {tab === "orders"     && <AdminOrders     addToast={addToast} fmt={fmt} setImageModal={setImageModal} />}
       {tab === "analytics"  && <AdminAnalytics  addToast={addToast} fmt={fmt} />}
       {tab === "promos"     && <AdminPromos     addToast={addToast} fmt={fmt} />}
+      {tab === "chat"       && <AdminChatPage   addToast={addToast} />}
     </div>
     </React.Fragment>
   );

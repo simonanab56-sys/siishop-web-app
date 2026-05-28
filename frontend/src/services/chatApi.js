@@ -59,6 +59,11 @@ export const chatAPIUnread = {
 export const chatAPIAdmin = {
   getAllConversations: (params = {}) =>
     chatAPI.get("/chat/admin/conversations", { params }),
+  getConversation: (id) =>
+    chatAPI.get(`/chat/admin/conversations/${id}`),
+  getMessages: (conversationId, params = {}) =>
+    chatAPI.get(`/chat/admin/messages/${conversationId}`, { params }),
+  getStats: () => chatAPI.get("/chat/admin/stats"),
 };
 
 export default chatAPI;

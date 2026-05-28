@@ -78,8 +78,20 @@ export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
       }
     } catch (err) {
       console.error("Failed to start chat:", err);
+      // Handle specific errors
+      if (err.response?.status === 401) {
+        onRequireAuth?.();
+      } else if (err.response?.status === 403) {
+        addToast?.("You don't have access to chat for this order", "error");
+      } else if (err.response?.status === 404) {
+        addToast?.("Order not found", "error");
+      } else if (err.response?.data?.message) {
+        addToast?.(err.response.data.message, "error");
+      } else {
+        addToast?.("Failed to start chat. Please try again.", "error");
+      }
     }
-  }, [isLoggedIn, onNavigate, onRequireAuth]);
+  }, [isLoggedIn, onNavigate, onRequireAuth, addToast]);
 
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 

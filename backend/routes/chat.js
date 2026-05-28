@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const path = require("path");
+const mongoose = require("mongoose");
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const User = require("../models/User");
@@ -191,15 +192,29 @@ router.post("/conversations", requireAuth, async (req, res) => {
 
     // If order-based, verify access
     if (orderId) {
+      // Validate orderId format
+      const mongoose = require("mongoose");
+      if (!mongoose.Types.ObjectId.isValid(orderId)) {
+        return res.status(400).json({ success: false, message: "Invalid order ID format" });
+      }
+
       const order = await Order.findById(orderId);
       if (!order) {
         return res.status(404).json({ success: false, message: "Order not found" });
       }
 
+      // Safely detect order fields
+      const customerId = order.userId?._id || order.userId || order.user || order.customer;
+      const vendorId = order.vendorId?._id || order.vendorId || order.vendor || order.seller;
+
+      if (!customerId || !vendorId) {
+        return res.status(500).json({ success: false, message: "Order data incomplete" });
+      }
+
       // Verify user has access to this order
-      const isCustomer = order.user.toString() === userId.toString();
-      const isVendor = order.vendor.toString() === userId.toString();
-      const isAdmin = user.isAdmin;
+      const isCustomer = String(customerId) === String(userId);
+      const isVendor = String(vendorId) === String(userId);
+      const isAdmin = user.isAdmin === true;
 
       if (!isCustomer && !isVendor && !isAdmin) {
         return res.status(403).json({ success: false, message: "Access denied to order" });
@@ -241,60 +256,111 @@ router.post("/conversations/order/:orderId", requireAuth, async (req, res) => {
     const userId = req.user.userId;
     const { orderId } = req.params;
 
+    console.log("========== [CHAT ORDER] START ==========");
+    console.log("orderId:", orderId, "type:", typeof orderId);
+    console.log("userId:", userId, "type:", typeof userId);
+
+    // 1. VALIDATE ORDER ID
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: "Order ID required" });
+    }
+
+    // 2. FIND ORDER
     const order = await Order.findById(orderId);
     if (!order) {
+      console.log("[CHAT ORDER] Order not found:", orderId);
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    const user = await User.findById(userId);
+    console.log("Order found, userId:", order.userId, "vendorId:", order.vendorId);
+    console.log("Order userId type:", typeof order.userId);
+    console.log("Order vendorId type:", typeof order.vendorId);
 
-    // Determine access
-    const isCustomer = order.user.toString() === userId.toString();
-    const isVendor = order.vendor.toString() === userId.toString();
-    const isAdmin = user.isAdmin;
+    // 3. GET CUSTOMER AND VENDOR IDs
+    // Order model has userId (customer) and vendorId
+    let customerId = order.userId;
+    let vendorId = order.vendorId;
+
+    // Convert to strings for comparison
+    const customerIdStr = String(customerId);
+    const vendorIdStr = String(vendorId);
+    const userIdStr = String(userId);
+
+    console.log("customerIdStr:", customerIdStr);
+    console.log("vendorIdStr:", vendorIdStr);
+    console.log("userIdStr:", userIdStr);
+
+    // 4. CHECK ACCESS
+    const isCustomer = customerIdStr === userIdStr;
+    const isVendor = vendorIdStr === userIdStr;
+    const isAdmin = req.user.isAdmin === true;
+
+    console.log("isCustomer:", isCustomer, "isVendor:", isVendor, "isAdmin:", isAdmin);
 
     if (!isCustomer && !isVendor && !isAdmin) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    // Determine participants
+    // 5. BUILD PARTICIPANTS - Use strings to match auth
     const participants = [];
-    const vendor = await User.findById(order.vendor);
 
     if (isCustomer) {
-      // Customer chatting with vendor
-      participants.push({ userId, role: "customer" });
-      participants.push({ userId: order.vendor, role: "vendor" });
+      participants.push({ userId: userId, role: "customer" });
+      participants.push({ userId: vendorIdStr, role: "vendor" });
     } else if (isVendor) {
-      // Vendor chatting with customer
-      participants.push({ userId, role: "vendor" });
-      participants.push({ userId: order.user, role: "customer" });
+      participants.push({ userId: userId, role: "vendor" });
+      participants.push({ userId: customerIdStr, role: "customer" });
     } else if (isAdmin) {
-      // Admin can chat with either
-      participants.push({ userId, role: "admin" });
-      const targetId = req.body.targetId || order.vendor;
-      const targetUser = await User.findById(targetId);
-      participants.push({
-        userId: targetId,
-        role: targetUser?.isVendor ? "vendor" : "customer",
-      });
+      participants.push({ userId: userId, role: "admin" });
+      participants.push({ userId: vendorIdStr, role: "vendor" });
     }
 
-    const conversation = await Conversation.findOrCreate(participants, {
-      conversationType: "order",
-      orderId,
+    console.log("Participants:", JSON.stringify(participants));
+
+    // 6. CHECK EXISTING
+    const existing = await Conversation.findOne({
+      orderId: orderId,
+      isActive: true,
     });
 
-    await conversation.populate("participants.userId", "name email phone avatar storeName isOnline lastSeen");
-    await conversation.populate("orderId", "orderNumber status totalAmount deliveryAddress");
+    if (existing) {
+      console.log("[CHAT ORDER] Found existing:", existing._id);
+      await existing.populate("participants.userId", "name email phone storeName");
+      await existing.populate("orderId", "orderNumber status");
+      return res.json({ success: true, conversation: existing });
+    }
+
+    // 7. CREATE NEW CONVERSATION
+    console.log("[CHAT ORDER] Creating new conversation...");
+
+    const conversationData = {
+      participants: participants,
+      conversationType: "order",
+      orderId: orderId,
+    };
+
+    console.log("Conversation data:", JSON.stringify(conversationData));
+
+    const conversation = await Conversation.create(conversationData);
+
+    console.log("[CHAT ORDER] Created:", conversation._id);
+
+    // 8. POPULATE AND RETURN
+    await conversation.populate("participants.userId", "name email phone storeName isOnline");
+    await conversation.populate("orderId", "orderNumber status totalAmount");
+
+    console.log("========== [CHAT ORDER] SUCCESS ==========");
 
     res.json({
       success: true,
       conversation,
     });
   } catch (error) {
-    console.error("[Chat] Create order conversation error:", error);
-    res.status(500).json({ success: false, message: "Failed to create conversation" });
+    console.error("========== [CHAT ORDER] ERROR ==========");
+    console.error("Error:", error.message);
+    console.error("Stack:", error.stack);
+    console.error("=========================================");
+    res.status(500).json({ success: false, message: error.message || "Failed to create conversation" });
   }
 });
 

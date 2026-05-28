@@ -14,6 +14,108 @@ const POLL_INTERVAL = 10_000;
 function safeId(id)     { return id ? `#${String(id).slice(-6).toUpperCase()}` : "#------"; }
 function safeItems(arr) { return Array.isArray(arr) ? arr : []; }
 
+// Reusable order detail component for both mobile accordion and desktop panel
+function OrderDetailContent({ order, onNavigate, handleMessageVendor, fmt }) {
+  if (!order) return null;
+
+  const items = safeItems(order.items);
+
+  return (
+    <div className={styles.detailCard}>
+      <div className={styles.detailHeader}>
+        <div>
+          <h2 className={styles.detailTitle}>Order {safeId(order._id)}</h2>
+          <p className={styles.detailDate}>Placed on {order.createdAt ? new Date(order.createdAt).toLocaleString() : "—"}</p>
+        </div>
+        <StatusBadge status={order.orderStatus || order.status || "Pending"} />
+      </div>
+
+      <OrderTracker orderStatus={order.orderStatus || "pending"} />
+
+      {/* Track Delivery Button - Show when order is out for delivery */}
+      {order.orderStatus === "out_for_delivery" && (
+        <div style={{ marginTop: 16 }}>
+          <button
+            className="btn btn-primary"
+            style={{ width: "100%" }}
+            onClick={() => {
+              sessionStorage.setItem("trackingOrderId", order._id);
+              onNavigate?.("delivery-tracking");
+            }}
+          >
+            🚴 Track Delivery
+          </button>
+        </div>
+      )}
+
+      {/* Message Vendor Button */}
+      <div style={{ marginTop: 12 }}>
+        <button
+          className="btn btn-outline"
+          style={{ width: "100%" }}
+          onClick={() => handleMessageVendor(order._id)}
+        >
+          💬 Message Vendor
+        </button>
+      </div>
+
+      <div className={styles.divider} />
+
+      <div className={styles.infoGrid}>
+        <div><span className={styles.infoLabel}>Customer</span><span className={styles.infoValue}>{order.customerName || "—"}</span></div>
+        <div><span className={styles.infoLabel}>Email</span><span className={styles.infoValue}>{order.customerEmail || "—"}</span></div>
+        {order.customerPhone && (
+          <div><span className={styles.infoLabel}>Phone</span><span className={styles.infoValue}>{order.customerPhone}</span></div>
+        )}
+        <div style={{gridColumn:"span 2"}}>
+          <span className={styles.infoLabel}>Address</span>
+          <span className={styles.infoValue}>{order.deliveryAddress || "—"}</span>
+        </div>
+        <div>
+          <span className={styles.infoLabel}>Payment</span>
+          <span className={styles.infoValue}>{order.paymentMethod === "cash" ? "Cash on Delivery" : "Paystack"}</span>
+        </div>
+        <div>
+          <span className={styles.infoLabel}>Pay Status</span>
+          <span className={`badge ${order.paymentStatus === "paid" ? "badge-delivered" : "badge-pending"}`}>
+            {order.paymentStatus === "paid" ? "💳 Paid" : "⏳ Pending"}
+          </span>
+        </div>
+        {order.paymentRef && (
+          <div style={{gridColumn:"span 2"}}>
+            <span className={styles.infoLabel}>Payment Ref</span>
+            <span className={styles.infoValue} style={{fontFamily:"monospace",fontSize:"0.78rem"}}>{order.paymentRef}</span>
+          </div>
+        )}
+      </div>
+
+      <div className={styles.divider} />
+      <h3 className={styles.itemsTitle}>Items</h3>
+      <div className={styles.itemsList}>
+        {items.map((item, i) => {
+          if (!item) return null;
+          const price = Number(item.price)||0;
+          const qty   = Number(item.quantity)||0;
+          const imageUrl = getItemImage(item) || "/no-image.svg";
+          const resolvedImage = getItemImage(item);
+          return (
+            <div key={i} className={styles.itemRow}>
+              <img src={imageUrl} alt={item.name||"Item"} className={styles.itemImg} onError={(e) => {e.target.src = "/no-image.svg";}} style={{ cursor: resolvedImage ? "pointer" : "default" }} />
+              <span className={styles.itemName}>{item.name || "Unknown item"}</span>
+              <span className={styles.itemQty}>×{qty}</span>
+              <span className={styles.itemPrice}>{fmt(price * qty)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className={styles.detailTotal}>
+        <span>Total</span>
+        <span>{fmt(typeof order.totalAmount === "number" ? order.totalAmount : 0)}</span>
+      </div>
+    </div>
+  );
+}
+
 // Helper to get image from item (supports single image and multiple images)
 function getItemImage(item) {
   if (!item) return null;
@@ -60,9 +162,16 @@ export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
   const [orders,      setOrders]      = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [selectedId,  setSelectedId]  = useState(() => { try { return localStorage.getItem("lastOrderId")||null; } catch { return null; } });
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [imageModal, setImageModal] = useState({ src: "", alt: "" });
   const mountedRef = useRef(true);
+  const orderCardRef = useRef({});
+
+  // Toggle order expansion (accordion)
+  const toggleOrderDetails = useCallback((orderId) => {
+    setExpandedOrderId(prev => prev === orderId ? null : orderId);
+  }, []);
 
   // Handle message vendor - require authentication
   const handleMessageVendor = useCallback(async (orderId) => {
@@ -159,133 +268,56 @@ export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
             {safeOrders.map(order => {
               if (!order?._id) return null;
               const itemCount = safeItems(order.items).length;
+              const isExpanded = expandedOrderId === order._id;
               return (
-                <button key={order._id}
-                  className={`${styles.orderCard} ${selectedId === order._id ? styles.orderCardActive : ""}`}
-                  onClick={() => setSelectedId(order._id)}>
-                  <div className={styles.orderCardTop}>
-                    <div>
-                      <span className={styles.orderId}>{safeId(order._id)}</span>
-                      <span className={styles.orderName}>{order.customerName || "Unknown"}</span>
+                <div key={order._id} className={styles.orderItemWrapper}>
+                  <button
+                    ref={(el) => orderCardRef.current[order._id] = el}
+                    className={`${styles.orderCard} ${selectedId === order._id ? styles.orderCardActive : ""} ${isExpanded ? styles.orderCardExpanded : ""}`}
+                    onClick={() => toggleOrderDetails(order._id)}
+                    aria-expanded={isExpanded}
+                  >
+                    <div className={styles.orderCardTop}>
+                      <div>
+                        <span className={styles.orderId}>{safeId(order._id)}</span>
+                        <span className={styles.orderName}>{order.customerName || "Unknown"}</span>
+                      </div>
+                      <div className={styles.orderCardRight}>
+                        <StatusBadge status={order.orderStatus || order.status || "Pending"} />
+                        <span className={styles.expandIcon}>{isExpanded ? "▲" : "▼"}</span>
+                      </div>
                     </div>
-                    <StatusBadge status={order.orderStatus || order.status || "Pending"} />
-                  </div>
-                  <div className={styles.orderCardBottom}>
-                    {/* ✅ NEW: Show product thumbnail in order list */}
-                    {getItemImage(safeItems(order.items)?.[0]) && (
-                      <img src={getItemImage(safeItems(order.items)[0])} alt="First item" className={styles.orderCardThumb} onError={(e) => {e.target.style.display = "none";}} onClick={() => setImageModal({ src: getItemImage(safeItems(order.items)[0]), alt: safeItems(order.items)[0]?.name })} style={{ cursor: "pointer" }} />
-                    )}
-                    <span>{itemCount} item{itemCount !== 1 ? "s" : ""}</span>
-                    <span className={styles.orderTotal}>{fmt(typeof order.totalAmount === "number" ? order.totalAmount : 0)}</span>
-                    <span className={styles.payMethodChip}>{order.paymentMethod === "cash" ? "💵 COD" : "💳 Card"}</span>
-                    <span className={styles.orderDate}>{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}</span>
-                  </div>
-                </button>
+                    <div className={styles.orderCardBottom}>
+                      {/* ✅ NEW: Show product thumbnail in order list */}
+                      {getItemImage(safeItems(order.items)?.[0]) && (
+                        <img src={getItemImage(safeItems(order.items)[0])} alt="First item" className={styles.orderCardThumb} onError={(e) => {e.target.style.display = "none";}} onClick={(e) => { e.stopPropagation(); setImageModal({ src: getItemImage(safeItems(order.items)[0]), alt: safeItems(order.items)[0]?.name }); }} style={{ cursor: "pointer" }} />
+                      )}
+                      <span>{itemCount} item{itemCount !== 1 ? "s" : ""}</span>
+                      <span className={styles.orderTotal}>{fmt(typeof order.totalAmount === "number" ? order.totalAmount : 0)}</span>
+                      <span className={styles.payMethodChip}>{order.paymentMethod === "cash" ? "💵 COD" : "💳 Card"}</span>
+                      <span className={styles.orderDate}>{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}</span>
+                    </div>
+                  </button>
+
+                  {/* Mobile Accordion - Expanded Details */}
+                  {isExpanded && (
+                    <div className={styles.orderExpandedSection}>
+                      <OrderDetailContent order={order} onNavigate={onNavigate} handleMessageVendor={handleMessageVendor} fmt={fmt} />
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
 
-          {/* Detail */}
-          <div className={styles.detail}>
+          {/* Desktop Detail Panel - Only visible on large screens */}
+          <div className={styles.desktopDetail}>
             {selectedOrder ? (
-              <div className={styles.detailCard}>
-                <div className={styles.detailHeader}>
-                  <div>
-                    <h2 className={styles.detailTitle}>Order {safeId(selectedOrder._id)}</h2>
-                    <p className={styles.detailDate}>Placed on {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString() : "—"}</p>
-                  </div>
-                  <StatusBadge status={selectedOrder.orderStatus || selectedOrder.status || "Pending"} />
-                </div>
-
-                <OrderTracker orderStatus={selectedOrder.orderStatus || "pending"} />
-
-                {/* Track Delivery Button - Show when order is out for delivery */}
-                {selectedOrder.orderStatus === "out_for_delivery" && (
-                  <div style={{ marginTop: 16 }}>
-                    <button
-                      className="btn btn-primary"
-                      style={{ width: "100%" }}
-                      onClick={() => {
-                        sessionStorage.setItem("trackingOrderId", selectedOrder._id);
-                        onNavigate?.("delivery-tracking");
-                      }}
-                    >
-                      🚴 Track Delivery
-                    </button>
-                  </div>
-                )}
-
-                {/* Message Vendor Button */}
-                <div style={{ marginTop: 12 }}>
-                  <button
-                    className="btn btn-outline"
-                    style={{ width: "100%" }}
-                    onClick={() => handleMessageVendor(selectedOrder._id)}
-                  >
-                    💬 Message Vendor
-                  </button>
-                </div>
-
-                <div className={styles.divider} />
-
-                <div className={styles.infoGrid}>
-                  <div><span className={styles.infoLabel}>Customer</span><span className={styles.infoValue}>{selectedOrder.customerName || "—"}</span></div>
-                  <div><span className={styles.infoLabel}>Email</span><span className={styles.infoValue}>{selectedOrder.customerEmail || "—"}</span></div>
-                  {/* PART 5: phone number */}
-                  {selectedOrder.customerPhone && (
-                    <div><span className={styles.infoLabel}>Phone</span><span className={styles.infoValue}>{selectedOrder.customerPhone}</span></div>
-                  )}
-                  <div style={{gridColumn:"span 2"}}>
-                    <span className={styles.infoLabel}>Address</span>
-                    <span className={styles.infoValue}>{selectedOrder.deliveryAddress || "—"}</span>
-                  </div>
-                  <div>
-                    <span className={styles.infoLabel}>Payment</span>
-                    <span className={styles.infoValue}>{selectedOrder.paymentMethod === "cash" ? "Cash on Delivery" : "Paystack"}</span>
-                  </div>
-                  <div>
-                    <span className={styles.infoLabel}>Pay Status</span>
-                    <span className={`badge ${selectedOrder.paymentStatus === "paid" ? "badge-delivered" : "badge-pending"}`}>
-                      {selectedOrder.paymentStatus === "paid" ? "💳 Paid" : "⏳ Pending"}
-                    </span>
-                  </div>
-                  {selectedOrder.paymentRef && (
-                    <div style={{gridColumn:"span 2"}}>
-                      <span className={styles.infoLabel}>Payment Ref</span>
-                      <span className={styles.infoValue} style={{fontFamily:"monospace",fontSize:"0.78rem"}}>{selectedOrder.paymentRef}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className={styles.divider} />
-                <h3 className={styles.itemsTitle}>Items</h3>
-                <div className={styles.itemsList}>
-                  {safeItems(selectedOrder.items).map((item, i) => {
-                    if (!item) return null;
-                    const price = Number(item.price)||0;
-                    const qty   = Number(item.quantity)||0;
-                    // Use helper to get image from single or multiple images
-                    const imageUrl = getItemImage(item) || "/no-image.svg";
-                    const resolvedImage = getItemImage(item);
-                    return (
-                      <div key={i} className={styles.itemRow}>
-                        <img src={imageUrl} alt={item.name||"Item"} className={styles.itemImg} onError={(e) => {e.target.src = "/no-image.svg";}} onClick={() => resolvedImage && setImageModal({ src: resolvedImage, alt: item.name })} style={{ cursor: resolvedImage ? "pointer" : "default" }} />
-                        <span className={styles.itemName}>{item.name || "Unknown item"}</span>
-                        <span className={styles.itemQty}>×{qty}</span>
-                        <span className={styles.itemPrice}>{fmt(price * qty)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className={styles.detailTotal}>
-                  <span>Total</span>
-                  <span>{fmt(typeof selectedOrder.totalAmount === "number" ? selectedOrder.totalAmount : 0)}</span>
-                </div>
-              </div>
+              <OrderDetailContent order={selectedOrder} onNavigate={onNavigate} handleMessageVendor={handleMessageVendor} fmt={fmt} />
             ) : (
               <div className={styles.detailPlaceholder}>
-                <div style={{fontSize:"2.5rem"}}>👆</div>
-                <p>Select an order to see details</p>
+                <div>📋</div>
+                <p>Select an order to view details</p>
               </div>
             )}
           </div>

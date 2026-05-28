@@ -368,3 +368,86 @@
     font-size: 0.9rem;
   }
 }
+
+/* ── Mobile Accordion Styles ── */
+.orderItemWrapper {
+  position: relative;
+}
+
+.orderCardRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.expandIcon {
+  font-size: 0.75rem;
+  color: var(--brand-muted);
+  transition: transform 0.2s ease;
+}
+
+.orderCardExpanded {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border: 2px solid var(--brand-primary);
+}
+
+/* Mobile accordion expanded section */
+.orderExpandedSection {
+  background: #f8f9fa;
+  border: 2px solid var(--brand-primary);
+  border-top: none;
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+  padding: 16px;
+  animation: slideDown 0.25s ease;
+  overflow: hidden;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 1000px;
+  }
+}
+
+/* Desktop detail panel */
+.desktopDetail {
+  display: block;
+}
+
+.desktopDetail .detailCard {
+  background: white;
+  border-radius: var(--radius-md);
+  padding: 28px;
+  box-shadow: var(--shadow-card);
+}
+
+/* Hide desktop detail on mobile */
+@media (max-width: 900px) {
+  .desktopDetail {
+    display: none;
+  }
+}
+
+/* Mobile: show accordion, hide desktop detail */
+@media (max-width: 900px) {
+  .orderExpandedSection {
+    display: block;
+  }
+}
+
+/* Desktop: hide accordion, show desktop detail */
+@media (min-width: 901px) {
+  .orderExpandedSection {
+    display: none;
+  }
+
+  .orderCard .expandIcon {
+    display: none;
+  }
+}

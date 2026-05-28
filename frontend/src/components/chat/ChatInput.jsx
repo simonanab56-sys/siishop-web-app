@@ -1,5 +1,5 @@
 // components/chat/ChatInput.jsx - Chat input with file upload
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import styles from "./Chat.module.css";
 
 export default function ChatInput({
@@ -12,6 +12,16 @@ export default function ChatInput({
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = Math.min(textarea.scrollHeight, 100) + "px";
+    }
+  }, [text]);
 
   const handleTextChange = (e) => {
     setText(e.target.value);
@@ -46,6 +56,8 @@ export default function ChatInput({
       handleSend();
     }
   };
+
+  // Focus/blur handlers - removed problematic fixed position code that broke mobile scrolling
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -100,6 +112,7 @@ export default function ChatInput({
 
       <div className={styles.inputWrapper}>
         <textarea
+          ref={textareaRef}
           value={text}
           onChange={handleTextChange}
           onKeyPress={handleKeyPress}
@@ -107,6 +120,7 @@ export default function ChatInput({
           disabled={disabled}
           rows={1}
           className={styles.textInput}
+          inputMode="text"
         />
       </div>
 

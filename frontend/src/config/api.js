@@ -3,8 +3,7 @@
 // Works for: localhost dev, Vercel production, Capacitor Android/iOS
 
 // Production fallback - NEVER remove this
-const PRODUCTION_API_URL = "https://siishop-web-app-backend.onrender.com/api";
-
+const PRODUCTION_API_URL = "https://api.siishops.com/api";
 // Debug: Log environment details
 function logEnvInfo() {
   console.log("🔥 ========== API CONFIG DEBUG ==========");

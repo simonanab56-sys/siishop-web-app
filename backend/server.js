@@ -68,7 +68,8 @@ const corsOriginsFromEnv = process.env.CORS_ORIGIN
 const allowedOrigins = [
   "http://localhost:3001",
   "http://localhost:5173",
-
+   "https://www.siishops.com",
+   "https://siishops.com",
   // Capacitor mobile apps
   "http://localhost",
   "https://localhost",

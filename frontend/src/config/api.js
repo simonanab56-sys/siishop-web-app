@@ -3,7 +3,7 @@
 // Works for: localhost dev, Vercel production, Capacitor Android/iOS
 
 // Production fallback - NEVER remove this
-const PRODUCTION_API_URL = "https://api.siishops.com/api";
+const PRODUCTION_API_URL = import.meta.env.VITE_API_URL;
 // Debug: Log environment details
 function logEnvInfo() {
   console.log("🔥 ========== API CONFIG DEBUG ==========");

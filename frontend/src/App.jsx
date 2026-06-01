@@ -26,6 +26,7 @@ import FAQPage from "./pages/FAQPage";
 import DeliveryTrackingPage from "./pages/DeliveryTrackingPage";
 import ChatPage from "./pages/ChatPage";
 import { ChatProvider, useChat } from "./components/chat/ChatContext";
+import SEO from "./components/SEO";
 
 // ── Global Error Boundary ─────────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -73,6 +74,63 @@ function AuthGuard({ children }) {
   }
   return children;
 }
+
+// ── Page SEO Configuration ───────────────────────────────────────────────────
+const PAGE_SEO = {
+  home: {
+    title: "SiiShops - Multi-Vendor Marketplace in Ghana",
+    description: "Order food, groceries, and products from trusted vendors in Ghana. Fast delivery, secure payments, and local vendors.",
+  },
+  categories: {
+    title: "Browse Categories",
+    description: "Shop by category on SiiShops. Find food, groceries, electronics, fashion, and more from local vendors.",
+  },
+  vendors: {
+    title: "Our Vendors",
+    description: "Discover trusted vendors and sellers on SiiShops. Quality products with fast delivery.",
+  },
+  product: {
+    title: "Product Details",
+    description: "View product details and order now on SiiShops.",
+  },
+  cart: {
+    title: "Shopping Cart",
+    description: "Review your cart and proceed to checkout on SiiShops.",
+  },
+  orders: {
+    title: "My Orders",
+    description: "Track your orders and view order history on SiiShops.",
+  },
+  chat: {
+    title: "Messages",
+    description: "Chat with vendors on SiiShops.",
+  },
+  about: {
+    title: "About Us",
+    description: "Learn about SiiShops - Ghana's leading multi-vendor marketplace.",
+  },
+  contact: {
+    title: "Contact Us",
+    description: "Get in touch with SiiShops. We're here to help!",
+  },
+  faq: {
+    title: "FAQ",
+    description: "Frequently asked questions about SiiShops.",
+  },
+  privacy: {
+    title: "Privacy Policy",
+    description: "SiiShops privacy policy - how we protect your data.",
+  },
+  terms: {
+    title: "Terms of Service",
+    description: "SiiShops terms of service.",
+  },
+  refund: {
+    title: "Refund Policy",
+    description: "SiiShops refund policy.",
+  },
+};
+
 // ── Main App inner ────────────────────────────────────────────────────────────
 function AppInner() {
   const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
@@ -80,6 +138,9 @@ function AppInner() {
   const [page, setPage] = useState(() => {
     return localStorage.getItem("app_page") || "home";
   });
+
+  // Get current page SEO
+  const currentPageSEO = PAGE_SEO[page] || PAGE_SEO.home;
 
   // Handle URL query parameters from email links (e.g., ?page=orders)
   useEffect(() => {
@@ -291,6 +352,7 @@ function AppInner() {
         searchQuery={searchQuery}
       >
         <ErrorBoundary>
+          <SEO title={currentPageSEO.title} description={currentPageSEO.description} />
           {renderPage()}
         </ErrorBoundary>
       </MobileLayoutWrapper>

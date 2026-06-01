@@ -5,6 +5,7 @@ import { chatAPIConversations } from "../services/chatApi";
 import { useCurrency } from "../context/CurrencyContext";
 import ProductGallery from "../components/ProductGallery";
 import GalleryModal from "../components/GalleryModal";
+import SEO from "../components/SEO";
 import styles from "./ProductDetailPage.module.css";
 
 export default function ProductDetailPage({ product: initialProduct, productId, onBack, onAddToCart, onNavigate, onRequireAuth }) {
@@ -143,8 +144,25 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
     );
   }
 
+  // Get product image for SEO
+  const productImage = product?.images?.[0] || product?.image || "https://siishops.com/og-image.jpg";
+
   return (
     <div className={`container ${styles.page}`}>
+      <SEO
+        title={product?.name || "Product"}
+        description={product?.description || `Buy ${product?.name} on SiiShops - Ghana's leading marketplace`}
+        image={productImage}
+        type="product"
+        product={{
+          name: product?.name,
+          description: product?.description,
+          image: productImage,
+          price: product?.price,
+          stock: product?.stock,
+          vendorName: product?.vendorId?.storeName,
+        }}
+      />
       {/* Back button */}
       <button className={styles.backBtn} onClick={onBack}>
         ← Back

@@ -1,0 +1,19 @@
+# Robots.txt for SiiShops
+# https://siishops.com
+
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://siishops.com/sitemap.xml
+
+# Crawl-delay
+Crawl-delay: 1
+
+# Disallow admin and private areas
+Disallow: /api/
+Disallow: /admin/
+Disallow: /vendor/
+Disallow: /checkout
+Disallow: /cart
+Disallow: /profile

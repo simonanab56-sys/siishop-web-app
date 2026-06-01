@@ -486,6 +486,9 @@ app.use("/api/contact",  require("./routes/contact"));
 app.use("/api/delivery", require("./routes/delivery"));
 app.use("/api/chat",     require("./routes/chat"));
 
+// SEO routes - at root level
+app.use("/",            require("./routes/sitemap"));
+
 /* ───────────────────────── SECURITY HEADERS ───────────────────────── */
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");

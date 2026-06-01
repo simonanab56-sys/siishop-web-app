@@ -8,14 +8,14 @@
  * Extends category names with relevant keywords for better SEO
  */
 const CATEGORY_KEYWORDS = {
-  electronics: ["phones", "laptops", "gadgets", "accessories", "tech"],
-  fashion: ["clothes", "shoes", "accessories", "apparel", "wear"],
-  food: ["groceries", "meals", "drinks", "beverages", "snacks"],
-  beauty: ["cosmetics", "skincare", "makeup", "personal care", "wellness"],
-  home: ["furniture", "decor", "appliances", "kitchenware", "bedding"],
-  sports: ["equipment", "athletic", "fitness", "outdoor", "gear"],
-  books: ["reading", "literature", "education", "knowledge", "media"],
-  toys: ["games", "play", "children", "entertainment", "fun"],
+  electronics: ["phones", "laptops", "gadgets", "accessories", "tech", "Ghana"],
+  fashion: ["clothes", "shoes", "accessories", "apparel", "wear", "Ghana"],
+  food: ["groceries", "meals", "drinks", "beverages", "snacks", "Ghana"],
+  beauty: ["cosmetics", "skincare", "makeup", "personal care", "wellness", "Ghana"],
+  home: ["furniture", "decor", "appliances", "kitchenware", "bedding", "Ghana"],
+  sports: ["equipment", "athletic", "fitness", "outdoor", "gear", "Ghana"],
+  books: ["reading", "literature", "education", "knowledge", "media", "Ghana"],
+  toys: ["games", "play", "children", "entertainment", "fun", "Ghana"],
 };
 
 /**
@@ -92,16 +92,16 @@ export function generateCategorySEO(category) {
  * Generate default SEO for home/unknown categories
  */
 function generateDefaultSEO() {
-  const title = "SiiShop – Africa's Marketplace";
+  const title = "SiiShop - Multi-Vendor Marketplace Ghana | Shop Online";
   const description =
-    "Shop thousands of products from verified vendors in Ghana. Electronics, fashion, food, beauty, and more. Fast delivery to your door.";
+    "Shop thousands of products from verified vendors in Ghana. Electronics, fashion, food, groceries, beauty, and more. Fast delivery across Ghana. Best online marketplace in Ghana.";
   const url = "/";
 
   return {
     title,
     description,
     keywords:
-      "shop online, marketplace, ghana, electronics, fashion, food, beauty, siishop",
+      "shop online, marketplace Ghana, online shopping Ghana, multi vendor ecommerce Ghana, buy products online Ghana, local vendors Ghana, electronics Ghana, fashion Ghana, food delivery Ghana, groceries Ghana",
     canonical: url,
     ogTitle: title,
     ogDescription: description,

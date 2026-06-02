@@ -1,5 +1,6 @@
 // App.jsx — v10: global search support
 import { useState, Component, useEffect, useCallback } from "react";
+import logger from "./utils/logger";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CurrencyProvider } from "./context/CurrencyContext";
 import Navbar from "./components/Navbar";
@@ -175,7 +176,7 @@ function AppInner() {
         }
       }
     } catch (e) {
-      console.log("[App] Error parsing URL params:", e.message);
+      logger.log("[App] Error parsing URL params:", e.message);
     }
   }, []);
 

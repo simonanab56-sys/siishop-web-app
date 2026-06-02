@@ -9,6 +9,7 @@ import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import { AnalyticsCalendar, DateFilter, StatsCard } from "../../components/analytics";
+import logger from "../../utils/logger";
 import styles from "./VendorDashboard.module.css";
 import VendorStatusBanner from "../../components/VendorStatusBanner";
 
@@ -572,7 +573,7 @@ function VendorProducts({ addToast, isOwnProduct }) {
         saved = await vendorAPI.createProduct(payload, newFiles);
       }
 
-      console.log("💾 Product saved, images:", saved?.images);
+      logger.log("Product saved, images:", saved?.images);
 
       if (!mountedRef.current) return;
 

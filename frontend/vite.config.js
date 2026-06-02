@@ -1,8 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Proxy /api and /uploads requests to the Express backend during development
-// so you don't need to hardcode http://localhost:5000 everywhere
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -18,13 +16,20 @@ export default defineConfig({
       },
     },
   },
-  // Build configuration for production
   build: {
     outDir: "dist",
     assetsDir: "assets",
     sourcemap: false,
-    minify: "esbuild",
+    minify: "terser",
+    terserOptions: {
+      compress: {
+        drop_console: false,
+        drop_debugger: true,
+      },
+      mangle: {
+        toplevel: true,
+      },
+    },
   },
-  // Ensure base path is correct for mobile builds
   base: "./",
 });

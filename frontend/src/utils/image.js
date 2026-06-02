@@ -5,6 +5,7 @@
  */
 
 import { API_BASE } from "../config/api";
+import logger from "./logger";
 
 // Check if running in development mode
 const isDev = import.meta.env.DEV;
@@ -100,26 +101,23 @@ export function getImageUrl(path) {
   if (path.startsWith("/")) {
     // Legacy /uploads/ paths in production
     if (!isDev) {
-      // In production, /uploads/ paths are from the old Render filesystem
-      // Try the Render URL, but these files likely don't exist anymore
-      // Since we now use Cloudinary, new uploads won't have this path
       const result = `${RENDER_BASE_URL}${path}`;
-      console.log("🖼️ getImageUrl PROD legacy:", path, "->", result);
+      logger.log("Image URL (legacy):", path);
       return result;
     }
     // In dev mode, use relative URLs - Vite proxy handles them
-    console.log("🖼️ getImageUrl DEV relative:", path, "->", path);
+    logger.log("Image URL (dev):", path);
     return path;
   }
 
   // Handle filename only (no leading slash) - assume /uploads/
   if (isDev) {
     const result = `/uploads/${path}`;
-    console.log("🖼️ getImageUrl DEV filename:", path, "->", result);
+    logger.log("Image URL (dev):", path);
     return result;
   }
   const result = `${RENDER_BASE_URL}/uploads/${path}`;
-  console.log("🖼️ getImageUrl PROD filename:", path, "->", result);
+  logger.log("Image URL:", path);
   return result;
 }
 

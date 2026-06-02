@@ -1,8 +1,8 @@
 // services/socket.js - Socket.IO client for delivery tracking
 import { io } from "socket.io-client";
 import { API_BASE } from "../config/api";
+import logger from "../utils/logger";
 
-// Strip /api from URL for socket connection (socket uses root namespace)
 const SOCKET_URL = API_BASE.replace(/\/api$/, "");
 
 class SocketService {
@@ -27,17 +27,17 @@ class SocketService {
         });
 
         this.socket.on("connect", () => {
-          console.log("[Socket] Connected:", this.socket.id);
+          logger.log("[Socket] Connected:", this.socket.id);
           resolve(this.socket);
         });
 
         this.socket.on("connect_error", (error) => {
-          console.error("[Socket] Connection error:", error.message);
+          logger.error("[Socket] Connection error:", error.message);
           reject(error);
         });
 
         this.socket.on("disconnect", (reason) => {
-          console.log("[Socket] Disconnected:", reason);
+          logger.log("[Socket] Disconnected:", reason);
         });
       } catch (error) {
         reject(error);

@@ -1,12 +1,12 @@
 // services/api.js — Complete API layer with all methods, no duplicates
 import { API_BASE } from "../config/api";
+import logger from "../utils/logger";
 
 export function getToken() {
   return localStorage.getItem("token");
 }
 
 export function getApiBaseUrl() {
-  // Use centralized config with safe fallback
   return API_BASE;
 }
 
@@ -14,7 +14,7 @@ export async function apiRequest(endpoint, options = {}) {
   const baseURL = getApiBaseUrl();
   const url = `${baseURL}${endpoint}`;
 
-  console.log(`[API] ➡️ ${endpoint}`, { url, method: options.method || "GET" });
+  logger.log(`[API] ${endpoint}`, { method: options.method || "GET" });
 
   try {
     const response = await fetch(url, {
@@ -27,7 +27,7 @@ export async function apiRequest(endpoint, options = {}) {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(`[API] ❌ ${endpoint}: HTTP ${response.status}`, errorBody);
+      logger.error(`[API] ${endpoint}: HTTP ${response.status}`, errorBody);
       try {
         const error = JSON.parse(errorBody);
         throw new Error(error.error || error.message || `HTTP ${response.status}`);
@@ -37,10 +37,9 @@ export async function apiRequest(endpoint, options = {}) {
     }
 
     const data = await response.json();
-    console.log(`[API] ✅ ${endpoint}: OK`);
     return data;
   } catch (err) {
-    console.error(`[API] ❌ ${endpoint}:`, err.message);
+    logger.error(`[API] ${endpoint}:`, err.message);
     throw err;
   }
 }

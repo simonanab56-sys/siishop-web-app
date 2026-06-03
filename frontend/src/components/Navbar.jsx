@@ -1,14 +1,15 @@
-// components/Navbar.jsx — v5: with desktop search
+// components/Navbar.jsx — v6: with notifications
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth }     from "../context/AuthContext";
 import { useCurrency } from "../context/CurrencyContext";
 import UserDropdown    from "./auth/UserDropdown";
+import NotificationBell from "./NotificationBell";
 import styles          from "./Navbar.module.css";
 
 const DEBOUNCE_MS = 100; // Fast response for instant filtering
 
 export default function Navbar({ cartCount, chatUnreadCount = 0, currentPage, onNavigate, onOpenAuth, onSearch, searchQuery }) {
-  const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
+  const { user, isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
   const { currency, setCurrency, currencies }      = useCurrency();
   const [menuOpen, setMenuOpen]       = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
@@ -177,6 +178,14 @@ export default function Navbar({ cartCount, chatUnreadCount = 0, currentPage, on
             </button>
           )}
 
+          {/* Notifications */}
+          {isLoggedIn && (
+            <NotificationBell
+              userId={user?._id}
+              onNavigate={nav}
+            />
+          )}
+
           {/* Auth */}
           {isLoggedIn
             ? <UserDropdown onNavigate={nav} />
@@ -204,6 +213,11 @@ export default function Navbar({ cartCount, chatUnreadCount = 0, currentPage, on
           <button className={styles.mobileLink} onClick={() => nav("cart")}>
             🛒 Cart {cartCount > 0 && `(${cartCount})`}
           </button>
+          {isLoggedIn && (
+            <button className={styles.mobileLink} onClick={() => nav("vendor")}>
+              🔔 Notifications
+            </button>
+          )}
           {isApprovedVendor && (
             <button className={styles.mobileLink} onClick={() => nav("vendor")}>🏪 Vendor Dashboard</button>
           )}

@@ -1,6 +1,6 @@
-// pages/admin/AdminDashboard.jsx — v10: Calendar analytics
+// pages/admin/AdminDashboard.jsx — v11: Wallet tab
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { adminAPI, vendorAPI, productAPI, orderAPI, promoAPI } from "../../services/api";
+import { adminAPI, vendorAPI, productAPI, orderAPI, promoAPI, adminWalletAPI } from "../../services/api";
 import { useAuth }     from "../../context/AuthContext";
 import { useCurrency } from "../../context/CurrencyContext";
 import { getImageUrl, PLACEHOLDER_IMAGE } from "../../utils/image";
@@ -76,7 +76,7 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
   if (!isLoggedIn) return <GateScreen msg="Sign in to access the Admin Dashboard" onAuth={onRequireAuth} icon="🔐" />;
   if (!isAdmin)    return <GateScreen msg="Admin access required." icon="🚫" />;
 
-  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["analytics","📈 Analytics"],["promos","🏷️ Promos"],["chat","💬 Chat"]];
+  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["analytics","📈 Analytics"],["wallet","💰 Wallet"],["promos","🏷️ Promos"],["chat","💬 Chat"]];
 
   return (
     <React.Fragment>
@@ -113,6 +113,7 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
       {tab === "products"   && <AdminProducts   addToast={addToast} fmt={fmt} />}
       {tab === "orders"     && <AdminOrders     addToast={addToast} fmt={fmt} setImageModal={setImageModal} />}
       {tab === "analytics"  && <AdminAnalytics  addToast={addToast} fmt={fmt} />}
+      {tab === "wallet"     && <AdminWallet    addToast={addToast} fmt={fmt} />}
       {tab === "promos"     && <AdminPromos     addToast={addToast} fmt={fmt} />}
       {tab === "chat"       && <AdminChatPage   addToast={addToast} />}
     </div>
@@ -136,17 +137,44 @@ function AdminOverview({ addToast, fmt }) {
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current=true; return ()=>{mountedRef.current=false;}; }, []);
 
-  useEffect(() => {
-    const fetchStats = () => {
-      adminAPI.getStats()
-        .then(d => { if(mountedRef.current) setStats(d||{}); })
-        .catch(err => { if(mountedRef.current) addToast?.(err.message,"error"); })
-        .finally(() => { if(mountedRef.current) setLoading(false); });
-    };
-    fetchStats();
-    const interval = setInterval(fetchStats, 5000);
-    return () => clearInterval(interval);
+  // Cache for stats data (30 seconds)
+  const statsCacheRef = useRef({ data: null, timestamp: 0 });
+  const CACHE_DURATION = 30000;
+
+  const fetchStats = useCallback(() => {
+    const now = Date.now();
+    // Return cached data if still valid
+    if (statsCacheRef.current.data && (now - statsCacheRef.current.timestamp) < CACHE_DURATION) {
+      setStats(statsCacheRef.current.data);
+      setLoading(false);
+      return;
+    }
+
+    adminAPI.getStats()
+      .then(d => {
+        if (mountedRef.current) {
+          const data = d || {};
+          setStats(data);
+          // Update cache
+          statsCacheRef.current = { data, timestamp: now };
+        }
+      })
+      .catch(err => { if (mountedRef.current) addToast?.(err.message, "error"); })
+      .finally(() => { if (mountedRef.current) setLoading(false); });
   }, [addToast]);
+
+  useEffect(() => {
+    fetchStats();
+    // Poll every 30 seconds (minimum recommended)
+    const interval = setInterval(fetchStats, 30000);
+    // Refresh on page focus
+    const handleFocus = () => fetchStats();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [fetchStats]);
 
   if (loading) return <div className="loading-center"><div className="spinner"/></div>;
   if (!stats)  return <div className="empty-state"><div className="empty-icon">⚠️</div><h3>Could not load stats</h3></div>;
@@ -1085,6 +1113,204 @@ function AdminPromos({ addToast, fmt }) {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ───────────────────────────────────────── */
+/* WALLET TAB                                 */
+/* ───────────────────────────────────────── */
+function AdminWallet({ addToast, fmt }) {
+  const [analytics, setAnalytics] = useState(null);
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("pending");
+  const [actionLoading, setActionLoading] = useState(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const fetchAnalytics = useCallback(() => {
+    adminWalletAPI.getAnalytics()
+      .then((data) => { if (mountedRef.current) setAnalytics(data); })
+      .catch((err) => { if (mountedRef.current) addToast?.(err.message, "error"); })
+      .finally(() => { if (mountedRef.current) setLoading(false); });
+  }, [addToast]);
+
+  const fetchWithdrawals = useCallback(() => {
+    adminWalletAPI.getWithdrawals({ status: filter, limit: 50 })
+      .then((data) => { if (mountedRef.current) setWithdrawals(data.withdrawals || []); })
+      .catch((err) => { if (mountedRef.current) addToast?.(err.message, "error"); });
+  }, [filter, addToast]);
+
+  useEffect(() => {
+    fetchAnalytics();
+    fetchWithdrawals();
+  }, [fetchAnalytics, fetchWithdrawals]);
+
+  const handleApprove = async (id) => {
+    setActionLoading(id);
+    try {
+      await adminWalletAPI.approveWithdrawal(id);
+      addToast?.("Withdrawal approved successfully!", "success");
+      fetchAnalytics();
+      fetchWithdrawals();
+    } catch (err) {
+      addToast?.(err.message, "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReject = async (id) => {
+    const reason = prompt("Enter rejection reason:");
+    if (!reason) return;
+    setActionLoading(id);
+    try {
+      await adminWalletAPI.rejectWithdrawal(id, reason);
+      addToast?.("Withdrawal rejected", "success");
+      fetchAnalytics();
+      fetchWithdrawals();
+    } catch (err) {
+      addToast?.(err.message, "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  if (loading) {
+    return <div className="loading-center"><div className="spinner" /></div>;
+  }
+
+  return (
+    <div className={styles.walletContainer}>
+      {/* Online Earnings Section */}
+      <h3 className={styles.walletSectionTitle}>Online Payment Earnings</h3>
+      <div className={styles.statsGrid}>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Total Available</span>
+          <span className={styles.statValue}>{fmt(analytics?.totalAvailableBalance || 0)}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Total Pending</span>
+          <span className={styles.statValue}>{fmt(analytics?.totalPendingBalance || 0)}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Total Online Earnings</span>
+          <span className={styles.statValue}>{fmt(analytics?.totalOnlineEarnings || 0)}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Total Withdrawn</span>
+          <span className={styles.statValue}>{fmt(analytics?.totalWithdrawn || 0)}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Platform Commission</span>
+          <span className={styles.statValue}>{fmt(analytics?.totalCommissionPaid || 0)}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Pending Withdrawals</span>
+          <span className={styles.statValue}>{analytics?.pendingWithdrawals || 0}</span>
+          <span className={styles.statSub}>{fmt(analytics?.pendingWithdrawalAmount || 0)}</span>
+        </div>
+      </div>
+
+      {/* COD Sales Section */}
+      <h3 className={styles.walletSectionTitle}>Cash On Delivery (COD) Sales</h3>
+      <div className={styles.statsGrid}>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Total COD Sales</span>
+          <span className={styles.statValue} style={{color:"#059669"}}>{fmt(analytics?.totalCODSales || 0)}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Commission Owed</span>
+          <span className={styles.statValue} style={{color:"#dc2626"}}>{fmt(analytics?.totalCommissionOwed || 0)}</span>
+        </div>
+        <div className={styles.statCard}>
+          <span className={styles.statLabel}>Commission Paid</span>
+          <span className={styles.statValue}>{fmt(analytics?.totalCommissionPaidByVendors || 0)}</span>
+        </div>
+      </div>
+
+      {/* Settings Summary */}
+      <div className={styles.settingsCard}>
+        <h4>Wallet Settings</h4>
+        <div className={styles.settingsGrid}>
+          <div><span>Global Commission:</span> <strong>{analytics?.settings?.globalCommission}%</strong></div>
+          <div><span>Holding Period:</span> <strong>{analytics?.settings?.defaultHoldingPeriod} days</strong></div>
+          <div><span>Min Withdrawal:</span> <strong>{fmt(analytics?.settings?.minWithdrawal)}</strong></div>
+          <div><span>Max Withdrawal:</span> <strong>{fmt(analytics?.settings?.maxWithdrawal)}</strong></div>
+          <div><span>Withdrawal Fee:</span> <strong>{analytics?.settings?.withdrawalFee}%</strong></div>
+          <div><span>Active Vendors:</span> <strong>{analytics?.totalVendors}</strong></div>
+        </div>
+      </div>
+
+      {/* Withdrawal Requests */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h3>Withdrawal Requests</h3>
+          <div className={styles.filterBtns}>
+            {["pending", "approved", "rejected", "completed"].map((s) => (
+              <button key={s} className={`${styles.filterBtn} ${filter === s ? styles.filterBtnActive : ""}`} onClick={() => setFilter(s)}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>Method</th>
+                <th>Amount</th>
+                <th>Fee</th>
+                <th>Net</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withdrawals.map((wd) => (
+                <tr key={wd._id}>
+                  <td>
+                    <div>{wd.vendorId?.name || "—"}</div>
+                    <div style={{fontSize:"0.75rem",color:"var(--brand-muted)"}}>{wd.vendorId?.storeName}</div>
+                  </td>
+                  <td style={{textTransform:"capitalize"}}>{wd.method?.replace("_", " ")}</td>
+                  <td><strong>{fmt(wd.amount)}</strong></td>
+                  <td>{fmt(wd.fee)}</td>
+                  <td><strong style={{color:"var(--brand-primary)"}}>{fmt(wd.netAmount)}</strong></td>
+                  <td style={{fontSize:"0.8rem"}}>{new Date(wd.createdAt).toLocaleDateString()}</td>
+                  <td>
+                    <span className={`badge badge-${wd.status === "pending" ? "preparing" : wd.status === "approved" || wd.status === "completed" ? "delivered" : "pending"}`}>
+                      {wd.status}
+                    </span>
+                  </td>
+                  <td>
+                    {wd.status === "pending" && (
+                      <div className={styles.actionBtns}>
+                        <button className="btn btn-primary btn-sm" onClick={() => handleApprove(wd._id)} disabled={actionLoading === wd._id}>
+                          Approve
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleReject(wd._id)} disabled={actionLoading === wd._id}>
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {withdrawals.length === 0 && (
+                <tr><td colSpan={8} style={{textAlign:"center",padding:"32px",color:"var(--brand-muted)"}}>No withdrawals found</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

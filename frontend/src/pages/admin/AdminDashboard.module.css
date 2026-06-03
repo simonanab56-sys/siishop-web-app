@@ -222,3 +222,23 @@
   color: rgba(255,255,255,0.9); margin-top: 16px; font-size: 1.1rem;
   text-align: center; font-weight: 500; letter-spacing: 0.5px;
 }
+
+/* Wallet Tab */
+.walletContainer { display: flex; flex-direction: column; gap: 24px; }
+.settingsCard { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.settingsCard h4 { margin: 0 0 16px; font-size: 1rem; color: var(--brand-dark); }
+.settingsGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+@media (max-width: 1024px) { .settingsGrid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 600px) { .settingsGrid { grid-template-columns: repeat(2, 1fr); } }
+.settingsGrid div { display: flex; flex-direction: column; gap: 4px; }
+.settingsGrid span { font-size: 0.8rem; color: var(--brand-muted); }
+.settingsGrid strong { font-size: 1rem; color: var(--brand-dark); }
+.section { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.sectionHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+.sectionHeader h3 { margin: 0; font-size: 1.1rem; }
+.filterBtns { display: flex; gap: 8px; }
+.filterBtn { padding: 6px 12px; border: 1px solid var(--brand-border); background: #fff; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+.filterBtn:hover { border-color: var(--brand-primary); }
+.filterBtnActive { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
+.walletSectionTitle { margin: 24px 0 16px; font-size: 1.1rem; color: var(--brand-dark); }
+.walletSectionTitle:first-child { margin-top: 0; }

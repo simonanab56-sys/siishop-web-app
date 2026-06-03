@@ -6,6 +6,7 @@ const Order = require("../models/Order");
 const User = require("../models/User");
 const { requireAuth, requireAdmin, requireVendor } = require("../middleware/auth");
 const asyncHandler = require("../utils/asyncHandler");
+const walletService = require("../services/wallet.service");
 
 /* ───────────────────────── HELPER FUNCTIONS ───────────────────────── */
 
@@ -286,6 +287,11 @@ router.post(
     order.deliveredAt = new Date();
     order.liveTrackingEnabled = false;
     await order.save();
+
+    // Process wallet earnings for vendors (async, don't block response)
+    walletService.processOrderEarnings(orderId).catch(err => {
+      console.error("[DELIVERY] Failed to process wallet earnings:", err.message);
+    });
 
     // Emit delivery completed
     const io = req.app.get("io");

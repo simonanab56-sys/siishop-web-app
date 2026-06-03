@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "../../hooks/useMediaQuery";
 import { useAuth } from "../../context/AuthContext";
+import { notificationAPI } from "../../services/api";
 import Navbar from "../Navbar";
 import MobileTopHeader from "./MobileTopHeader";
 import MobileBottomNav from "./MobileBottomNav";
@@ -21,9 +22,10 @@ export default function MobileLayoutWrapper({
   chatUnreadCount = 0,
 }) {
   const isMobile = useIsMobile();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery || "");
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const searchTimeoutRef = useRef(null);
 
   // Sync with prop
@@ -135,6 +137,33 @@ export default function MobileLayoutWrapper({
     };
   }, []);
 
+  // Fetch notification count when logged in
+  const fetchNotificationCount = useCallback(async () => {
+    if (!isLoggedIn || !user?._id) {
+      setNotificationUnreadCount(0);
+      return;
+    }
+    try {
+      const { count } = await notificationAPI.getUnreadCount();
+      setNotificationUnreadCount(count || 0);
+    } catch (err) {
+      console.error("Failed to fetch notification count:", err);
+    }
+  }, [isLoggedIn, user?._id]);
+
+  useEffect(() => {
+    fetchNotificationCount();
+    // Poll every 30 seconds (minimum recommended)
+    const interval = setInterval(fetchNotificationCount, 30000);
+    // Refresh on page focus
+    const handleFocus = () => fetchNotificationCount();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [fetchNotificationCount]);
+
   // Mobile layout
   if (isMobile) {
     return (
@@ -160,6 +189,7 @@ export default function MobileLayoutWrapper({
           isApprovedVendor={isApprovedVendor}
           onOpenAuth={onOpenAuth}
           onLogout={handleLogout}
+          notificationUnreadCount={notificationUnreadCount}
         />
         {/* Add CSS class for mobile content padding */}
         <style>{`

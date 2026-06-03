@@ -2,6 +2,8 @@
 import { API_BASE } from "../config/api";
 import logger from "../utils/logger";
 
+const DEV = import.meta.env.DEV;
+
 export function getToken() {
   return localStorage.getItem("token");
 }
@@ -14,7 +16,9 @@ export async function apiRequest(endpoint, options = {}) {
   const baseURL = getApiBaseUrl();
   const url = `${baseURL}${endpoint}`;
 
-  logger.log(`[API] ${endpoint}`, { method: options.method || "GET" });
+  if (DEV) {
+    logger.log(`[API] ${endpoint}`, { method: options.method || "GET" });
+  }
 
   try {
     const response = await fetch(url, {
@@ -27,7 +31,9 @@ export async function apiRequest(endpoint, options = {}) {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      logger.error(`[API] ${endpoint}: HTTP ${response.status}`, errorBody);
+      if (DEV) {
+        logger.error(`[API] ${endpoint}: HTTP ${response.status}`, errorBody);
+      }
       try {
         const error = JSON.parse(errorBody);
         throw new Error(error.error || error.message || `HTTP ${response.status}`);
@@ -39,7 +45,9 @@ export async function apiRequest(endpoint, options = {}) {
     const data = await response.json();
     return data;
   } catch (err) {
-    logger.error(`[API] ${endpoint}:`, err.message);
+    if (DEV) {
+      logger.error(`[API] ${endpoint}:`, err.message);
+    }
     throw err;
   }
 }
@@ -501,6 +509,151 @@ export const deliveryAPI = {
   // Vendor APIs
   getVendorLive: () =>
     apiRequest("/delivery/vendor/live", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+};
+
+/* ── Wallet ──────────────────────────────────────────────────────────────────── */
+export const walletAPI = {
+  // Get wallet summary
+  getSummary: () =>
+    apiRequest("/wallet/summary", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Get transaction history
+  getTransactions: (options = {}) =>
+    apiRequest(`/wallet/transactions?${new URLSearchParams(options)}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Get withdrawal history
+  getWithdrawals: (options = {}) =>
+    apiRequest(`/wallet/withdrawals?${new URLSearchParams(options)}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Request withdrawal
+  withdraw: (data) =>
+    apiRequest("/wallet/withdraw", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Update bank details
+  updateBankDetails: (bankDetails) =>
+    apiRequest("/wallet/bank-details", {
+      method: "PUT",
+      body: JSON.stringify(bankDetails),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Update mobile money details
+  updateMobileMoney: (mobileMoneyDetails) =>
+    apiRequest("/wallet/mobile-money", {
+      method: "PUT",
+      body: JSON.stringify(mobileMoneyDetails),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Pay commission for COD orders
+  payCommission: (amount, paymentMethod, paymentDetails) =>
+    apiRequest("/wallet/pay-commission", {
+      method: "POST",
+      body: JSON.stringify({ amount, paymentMethod, paymentDetails }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+};
+
+/* ── Admin Wallet ──────────────────────────────────────────────────────────── */
+export const adminWalletAPI = {
+  // Get analytics
+  getAnalytics: () =>
+    apiRequest("/admin/wallet/analytics", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Get all withdrawals
+  getWithdrawals: (options = {}) =>
+    apiRequest(`/admin/wallet/withdrawals?${new URLSearchParams(options)}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Get withdrawal details
+  getWithdrawal: (id) =>
+    apiRequest(`/admin/wallet/withdrawal/${id}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Approve withdrawal
+  approveWithdrawal: (id) =>
+    apiRequest(`/admin/wallet/withdrawal/${id}/approve`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Reject withdrawal
+  rejectWithdrawal: (id, reason) =>
+    apiRequest(`/admin/wallet/withdrawal/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Get vendor wallet
+  getVendorWallet: (vendorId) =>
+    apiRequest(`/admin/wallet/vendor/${vendorId}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Get settings
+  getSettings: () =>
+    apiRequest("/admin/wallet/settings", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Update settings
+  updateSettings: (settings) =>
+    apiRequest("/admin/wallet/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Release held funds
+  releaseHeldFunds: () =>
+    apiRequest("/admin/wallet/release-held", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+};
+
+/* ── Notifications ──────────────────────────────────────────────────────── */
+export const notificationAPI = {
+  // Get notifications
+  getNotifications: (options = {}) =>
+    apiRequest(`/notifications?${new URLSearchParams(options)}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Get unread count
+  getUnreadCount: () =>
+    apiRequest("/notifications/unread-count", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Mark as read
+  markAsRead: (id) =>
+    apiRequest(`/notifications/${id}/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Mark all as read
+  markAllAsRead: () =>
+    apiRequest("/notifications/read-all", {
+      method: "POST",
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
 };

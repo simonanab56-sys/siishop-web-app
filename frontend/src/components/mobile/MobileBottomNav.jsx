@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, Grid3X3, Store, ShoppingCart, User, LogOut, Package, Store as StoreIcon, Settings, X, MessageCircle } from "lucide-react";
+import { Home, Grid3X3, Store, ShoppingCart, User, LogOut, Package, Store as StoreIcon, Settings, X, MessageCircle, Bell } from "lucide-react";
 import styles from "./MobileBottomNav.module.css";
 
 const BASE_NAV_ITEMS = [
@@ -17,7 +17,8 @@ export default function MobileBottomNav({
   isAdmin,
   isApprovedVendor,
   onOpenAuth,
-  onLogout
+  onLogout,
+  notificationUnreadCount = 0,
 }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
@@ -26,11 +27,14 @@ export default function MobileBottomNav({
     if (page === "categories") return "categories";
     if (page === "vendors") return "stores";
     if (page === "cart") return "cart";
-    if (page === "settings" || page === "orders" || page === "vendor" || page === "admin") return "profile";
+    if (page === "notifications" || page === "vendor" || page === "admin" || page === "settings" || page === "orders") return "notifications";
     return page;
   };
 
   const activeId = getPageId(currentPage);
+
+  // Nav items - all always visible
+  const navItems = BASE_NAV_ITEMS;
 
   const handleProfileClick = () => {
     if (isLoggedIn) {
@@ -68,7 +72,7 @@ export default function MobileBottomNav({
     <>
       <nav className={styles.nav}>
         <div className={styles.container}>
-          {BASE_NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeId === item.id;
             const showBadge = item.id === "cart" && cartCount > 0;
@@ -134,6 +138,14 @@ export default function MobileBottomNav({
               <button className={styles.menuItem} onClick={() => handleNav("settings")}>
                 <Settings size={20} />
                 <span>Settings</span>
+              </button>
+
+              <button className={styles.menuItem} onClick={() => handleNav("vendor")}>
+                <Bell size={20} />
+                <span>Notifications</span>
+                {notificationUnreadCount > 0 && (
+                  <span className={styles.menuBadge}>{notificationUnreadCount > 99 ? "99+" : notificationUnreadCount}</span>
+                )}
               </button>
 
               {isApprovedVendor && (

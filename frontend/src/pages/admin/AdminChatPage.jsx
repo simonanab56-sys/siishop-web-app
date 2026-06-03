@@ -188,7 +188,7 @@ export default function AdminChatPage({ onNavigate, addToast }) {
                           <span className={styles.convType}>{conv.conversationType}</span>
                           {conv.orderId && (
                             <span className={styles.orderRef}>
-                              Order: #{conv.orderId.orderNumber || conv.orderId}
+                              Order: #{typeof conv.orderId === 'object' ? conv.orderId.orderNumber || conv.orderId._id : conv.orderId}
                             </span>
                           )}
                         </div>
@@ -197,7 +197,7 @@ export default function AdminChatPage({ onNavigate, addToast }) {
                         </div>
                       </div>
                       <div className={styles.unreadBadge}>
-                        {conv.unreadCount > 0 && conv.unreadCount}
+                        {typeof conv.unreadCount === 'number' && conv.unreadCount > 0 && conv.unreadCount}
                       </div>
                     </div>
                   );

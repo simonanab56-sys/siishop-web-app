@@ -1,11 +1,13 @@
-// ProductDetailPage.jsx — Product detail page with gallery
+// ProductDetailPage.jsx — Product detail page with gallery and recommendations
 import { useState, useEffect, useCallback, useRef } from "react";
-import { productAPI } from "../services/api";
+import { productAPI, wishlistAPI } from "../services/api";
 import { chatAPIConversations } from "../services/chatApi";
 import { useCurrency } from "../context/CurrencyContext";
 import ProductGallery from "../components/ProductGallery";
 import GalleryModal from "../components/GalleryModal";
+import ProductCard from "../components/ProductCard";
 import SEO from "../components/SEO";
+import { getImageUrl, PLACEHOLDER_IMAGE } from "../utils/image";
 import styles from "./ProductDetailPage.module.css";
 
 export default function ProductDetailPage({ product: initialProduct, productId, onBack, onAddToCart, onNavigate, onRequireAuth }) {
@@ -16,6 +18,8 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
   const [quantity, setQuantity] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [modalInitialIndex, setModalInitialIndex] = useState(0);
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const mountedRef = useRef(true);
 
   // Cleanup on unmount
@@ -52,6 +56,27 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
 
     fetchProduct();
   }, [productId]); // Only depend on productId, not product
+
+  // Fetch recommendations based on product category
+  useEffect(() => {
+    if (!product?.category) return;
+
+    const fetchRecommendations = async () => {
+      try {
+        setRecommendationsLoading(true);
+        // Get products from same category, excluding current product
+        const data = await productAPI.getAll({ category: product.category, limit: 10 });
+        const filtered = (data || []).filter(p => p._id !== product._id);
+        setRecommendations(filtered.slice(0, 6));
+      } catch (err) {
+        console.error("Failed to fetch recommendations:", err);
+      } finally {
+        setRecommendationsLoading(false);
+      }
+    };
+
+    fetchRecommendations();
+  }, [product?.category, product?._id]);
 
   // Get stock info
   const stock = typeof product?.stock === "number" ? product.stock : 0;
@@ -266,6 +291,25 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
           initialIndex={modalInitialIndex}
           onClose={handleCloseModal}
         />
+      )}
+
+      {/* Recommendations - Similar Products */}
+      {recommendations.length > 0 && (
+        <div className={styles.recommendations}>
+          <h3 className={styles.sectionTitle}>You May Also Like</h3>
+          <p className={styles.sectionSubtitle}>Similar products from the same category</p>
+          <div className={styles.recommendationsGrid}>
+            {recommendations.map((recProduct) => (
+              <ProductCard
+                key={recProduct._id}
+                product={recProduct}
+                onAddToCart={onAddToCart}
+                onClick={(p) => onNavigate?.("product", p._id)}
+                onAuthRequired={onRequireAuth}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

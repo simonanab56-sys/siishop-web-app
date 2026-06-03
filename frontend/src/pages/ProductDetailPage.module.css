@@ -277,3 +277,41 @@
     width: 100%;
   }
 }
+
+/* Recommendations Section */
+.recommendations {
+  margin-top: 48px;
+  padding-top: 32px;
+  border-top: 1px solid var(--brand-border);
+}
+
+.sectionTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin: 0 0 4px 0;
+}
+
+.sectionSubtitle {
+  font-size: 0.875rem;
+  color: var(--brand-muted);
+  margin: 0 0 20px 0;
+}
+
+.recommendationsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 480px) {
+  .recommendationsGrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .recommendations {
+    margin-top: 32px;
+    padding-top: 24px;
+  }
+}

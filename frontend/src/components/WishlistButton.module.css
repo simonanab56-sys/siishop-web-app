@@ -1,0 +1,100 @@
+/* components/WishlistButton.module.css */
+
+.wishlistBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #6b7280;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.wishlistBtn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.wishlistBtn:active {
+  transform: scale(0.95);
+}
+
+.wishlistBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Sizes */
+.small {
+  width: 32px;
+  height: 32px;
+}
+
+.medium {
+  width: 40px;
+  height: 40px;
+}
+
+.large {
+  width: 48px;
+  height: 48px;
+}
+
+/* Active state - red heart */
+.wishlistBtn.active {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.wishlistBtn.active:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Heart icon */
+.heartIcon {
+  transition: all 0.2s ease;
+}
+
+.filled {
+  color: #ef4444;
+  animation: heartBeat 0.3s ease;
+}
+
+.outline {
+  color: #6b7280;
+}
+
+@keyframes heartBeat {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+/* Label */
+.label {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .small {
+    width: 28px;
+    height: 28px;
+  }
+
+  .medium {
+    width: 36px;
+    height: 36px;
+  }
+
+  .large {
+    width: 42px;
+    height: 42px;
+  }
+}

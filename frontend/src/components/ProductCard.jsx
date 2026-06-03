@@ -1,8 +1,10 @@
-// components/ProductCard.jsx — v4: multi-image support, hover effect
+// components/ProductCard.jsx — v5: wishlist support
 import { useState } from "react";
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./ProductCard.module.css";
 import { getImageUrl, getProductImage, PLACEHOLDER_IMAGE } from "../utils/image";
+import { wishlistAPI } from "../services/api";
+import WishlistButton from "./WishlistButton";
 
 // Helper to get the primary image (supports both new images array and legacy image field)
 function getPrimaryImage(product) {
@@ -20,7 +22,7 @@ function getSecondaryImage(product) {
   return null;
 }
 
-export default function ProductCard({ product, onAddToCart, onClick }) {
+export default function ProductCard({ product, onAddToCart, onClick, onAuthRequired }) {
   const { fmt } = useCurrency();
   if (!product) return null;
 
@@ -63,6 +65,14 @@ export default function ProductCard({ product, onAddToCart, onClick }) {
           )
           : <div className={styles.noImage}>🛍️</div>
         }
+        {/* Wishlist button */}
+        <div className={styles.wishlistWrapper}>
+          <WishlistButton
+            productId={product._id}
+            size="small"
+            onAuthRequired={onAuthRequired}
+          />
+        </div>
         {product.category && <span className={styles.category}>{product.category}</span>}
         {outOfStock && <span className={styles.outOfStock}>Out of Stock</span>}
         {originalPrice && <span className={styles.saleBadge}>SALE</span>}

@@ -86,7 +86,6 @@ const walletSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-// Compound index for querying wallets by vendor
-walletSchema.index({ vendorId: 1 });
+// Note: vendorId already has an index via `index: true` in field definition + unique: true
 
 module.exports = mongoose.model("Wallet", walletSchema);

@@ -10,7 +10,7 @@ import styles        from "./HomePage.module.css";
 
 const DEBOUNCE_MS = 100; // Faster response for better UX
 
-export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery, onClearGlobalSearch }) {
+export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery, onClearGlobalSearch, onRequireAuth }) {
   const { fmt } = useCurrency();
   const [products,       setProducts]       = useState([]);
   const [promoProducts,   setPromoProducts]   = useState([]);
@@ -272,7 +272,7 @@ export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery
             </p>
             <div className="grid-4">
               {safeProducts.map(product => product?._id && (
-                <ProductCard key={product._id} product={product} onAddToCart={onAddToCart} onClick={onViewProduct} />
+                <ProductCard key={product._id} product={product} onAddToCart={onAddToCart} onClick={onViewProduct} onAuthRequired={onRequireAuth} />
               ))}
             </div>
           </>

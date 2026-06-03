@@ -12,6 +12,7 @@ import CategoriesPage from "./pages/CategoriesPage";
 import CartPage from "./pages/CartPage";
 import OrdersPage from "./pages/OrdersPage";
 import SettingsPage from "./pages/SettingsPage";
+import WishlistPage from "./pages/WishlistPage";
 import StoresPage from "./pages/StoresPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import VendorDashboard from "./pages/vendor/VendorDashboard";
@@ -305,9 +306,9 @@ function AppInner() {
   function renderPage() {
     switch (page) {
       case "home":
-        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} globalSearchQuery={searchQuery} onClearGlobalSearch={() => setSearchQuery("")} />;
+        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} globalSearchQuery={searchQuery} onClearGlobalSearch={() => setSearchQuery("")} onRequireAuth={onRequireAuth} />;
       case "categories":
-        return <CategoriesPage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
+        return <CategoriesPage onAddToCart={addToCart} onViewProduct={handleViewProduct} onRequireAuth={onRequireAuth} />;
       case "product":
         return (
           <ProductDetailPage
@@ -319,9 +320,10 @@ function AppInner() {
             onRequireAuth={onRequireAuth}
           />
         );
-      case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} />;
+      case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} onRequireAuth={onRequireAuth} />;
       case "cart": return <CartPage cart={cart} onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeFromCart} onClearCart={clearCart} onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "orders": return <OrdersPage addToast={addToast} onRequireAuth={onRequireAuth} onNavigate={setPage} />;
+      case "wishlist": return <WishlistPage onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} onAddToCart={addToCart} />;
       case "settings": return <SettingsPage addToast={addToast} />;
       case "reset-password": return <ResetPasswordPage addToast={addToast} onNavigate={setPage} />;
       case "vendor": return <VendorDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
@@ -335,7 +337,7 @@ function AppInner() {
       case "delivery-tracking": return <DeliveryTrackingPage onNavigate={setPage} />;
       case "chat": return <ChatPage onNavigate={setPage} />;
       case "admin-chat": return <AdminChatPage onNavigate={setPage} addToast={addToast} />;
-      default: return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} />;
+      default: return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} onRequireAuth={onRequireAuth} />;
     }
   }
   return (

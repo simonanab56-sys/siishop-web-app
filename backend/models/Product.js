@@ -59,7 +59,9 @@ productSchema.post("save", async function (doc, next) {
     if (doc.isDeleted === true) {
       // We use the model name directly to avoid circular dependency issues
       await mongoose.model("Promo").deleteMany({ productId: doc._id });
-      console.log(`[Cleanup] Deleted promotions for soft-deleted product: ${doc._id}`);
+      // Also clean up wishlist - remove product from all wishlists when deleted
+      await mongoose.model("Wishlist").deleteMany({ productId: doc._id });
+      console.log(`[Cleanup] Deleted promotions and wishlist items for soft-deleted product: ${doc._id}`);
     }
     next();
   } catch (err) {
@@ -76,7 +78,9 @@ productSchema.post("findOneAndDelete", async function (doc, next) {
   try {
     if (doc) {
       await mongoose.model("Promo").deleteMany({ productId: doc._id });
-      console.log(`[Cleanup] Deleted promotions for hard-deleted product: ${doc._id}`);
+      // Also clean up wishlist - remove product from all wishlists when hard deleted
+      await mongoose.model("Wishlist").deleteMany({ productId: doc._id });
+      console.log(`[Cleanup] Deleted promotions and wishlist items for hard-deleted product: ${doc._id}`);
     }
     next();
   } catch (err) {

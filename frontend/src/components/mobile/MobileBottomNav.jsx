@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Home, Grid3X3, Store, ShoppingCart, User, LogOut, Package, Store as StoreIcon, Settings, X, MessageCircle, Bell } from "lucide-react";
+import { Home, Grid3X3, Store, ShoppingCart, User, LogOut, Package, Store as StoreIcon, Settings, X, MessageCircle, Bell, Heart } from "lucide-react";
 import styles from "./MobileBottomNav.module.css";
 
 const BASE_NAV_ITEMS = [
   { id: "home", label: "Home", icon: Home, route: "home" },
   { id: "categories", label: "Categories", icon: Grid3X3, route: "categories" },
   { id: "stores", label: "Stores", icon: Store, route: "vendors" },
+  { id: "wishlist", label: "Wishlist", icon: Heart, route: "wishlist" },
   { id: "cart", label: "Cart", icon: ShoppingCart, route: "cart" },
 ];
 
@@ -13,6 +14,7 @@ export default function MobileBottomNav({
   currentPage,
   onNavigate,
   cartCount,
+  wishlistCount = 0,
   isLoggedIn,
   isAdmin,
   isApprovedVendor,
@@ -25,6 +27,7 @@ export default function MobileBottomNav({
   const getPageId = (page) => {
     if (page === "home") return "home";
     if (page === "categories") return "categories";
+    if (page === "wishlist") return "wishlist";
     if (page === "vendors") return "stores";
     if (page === "cart") return "cart";
     if (page === "notifications" || page === "vendor" || page === "admin" || page === "settings" || page === "orders") return "notifications";
@@ -75,7 +78,7 @@ export default function MobileBottomNav({
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeId === item.id;
-            const showBadge = item.id === "cart" && cartCount > 0;
+            const showBadge = (item.id === "cart" && cartCount > 0) || (item.id === "wishlist" && wishlistCount > 0);
 
             return (
               <button
@@ -89,7 +92,10 @@ export default function MobileBottomNav({
                   <Icon size={22} className={styles.icon} />
                   {showBadge && (
                     <span className={styles.badge}>
-                      {cartCount > 99 ? "99+" : cartCount}
+                      {item.id === "wishlist"
+                        ? (wishlistCount > 99 ? "99+" : wishlistCount)
+                        : (cartCount > 99 ? "99+" : cartCount)
+                      }
                     </span>
                   )}
                 </div>

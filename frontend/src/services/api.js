@@ -8,6 +8,12 @@ export function getToken() {
   return localStorage.getItem("token");
 }
 
+// Helper to get auth header (only if token exists)
+function getAuthHeader() {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function getApiBaseUrl() {
   return API_BASE;
 }
@@ -655,5 +661,62 @@ export const notificationAPI = {
     apiRequest("/notifications/read-all", {
       method: "POST",
       headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+};
+
+/* ── Wishlist ──────────────────────────────────────────────────────────────── */
+export const wishlistAPI = {
+  // Get user's wishlist with pagination
+  getWishlist: (page = 1, limit = 20) =>
+    apiRequest(`/wishlist?page=${page}&limit=${limit}`, {
+      headers: getAuthHeader(),
+    }),
+
+  // Get wishlist count
+  getCount: () =>
+    apiRequest("/wishlist/count", {
+      headers: getAuthHeader(),
+    }),
+
+  // Check if product is in wishlist
+  checkProduct: (productId) =>
+    apiRequest(`/wishlist/check/${productId}`, {
+      headers: getAuthHeader(),
+    }),
+
+  // Add product to wishlist
+  add: (productId, notifyPriceDrop = true, notifyBackInStock = true) =>
+    apiRequest("/wishlist/add", {
+      method: "POST",
+      body: JSON.stringify({ productId, notifyPriceDrop, notifyBackInStock }),
+      headers: getAuthHeader(),
+    }),
+
+  // Remove product from wishlist
+  remove: (productId) =>
+    apiRequest(`/wishlist/remove/${productId}`, {
+      method: "DELETE",
+      headers: getAuthHeader(),
+    }),
+
+  // Update notification preferences
+  updatePreferences: (productId, notifyPriceDrop, notifyBackInStock) =>
+    apiRequest(`/wishlist/preferences/${productId}`, {
+      method: "PUT",
+      body: JSON.stringify({ notifyPriceDrop, notifyBackInStock }),
+      headers: getAuthHeader(),
+    }),
+
+  // Clear entire wishlist
+  clear: () =>
+    apiRequest("/wishlist/clear", {
+      method: "DELETE",
+      headers: getAuthHeader(),
+    }),
+
+  // Get recommendations based on wishlist
+  getRecommendations: () =>
+    apiRequest("/wishlist/recommendations", {
+      headers: getAuthHeader(),
     }),
 };

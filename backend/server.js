@@ -484,6 +484,7 @@ app.use("/api/admin",    require("./routes/admin"));
 app.use("/api/wallet",   require("./routes/wallet"));
 app.use("/api/admin/wallet", require("./routes/admin-wallet"));
 app.use("/api/notifications", require("./routes/notifications"));
+app.use("/api/wishlist", require("./routes/wishlist"));
 app.use("/api/promos",   require("./routes/promos"));
 app.use("/api/contact",  require("./routes/contact"));
 app.use("/api/delivery", require("./routes/delivery"));

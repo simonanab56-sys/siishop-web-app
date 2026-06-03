@@ -86,6 +86,7 @@ export default function Navbar({ cartCount, chatUnreadCount = 0, currentPage, on
   const NAV_LINKS = [
     ["home",    "Shop"],
     ["vendors", "Stores"],
+    ["wishlist", "Wishlist"],
   ];
 
   return (
@@ -207,7 +208,7 @@ export default function Navbar({ cartCount, chatUnreadCount = 0, currentPage, on
           {NAV_LINKS.map(([page, label]) => (
             <button key={page} className={`${styles.mobileLink} ${currentPage===page ? styles.mobileLinkActive : ""}`}
               onClick={() => nav(page)}>
-              {page === "home" ? "🛍️" : page === "vendors" ? "🏪" : "📦"} {label}
+              {page === "home" ? "🛍️" : page === "vendors" ? "🏪" : page === "wishlist" ? "❤️" : "📦"} {label}
             </button>
           ))}
           <button className={styles.mobileLink} onClick={() => nav("cart")}>

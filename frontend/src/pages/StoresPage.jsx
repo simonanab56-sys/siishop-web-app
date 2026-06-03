@@ -11,7 +11,7 @@ function safeInitials(name) {
   return s.split(/\s+/).map(w=>w[0]||"").join("").slice(0,2).toUpperCase()||"S";
 }
 
-export default function StoresPage({ onNavigate, onAddToCart }) {
+export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth }) {
   const { fmt }       = useCurrency();
   const [vendors,     setVendors]     = useState([]);
   const [allVendors, setAllVendors]  = useState([]); // Keep original list for filtering

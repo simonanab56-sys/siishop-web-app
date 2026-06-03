@@ -21,6 +21,8 @@ const notificationSchema = new mongoose.Schema({
       "order_status",
       "payment_received",
       "commission_due",
+      "wishlist_price_drop",
+      "wishlist_stock_available",
       "system",
     ],
     required: true,
@@ -39,7 +41,7 @@ const notificationSchema = new mongoose.Schema({
   },
   referenceType: {
     type: String,
-    enum: ["withdrawal", "order", "commission", null],
+    enum: ["withdrawal", "order", "commission", "product", null],
   },
   // Status
   isRead: {

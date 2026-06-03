@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "../../hooks/useMediaQuery";
 import { useAuth } from "../../context/AuthContext";
-import { notificationAPI } from "../../services/api";
+import { notificationAPI, wishlistAPI } from "../../services/api";
 import Navbar from "../Navbar";
 import MobileTopHeader from "./MobileTopHeader";
 import MobileBottomNav from "./MobileBottomNav";
@@ -26,6 +26,7 @@ export default function MobileLayoutWrapper({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery || "");
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
+  const [wishlistCount, setWishlistCount] = useState(0);
   const searchTimeoutRef = useRef(null);
 
   // Sync with prop
@@ -164,6 +165,32 @@ export default function MobileLayoutWrapper({
     };
   }, [fetchNotificationCount]);
 
+  // Fetch wishlist count when logged in
+  const fetchWishlistCount = useCallback(async () => {
+    if (!isLoggedIn || !user?._id) {
+      setWishlistCount(0);
+      return;
+    }
+    try {
+      const { count } = await wishlistAPI.getCount();
+      setWishlistCount(count || 0);
+    } catch (err) {
+      console.error("Failed to fetch wishlist count:", err);
+    }
+  }, [isLoggedIn, user?._id]);
+
+  useEffect(() => {
+    fetchWishlistCount();
+    // Poll every 30 seconds
+    const interval = setInterval(fetchWishlistCount, 30000);
+    const handleFocus = () => fetchWishlistCount();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [fetchWishlistCount]);
+
   // Mobile layout
   if (isMobile) {
     return (
@@ -184,6 +211,7 @@ export default function MobileLayoutWrapper({
           currentPage={currentPage}
           onNavigate={onNavigate}
           cartCount={cartCount}
+          wishlistCount={wishlistCount}
           isLoggedIn={isLoggedIn}
           isAdmin={isAdmin}
           isApprovedVendor={isApprovedVendor}

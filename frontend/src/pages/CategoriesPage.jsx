@@ -4,7 +4,7 @@ import { productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./CategoriesPage.module.css";
 
-export default function CategoriesPage({ onAddToCart, onViewProduct }) {
+export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAuth }) {
   const { fmt } = useCurrency();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -695,6 +695,7 @@ function AdminProducts({ addToast, fmt }) {
   const [products,   setProducts]   = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [showForm,   setShowForm]   = useState(false);
+  const [editingId,  setEditingId]  = useState(null);
   const [form,       setForm]       = useState(EMPTY_PRODUCT);
   const [formErrors, setFormErrors] = useState({});
   const [saving,     setSaving]     = useState(false);
@@ -726,6 +727,34 @@ function AdminProducts({ addToast, fmt }) {
     return e;
   }
 
+  // handleAdd is now inline after handleEdit
+
+  async function handleDelete(id) {
+    if(!id) return;
+    if(!window.confirm("Delete this product?")) return;
+    try {
+      await productAPI.delete(id);
+      if(!mountedRef.current) return;
+      setProducts(prev => Array.isArray(prev)?prev.filter(p=>p._id!==id):[]);
+      addToast?.("Product deleted.","info");
+    } catch (err) { if(mountedRef.current) addToast?.(err.message,"error"); }
+  }
+
+  function handleEdit(product) {
+    setEditingId(product._id);
+    setForm({
+      name: product.name || "",
+      description: product.description || "",
+      price: product.price || "",
+      category: product.category || "",
+      stock: product.stock || "",
+      available: product.available !== false,
+      images: product.images || [],
+      image: product.image || "",
+    });
+    setShowForm(true);
+  }
+
   async function handleAdd(e) {
     e.preventDefault(); if(saving) return;
     const errs = validate(); if(Object.keys(errs).length){ setFormErrors(errs); return; }
@@ -743,25 +772,25 @@ function AdminProducts({ addToast, fmt }) {
       // Get file objects from form.images
       const imageList = form.images || [];
       const newFiles = imageList.filter(img => img.file).map(img => img.file);
+      const deleteImages = imageList.filter(img => img.shouldDelete).map(img => img.public_id);
 
-      const created = await productAPI.create(payload, newFiles);
-      if(!mountedRef.current) return;
-      setProducts(prev => Array.isArray(prev)?[created,...prev]:[created]);
-      setForm(EMPTY_PRODUCT); setShowForm(false); setFormErrors({});
-      addToast?.("Product added!","success");
+      let saved;
+      if (editingId) {
+        // Update existing product
+        saved = await productAPI.update(editingId, payload, newFiles, deleteImages);
+        if(!mountedRef.current) return;
+        setProducts(prev => Array.isArray(prev)?prev.map(p=>p._id===editingId?saved:p):[saved]);
+        addToast?.("Product updated!","success");
+      } else {
+        // Create new product
+        saved = await productAPI.create(payload, newFiles);
+        if(!mountedRef.current) return;
+        setProducts(prev => Array.isArray(prev)?[saved,...prev]:[saved]);
+        addToast?.("Product added!","success");
+      }
+      setForm(EMPTY_PRODUCT); setShowForm(false); setEditingId(null); setFormErrors({});
     } catch (err) { if(mountedRef.current) addToast?.(err.message,"error"); }
     finally { if(mountedRef.current) setSaving(false); }
-  }
-
-  async function handleDelete(id) {
-    if(!id) return;
-    if(!window.confirm("Delete this product?")) return;
-    try {
-      await productAPI.delete(id);
-      if(!mountedRef.current) return;
-      setProducts(prev => Array.isArray(prev)?prev.filter(p=>p._id!==id):[]);
-      addToast?.("Product deleted.","info");
-    } catch (err) { if(mountedRef.current) addToast?.(err.message,"error"); }
   }
 
   const f = (key) => ({ value: form[key], onChange: (e) => { setForm({...form,[key]:e.target.value}); setFormErrors({...formErrors,[key]:""}); } });
@@ -776,11 +805,11 @@ function AdminProducts({ addToast, fmt }) {
     <div>
       <div className={styles.toolbar}>
         <span style={{fontWeight:600}}>{safeProducts.length} products</span>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm(v=>!v)}>{showForm?"✕ Cancel":"+ Add Product"}</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { setShowForm(v=>!v); if(showForm) { setEditingId(null); setForm(EMPTY_PRODUCT); } }}>{showForm?"✕ Cancel":"+ Add Product"}</button>
       </div>
       {showForm && (
         <div className={styles.formCard}>
-          <h4>Add New Product</h4>
+          <h4>{editingId ? "Edit Product" : "Add New Product"}</h4>
           <form onSubmit={handleAdd} noValidate>
             <div className={styles.formGrid}>
               <div className={styles.formFields}>
@@ -834,7 +863,12 @@ function AdminProducts({ addToast, fmt }) {
                     <td>{p.vendorName || (typeof p.vendorId === "object" && p.vendorId?.storeName ? p.vendorId.storeName : <em style={{color:"var(--brand-muted)"}}>—</em>)}</td>
                     <td>{fmt(price)}</td>
                     <td>{(typeof p.stock === "number" && p.stock >= 999) ? "∞" : (typeof p.stock === "number" ? p.stock : 0)}</td>
-                    <td><button className="btn btn-danger btn-sm" onClick={() => handleDelete(p._id)}>Delete</button></td>
+                    <td>
+                      <div className={styles.actionBtns}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleEdit(p)}>Edit</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p._id)}>Delete</button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}

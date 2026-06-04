@@ -275,10 +275,8 @@ function AppInner() {
   // When on product page and click a recommended product, fetch and display it
   async function handleProductNavigate(pageName, productIdOrProduct) {
     if (pageName === "product") {
-      // Save current page as previous BEFORE changing to product
-      const comingFrom = page;
-      console.log("[DEBUG] handleProductNavigate - coming from:", comingFrom, "previousPage was:", previousPage);
-      setPreviousPage(comingFrom);
+      // Save current page (page state) as previous BEFORE changing to product
+      setPreviousPage(page);
       try {
         // If it's a product object, use it directly
         if (productIdOrProduct && productIdOrProduct._id) {
@@ -312,7 +310,6 @@ function AppInner() {
   }
 
   function handleBackFromProduct() {
-    console.log("[DEBUG] handleBackFromProduct - previousPage:", previousPage);
     handleSetSelectedProduct(null);
     setPage(previousPage || "home");
   }

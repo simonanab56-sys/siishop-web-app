@@ -95,9 +95,8 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
   // Get vendor name
   const vendorName = product?.vendorId?.storeName || product?.vendorId?.name || null;
 
-  // Debug: check for video
+  // Check for video
   const hasVideo = product?.videoUrl && product.videoUrl.length > 0;
-  console.log("[DEBUG] Product videoUrl:", product?.videoUrl);
 
   // Handle quantity change
   const decreaseQty = useCallback(() => {
@@ -214,10 +213,6 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
             product={product}
             onOpenFullscreen={handleOpenFullscreen}
           />
-          {/* DEBUG: Show video status - remove after testing */}
-          <div style={{ marginTop: 8, padding: 8, background: hasVideo ? "#dcfce7" : "#fee2e2", borderRadius: 4, fontSize: "0.75rem" }}>
-            {hasVideo ? "✅ Video loaded" : "❌ No video - Upload from vendor/admin dashboard"}
-          </div>
         </div>
 
         {/* Details */}

@@ -76,6 +76,7 @@ export default function ProductCard({ product, onAddToCart, onClick, onAuthRequi
         {product.category && <span className={styles.category}>{product.category}</span>}
         {outOfStock && <span className={styles.outOfStock}>Out of Stock</span>}
         {originalPrice && <span className={styles.saleBadge}>SALE</span>}
+        {product.videoUrl && <span className={styles.videoBadge}>▶ Video</span>}
       </div>
 
       <div className={styles.body}>

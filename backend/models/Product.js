@@ -32,6 +32,10 @@ const productSchema = new mongoose.Schema(
     },
     // Legacy field - kept for backward compatibility
     image: { type: String, default: "" },
+    // Video support
+    videoUrl: { type: String, default: "" },
+    videoPublicId: { type: String, default: "" },
+    videoDuration: { type: Number, default: 0 },
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }

@@ -67,6 +67,13 @@
   font-size: 0.66rem; font-weight: 800; padding: 3px 9px;
   border-radius: var(--radius-full); letter-spacing: 0.06em;
 }
+.videoBadge {
+  position: absolute; bottom: 10px; left: 10px;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white;
+  font-size: 0.64rem; font-weight: 700; padding: 3px 8px;
+  border-radius: var(--radius-full); letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 2px;
+}
 
 .body { padding: 14px; display: flex; flex-direction: column; flex: 1; gap: 5px; }
 .vendor { font-size: 0.7rem; color: #7c3aed; font-weight: 600; }

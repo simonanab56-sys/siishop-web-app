@@ -696,6 +696,9 @@ function AdminProducts({ addToast, fmt }) {
   const [loading,    setLoading]    = useState(true);
   const [showForm,   setShowForm]   = useState(false);
   const [editingId,  setEditingId]  = useState(null);
+  const [videoFile,  setVideoFile]  = useState(null);
+  const [videoPreview, setVideoPreview] = useState(null);
+  const [videoUploading, setVideoUploading] = useState(false);
   const [form,       setForm]       = useState(EMPTY_PRODUCT);
   const [formErrors, setFormErrors] = useState({});
   const [saving,     setSaving]     = useState(false);
@@ -752,8 +755,72 @@ function AdminProducts({ addToast, fmt }) {
       images: product.images || [],
       image: product.image || "",
     });
+    setVideoFile(null);
+    setVideoPreview(product.videoUrl || null);
     setShowForm(true);
   }
+
+  // Handle video file selection
+  const handleVideoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ["video/mp4", "video/webm", "video/quicktime"];
+    if (!validTypes.includes(file.type)) {
+      addToast?.("Invalid file type. Only MP4, WebM, and MOV are allowed.", "error");
+      return;
+    }
+
+    // Validate file size (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      addToast?.("Video file too large. Maximum 50MB allowed.", "error");
+      return;
+    }
+
+    setVideoFile(file);
+    setVideoPreview(URL.createObjectURL(file));
+  };
+
+  // Upload video
+  const handleUploadVideo = async () => {
+    if (!editingId || !videoFile) return;
+
+    setVideoUploading(true);
+    try {
+      const result = await productAPI.uploadVideo(editingId, videoFile);
+      console.log("[VIDEO] Upload result:", result);
+      addToast?.("Video uploaded successfully!", "success");
+      // Refresh products to get updated video URL
+      const data = await productAPI.getAll();
+      if (mountedRef.current) {
+        setProducts(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      addToast?.(err.message, "error");
+    } finally {
+      setVideoUploading(false);
+    }
+  };
+
+  // Delete video
+  const handleDeleteVideo = async () => {
+    if (!editingId) return;
+
+    try {
+      const result = await productAPI.deleteVideo(editingId);
+      console.log("[VIDEO] Delete result:", result);
+      setVideoFile(null);
+      setVideoPreview(null);
+      addToast?.("Video deleted!", "success");
+      const data = await productAPI.getAll();
+      if (mountedRef.current) {
+        setProducts(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      addToast?.(err.message, "error");
+    }
+  };
 
   async function handleAdd(e) {
     e.preventDefault(); if(saving) return;
@@ -836,10 +903,41 @@ function AdminProducts({ addToast, fmt }) {
                 />
                 {formErrors.image && <span className={styles.fieldError}>{formErrors.image}</span>}
               </div>
+              {/* Video Upload */}
+              <div>
+                <label className={styles.label}>Product Video (optional - max 30s, 50MB)</label>
+                {editingId && (
+                  <>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
+                      onChange={handleVideoChange}
+                      className={styles.fileInput}
+                    />
+                    {videoPreview && (
+                      <div className={styles.videoPreview}>
+                        <video src={videoPreview} controls preload="metadata" style={{ maxWidth: "100%", maxHeight: 200 }} />
+                        <button type="button" className="btn btn-danger btn-sm" onClick={handleDeleteVideo}>
+                          Remove Video
+                        </button>
+                      </div>
+                    )}
+                    {videoFile && (
+                      <div className={styles.videoPreview}>
+                        <video src={videoPreview} controls preload="metadata" style={{ maxWidth: "100%", maxHeight: 200 }} />
+                        <button type="button" className="btn btn-primary btn-sm" onClick={handleUploadVideo} disabled={videoUploading}>
+                          {videoUploading ? "Uploading..." : "Upload Video"}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                {!editingId && <p className={styles.hint}>Save product first, then edit to add video.</p>}
+              </div>
             </div>
             <div className={styles.formActions}>
-              <button type="button" className="btn btn-ghost" onClick={() => {setShowForm(false);setForm(EMPTY_PRODUCT);setFormErrors({});}}>Cancel</button>
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving?"Saving…":"Add Product"}</button>
+              <button type="button" className="btn btn-ghost" onClick={() => {setShowForm(false);setForm(EMPTY_PRODUCT);setFormErrors({});setEditingId(null);setVideoFile(null);setVideoPreview(null);}}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>{saving?"Saving…":editingId ? "Save Product" : "Add Product"}</button>
             </div>
           </form>
         </div>

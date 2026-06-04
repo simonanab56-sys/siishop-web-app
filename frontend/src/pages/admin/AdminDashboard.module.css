@@ -242,3 +242,40 @@
 .filterBtnActive { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
 .walletSectionTitle { margin: 24px 0 16px; font-size: 1.1rem; color: var(--brand-dark); }
 .walletSectionTitle:first-child { margin-top: 0; }
+
+/* Video Upload Styles */
+.fileInput {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 2px dashed var(--brand-border);
+  border-radius: 8px;
+  background: var(--brand-surface);
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.fileInput:hover {
+  border-color: var(--brand-primary);
+}
+
+.videoPreview {
+  background: var(--brand-surface);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.videoPreview video {
+  width: 100%;
+  border-radius: 4px;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--brand-muted);
+  font-style: italic;
+}

@@ -79,6 +79,60 @@ function initStorage() {
 // Initialize on module load
 initStorage();
 
+// ── VIDEO UPLOAD STORAGE ──────────────────────────────────────────────────────
+let videoUpload;
+
+function initVideoStorage() {
+  if (CLOUDINARY_CONFIGURED) {
+    console.log("☁️ [VENDOR] Using Cloudinary for video storage");
+    const { productVideoMulter } = require("../config/cloudinary");
+    videoUpload = productVideoMulter.single("video");
+  } else {
+    // Fallback to local disk storage for videos
+    const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads", "videos");
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+
+    const storage = multer.diskStorage({
+      destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+      filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
+    });
+
+    const fileFilter = (req, file, cb) => {
+      const allowed = /mp4|webm|mov/;
+      const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
+      const mime = allowed.test(file.mimetype) || file.mimetype.startsWith("video/");
+      if (ext && mime) return cb(null, true);
+      cb(new Error("Only video files (MP4, WebM, MOV) are allowed"));
+    };
+
+    videoUpload = multer({
+      storage,
+      fileFilter,
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }).single("video");
+  }
+}
+
+initVideoStorage();
+
+// Video upload error handler
+const handleVideoUploadError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error("[VIDEO UPLOAD ERROR] Code:", err.code, "Message:", err.message);
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "Video file too large. Max 50MB allowed." });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  if (err) {
+    console.error("[VIDEO UPLOAD ERROR]", err.message);
+    return res.status(400).json({ error: err.message });
+  }
+  next();
+};
+
 function toObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id)
     ? new mongoose.Types.ObjectId(id)
@@ -258,6 +312,138 @@ const handleMulterError = (err, req, res, next) => {
   }
   next();
 };
+
+/* VENDOR: UPLOAD PRODUCT VIDEO */
+router.post("/products/:id/video", requireAuth, requireApprovedVendor, videoUpload, handleVideoUploadError, async (req, res) => {
+  try {
+    console.log("========================================");
+    console.log("[VIDEO UPLOAD] Starting upload...");
+    console.log("[VIDEO UPLOAD] videoUpload ready:", !!videoUpload);
+    console.log("[VIDEO UPLOAD] CLOUDINARY_CONFIGURED:", CLOUDINARY_CONFIGURED);
+    console.log("[VIDEO UPLOAD] req.file:", req.file ? "exists" : "MISSING");
+    if (req.file) {
+      console.log("[VIDEO UPLOAD] File details:", {
+        originalname: req.file.originalname,
+        filename: req.file.filename,
+        path: req.file.path,
+        destination: req.file.destination,
+        size: req.file.size,
+        secure_url: req.file.secure_url,
+        public_id: req.file.public_id
+      });
+    }
+    console.log("========================================");
+
+    const product = await Product.findOne({ _id: req.params.id, vendorId: req.user.userId, isDeleted: { $ne: true } });
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No video file uploaded" });
+    }
+
+    // Delete old video from Cloudinary if exists
+    if (product.videoPublicId && CLOUDINARY_CONFIGURED) {
+      try {
+        const { cloudinary } = require("../config/cloudinary");
+        await cloudinary.uploader.destroy(product.videoPublicId, { resource_type: "video" });
+      } catch (e) {
+        console.error("[VIDEO] Failed to delete old video:", e.message);
+      }
+    }
+
+    let videoUrl = "";
+    let videoPublicId = "";
+
+    // Debug: Log all available Cloudinary-related fields
+    console.log("[VIDEO UPLOAD] Debug - all file fields:", {
+      secure_url: req.file.secure_url,
+      public_id: req.file.public_id,
+      url: req.file.url,
+      path: req.file.path,
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      CLOUDINARY_CONFIGURED: CLOUDINARY_CONFIGURED
+    });
+
+    // FIXED: Check Cloudinary first, even if secure_url seems empty
+    if (CLOUDINARY_CONFIGURED) {
+      // Try secure_url first
+      if (req.file.secure_url && req.file.secure_url.startsWith("http")) {
+        videoUrl = req.file.secure_url;
+        videoPublicId = req.file.public_id || "";
+        console.log("[VIDEO UPLOAD] ✓ Using Cloudinary secure_url:", videoUrl);
+      }
+      // Try public_id
+      else if (req.file.public_id) {
+        videoPublicId = req.file.public_id;
+        videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
+        console.log("[VIDEO UPLOAD] ✓ Using constructed URL from public_id:", videoUrl);
+      }
+      // Try to get from path (sometimes Cloudinary puts URL here)
+      else if (req.file.path && req.file.path.startsWith("http")) {
+        videoUrl = req.file.path;
+        videoPublicId = "";
+        console.log("[VIDEO UPLOAD] ✓ Using URL from path:", videoUrl);
+      }
+      else {
+        // Cloudinary configured but no URL - use filename as public_id fallback
+        videoPublicId = `siishop/products/videos/${req.file.filename.split('.')[0]}`;
+        videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
+        console.log("[VIDEO UPLOAD] ✓ Using constructed URL (fallback):", videoUrl);
+      }
+    } else {
+      // Fallback to local storage - use full filename (includes extension)
+      let filename = req.file.filename;
+      if (filename.includes('/')) {
+        filename = filename.split('/').pop();
+      }
+      if (filename.includes('\\')) {
+        filename = filename.split('\\').pop();
+      }
+      videoUrl = `/uploads/videos/${filename}`;
+      console.log("[VIDEO UPLOAD] ✗ Using local URL:", videoUrl, "from req.file.filename:", req.file.filename);
+    }
+
+    product.videoUrl = videoUrl;
+    product.videoPublicId = videoPublicId;
+    await product.save();
+
+    console.log("[VIDEO UPLOAD] ✓ Saved product.videoUrl:", product.videoUrl);
+    console.log("========================================");
+
+    res.json({ videoUrl, videoPublicId, message: "Video uploaded successfully" });
+  } catch (err) {
+    console.error("[VIDEO UPLOAD] Error:", err.message);
+    res.status(500).json({ error: "Failed to upload video: " + err.message });
+  }
+});
+
+/* VENDOR: DELETE PRODUCT VIDEO */
+router.delete("/products/:id/video", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const product = await Product.findOne({ _id: req.params.id, vendorId: req.user.userId, isDeleted: { $ne: true } });
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    if (product.videoPublicId && CLOUDINARY_CONFIGURED) {
+      try {
+        const { cloudinary } = require("../config/cloudinary");
+        await cloudinary.uploader.destroy(product.videoPublicId, { resource_type: "video" });
+      } catch (e) {
+        console.error("[VIDEO] Failed to delete video:", e.message);
+      }
+    }
+
+    product.videoUrl = "";
+    product.videoPublicId = "";
+    product.videoDuration = 0;
+    await product.save();
+
+    res.json({ message: "Video deleted successfully" });
+  } catch (err) {
+    console.error("[VIDEO DELETE] Error:", err.message);
+    res.status(500).json({ error: "Failed to delete video: " + err.message });
+  }
+});
 
 router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handleMulterError, async (req, res) => {
   try {
@@ -788,6 +974,35 @@ router.get("/analytics/chart", requireAuth, requireApprovedVendor, async (req, r
     })));
   } catch (err) {
     res.status(500).json({ error: "Failed to get chart data" });
+  }
+});
+
+// ── VENDOR: MIGRATE VIDEO URLs ─────────────────────────────────────────────────
+router.post("/migrate-video-urls", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const products = await Product.find({
+      vendorId: req.user.userId,
+      videoUrl: { $exists: true, $ne: "" },
+      $or: [
+        { videoUrl: { $regex: "^/uploads" } },
+        { videoUrl: { $regex: "siishop/products/videos" } }
+      ]
+    });
+
+    let fixed = 0;
+    for (const product of products) {
+      if (product.videoPublicId && cloudName) {
+        const newUrl = `https://res.cloudinary.com/${cloudName}/video/upload/${product.videoPublicId}`;
+        product.videoUrl = newUrl;
+        await product.save();
+        fixed++;
+      }
+    }
+
+    res.json({ message: "Migration complete", fixed });
+  } catch (err) {
+    res.status(500).json({ error: "Migration failed: " + err.message });
   }
 });
 

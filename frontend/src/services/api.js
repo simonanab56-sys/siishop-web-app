@@ -189,6 +189,34 @@ export const productAPI = {
       method: "DELETE",
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  uploadVideo: async (productId, videoFile) => {
+    const formData = new FormData();
+    formData.append("video", videoFile);
+    const baseURL = getApiBaseUrl();
+    console.log("[VIDEO] Admin uploading to:", `${baseURL}/products/${productId}/video`);
+    const response = await fetch(`${baseURL}/products/${productId}/video`, {
+      method: "POST",
+      body: formData,
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    console.log("[VIDEO] Admin Response status:", response.status);
+    const result = await response.json();
+    console.log("[VIDEO] Admin Response:", result);
+    if (!response.ok) throw new Error(result.error || "Failed to upload video");
+    return result;
+  },
+  deleteVideo: async (productId) => {
+    const baseURL = getApiBaseUrl();
+    console.log("[VIDEO] Admin deleting:", `${baseURL}/products/${productId}/video`);
+    const response = await fetch(`${baseURL}/products/${productId}/video`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    const result = await response.json();
+    console.log("[VIDEO] Delete Response:", result);
+    if (!response.ok) throw new Error(result.error || "Failed to delete video");
+    return result;
+  },
 };
 
 /* ── Orders ────────────────────────────────────────────────────────────────── */
@@ -312,6 +340,32 @@ export const vendorAPI = {
       method: "DELETE",
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  uploadVideo: async (productId, videoFile) => {
+    const formData = new FormData();
+    formData.append("video", videoFile);
+    const baseURL = getApiBaseUrl();
+    console.log("[VIDEO] Uploading to:", `${baseURL}/vendor/products/${productId}/video`);
+    const response = await fetch(`${baseURL}/vendor/products/${productId}/video`, {
+      method: "POST",
+      body: formData,
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    console.log("[VIDEO] Response status:", response.status);
+    const result = await response.json();
+    console.log("[VIDEO] Response:", result);
+    if (!response.ok) throw new Error(result.error || "Failed to upload video");
+    return result;
+  },
+  deleteVideo: async (productId) => {
+    const baseURL = getApiBaseUrl();
+    const response = await fetch(`${baseURL}/vendor/products/${productId}/video`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Failed to delete video");
+    return result;
+  },
   getOrders: () =>
     apiRequest("/vendor/orders", {
       headers: { Authorization: `Bearer ${getToken()}` },

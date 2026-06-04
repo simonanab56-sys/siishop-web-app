@@ -60,6 +60,20 @@ const logoStorage = new CloudinaryStorage({
   },
 });
 
+// Create multer storage for product videos
+const productVideoStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "siishop/products/videos",
+    resource_type: "video",
+    allowed_formats: ["mp4", "webm", "mov"],
+    transformation: [
+      { quality: "auto:good", crop: "limit", width: 1920 },
+      { duration: 30 } // Enforce max 30 seconds
+    ],
+  },
+});
+
 // Export multer instances with Cloudinary storage
 const productMulter = multer({
   storage: productImageStorage,
@@ -76,10 +90,16 @@ const logoMulter = multer({
   limits: { fileSize: 1 * 1024 * 1024 }, // 1MB
 });
 
+const productVideoMulter = multer({
+  storage: productVideoStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+});
+
 // Export utilities
 module.exports = {
   cloudinary,
   productMulter,
   vendorDocMulter,
   logoMulter,
+  productVideoMulter,
 };

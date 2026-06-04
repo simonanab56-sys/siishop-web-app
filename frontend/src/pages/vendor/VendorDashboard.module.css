@@ -246,3 +246,40 @@
 .btnWarning { background: #f59e0b; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
 .btnWarning:hover { background: #d97706; }
 .btnWarning:disabled { background: #d1d5db; cursor: not-allowed; }
+
+/* Video Upload Styles */
+.fileInput {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 2px dashed var(--brand-border);
+  border-radius: 8px;
+  background: var(--brand-surface);
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.fileInput:hover {
+  border-color: var(--brand-primary);
+}
+
+.videoPreview {
+  background: var(--brand-surface);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.videoPreview video {
+  width: 100%;
+  border-radius: 4px;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--brand-muted);
+  font-style: italic;
+}

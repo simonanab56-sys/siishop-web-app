@@ -555,7 +555,6 @@ function VendorProducts({ addToast, isOwnProduct }) {
     });
     setFormErrors({});
     setVideoFile(null);
-    console.log("[VENDOR] startEdit - videoUrl:", product.videoUrl);
     setVideoPreview(product.videoUrl || null);
     setShowForm(true);
   }
@@ -571,10 +570,8 @@ function VendorProducts({ addToast, isOwnProduct }) {
 
   // Video handlers
   const handleVideoChange = (e) => {
-    console.log("[VIDEO] handleVideoChange called");
     const file = e.target.files?.[0];
     if (!file) return;
-    console.log("[VIDEO] File selected:", file.name, file.size);
     if (file.size > 50 * 1024 * 1024) {
       addToast?.("Video file too large. Maximum 50MB allowed.", "error");
       return;
@@ -584,16 +581,12 @@ function VendorProducts({ addToast, isOwnProduct }) {
   };
 
   const handleUploadVideo = async () => {
-    console.log("[VIDEO] handleUploadVideo called, editingId:", editingId, "videoFile:", videoFile?.name);
     if (!editingId || !videoFile) {
-      console.log("[VIDEO] Early return - missing editingId or videoFile");
       return;
     }
     setVideoUploading(true);
     try {
-      console.log("[VIDEO] Calling vendorAPI.uploadVideo...");
-      const result = await vendorAPI.uploadVideo(editingId, videoFile);
-      console.log("[VIDEO] Upload result:", result);
+      await vendorAPI.uploadVideo(editingId, videoFile);
       addToast?.("Video uploaded successfully!", "success");
       // Refresh products
       const data = await vendorAPI.getProducts();
@@ -610,8 +603,7 @@ function VendorProducts({ addToast, isOwnProduct }) {
   const handleDeleteVideo = async () => {
     if (!editingId) return;
     try {
-      const result = await vendorAPI.deleteVideo(editingId);
-      console.log("[VIDEO] Delete result:", result);
+      await vendorAPI.deleteVideo(editingId);
       setVideoFile(null);
       setVideoPreview(null);
       addToast?.("Video deleted!", "success");

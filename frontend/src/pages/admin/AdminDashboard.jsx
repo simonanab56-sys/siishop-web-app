@@ -788,8 +788,7 @@ function AdminProducts({ addToast, fmt }) {
 
     setVideoUploading(true);
     try {
-      const result = await productAPI.uploadVideo(editingId, videoFile);
-      console.log("[VIDEO] Upload result:", result);
+      await productAPI.uploadVideo(editingId, videoFile);
       addToast?.("Video uploaded successfully!", "success");
       // Refresh products to get updated video URL
       const data = await productAPI.getAll();
@@ -808,8 +807,7 @@ function AdminProducts({ addToast, fmt }) {
     if (!editingId) return;
 
     try {
-      const result = await productAPI.deleteVideo(editingId);
-      console.log("[VIDEO] Delete result:", result);
+      await productAPI.deleteVideo(editingId);
       setVideoFile(null);
       setVideoPreview(null);
       addToast?.("Video deleted!", "success");

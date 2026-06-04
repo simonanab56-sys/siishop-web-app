@@ -1,6 +1,7 @@
 // ProductDetailPage.jsx — Product detail page with gallery and recommendations
 import { useState, useEffect, useCallback, useRef } from "react";
 import { productAPI, wishlistAPI } from "../services/api";
+import WishlistButton from "../components/WishlistButton";
 import { chatAPIConversations } from "../services/chatApi";
 import { useCurrency } from "../context/CurrencyContext";
 import ProductGallery from "../components/ProductGallery";
@@ -230,6 +231,14 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
           )}
 
           <h1 className={styles.name}>{product.name}</h1>
+
+          <div className={styles.wishlistRow}>
+            <WishlistButton
+              productId={product._id}
+              size="large"
+              onAuthRequired={onRequireAuth}
+            />
+          </div>
 
           <div className={styles.priceRow}>
             {/* Show promo price if product is from a promo */}

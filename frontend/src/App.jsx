@@ -7,6 +7,7 @@ import Navbar from "./components/Navbar";
 import MobileLayoutWrapper from "./components/mobile/MobileLayoutWrapper";
 import AuthModal from "./components/auth/AuthModal";
 import { useToast, ToastContainer } from "./components/Toast";
+import { productAPI } from "./services/api";
 import HomePage from "./pages/HomePage";
 import CategoriesPage from "./pages/CategoriesPage";
 import CartPage from "./pages/CartPage";
@@ -270,10 +271,14 @@ function AppInner() {
     setPage("product");
   }
 
-  // Handle navigation from ProductDetailPage recommendations
+  // Handle navigation from ProductDetailPage recommendations, Wishlist, etc.
   // When on product page and click a recommended product, fetch and display it
-  async function handleProductNavigate(page, productIdOrProduct) {
-    if (page === "product") {
+  async function handleProductNavigate(pageName, productIdOrProduct) {
+    if (pageName === "product") {
+      // Save current page as previous BEFORE changing to product
+      const comingFrom = page;
+      console.log("[DEBUG] handleProductNavigate - coming from:", comingFrom, "previousPage was:", previousPage);
+      setPreviousPage(comingFrom);
       try {
         // If it's a product object, use it directly
         if (productIdOrProduct && productIdOrProduct._id) {
@@ -291,7 +296,7 @@ function AppInner() {
         console.error("Failed to load product:", err);
       }
     } else {
-      setPage(page);
+      setPage(pageName);
     }
   }
 
@@ -307,6 +312,7 @@ function AppInner() {
   }
 
   function handleBackFromProduct() {
+    console.log("[DEBUG] handleBackFromProduct - previousPage:", previousPage);
     handleSetSelectedProduct(null);
     setPage(previousPage || "home");
   }
@@ -348,7 +354,7 @@ function AppInner() {
       case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} onRequireAuth={onRequireAuth} />;
       case "cart": return <CartPage cart={cart} onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeFromCart} onClearCart={clearCart} onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "orders": return <OrdersPage addToast={addToast} onRequireAuth={onRequireAuth} onNavigate={setPage} />;
-      case "wishlist": return <WishlistPage onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} onAddToCart={addToCart} />;
+      case "wishlist": return <WishlistPage onNavigate={handleProductNavigate} addToast={addToast} onRequireAuth={onRequireAuth} onAddToCart={addToCart} />;
       case "settings": return <SettingsPage addToast={addToast} />;
       case "reset-password": return <ResetPasswordPage addToast={addToast} onNavigate={setPage} />;
       case "vendor": return <VendorDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;

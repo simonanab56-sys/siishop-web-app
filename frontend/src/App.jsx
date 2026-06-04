@@ -270,6 +270,31 @@ function AppInner() {
     setPage("product");
   }
 
+  // Handle navigation from ProductDetailPage recommendations
+  // When on product page and click a recommended product, fetch and display it
+  async function handleProductNavigate(page, productIdOrProduct) {
+    if (page === "product") {
+      try {
+        // If it's a product object, use it directly
+        if (productIdOrProduct && productIdOrProduct._id) {
+          handleSetSelectedProduct(productIdOrProduct);
+        }
+        // If it's a product ID, fetch the product
+        else if (productIdOrProduct && typeof productIdOrProduct === "string") {
+          const product = await productAPI.getById(productIdOrProduct);
+          if (product) {
+            handleSetSelectedProduct(product);
+          }
+        }
+        setPage("product");
+      } catch (err) {
+        console.error("Failed to load product:", err);
+      }
+    } else {
+      setPage(page);
+    }
+  }
+
   // Handle navigation from StoresPage (supports passing product for detail view)
   function handleStoresPageNavigate(page, product) {
     if (page === "product" && product) {
@@ -316,7 +341,7 @@ function AppInner() {
             productId={selectedProduct?._id}
             onBack={handleBackFromProduct}
             onAddToCart={addToCart}
-            onNavigate={setPage}
+            onNavigate={handleProductNavigate}
             onRequireAuth={onRequireAuth}
           />
         );

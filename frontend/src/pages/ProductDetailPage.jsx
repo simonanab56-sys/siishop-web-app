@@ -18,6 +18,14 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
   const [quantity, setQuantity] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [modalInitialIndex, setModalInitialIndex] = useState(0);
+
+  // Sync product when initialProduct changes (e.g., when clicking recommended product)
+  useEffect(() => {
+    if (initialProduct) {
+      setProduct(initialProduct);
+      setLoading(false);
+    }
+  }, [initialProduct?._id]);
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const mountedRef = useRef(true);
@@ -312,7 +320,7 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
                 key={recProduct._id}
                 product={recProduct}
                 onAddToCart={onAddToCart}
-                onClick={(p) => onNavigate?.("product", p._id)}
+                onClick={(p) => onNavigate?.("product", p)}
                 onAuthRequired={onRequireAuth}
               />
             ))}

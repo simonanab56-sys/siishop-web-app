@@ -5,6 +5,7 @@ import styles from "./ProductCard.module.css";
 import { getImageUrl, getProductImage, PLACEHOLDER_IMAGE } from "../utils/image";
 import { wishlistAPI } from "../services/api";
 import WishlistButton from "./WishlistButton";
+import { truncateText } from "../utils/text";
 
 // Helper to get the primary image (supports both new images array and legacy image field)
 function getPrimaryImage(product) {
@@ -82,7 +83,23 @@ export default function ProductCard({ product, onAddToCart, onClick, onAuthRequi
       <div className={styles.body}>
         {vendorName && <p className={styles.vendor}>🏪 {vendorName}</p>}
         <h3 className={styles.name}>{product.name || "Unnamed Product"}</h3>
-        <p className={styles.description}>{product.description || ""}</p>
+        <div className={styles.descriptionWrapper}>
+          <p className={styles.description}>
+            {product.description ? truncateText(product.description, 30) : ""}
+          </p>
+          {product.description && product.description.length > 30 && (
+            <button
+              type="button"
+              className={styles.readMore}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick?.(product);
+              }}
+            >
+              Read More
+            </button>
+          )}
+        </div>
 
         <div className={styles.footer}>
           <div className={styles.priceGroup}>

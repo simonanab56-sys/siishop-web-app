@@ -140,6 +140,20 @@ function AppInner() {
   const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
   const { unreadCount: chatUnreadCount } = useChat();
   const [page, setPage] = useState(() => {
+    try {
+      // Check URL first for store pages
+      if (typeof window !== "undefined") {
+        const path = window.location.pathname || "";
+        const storeMatch = path.match(/^\/store\/(.+?)\/?$/);
+        if (storeMatch && storeMatch[1]) {
+          const slug = storeMatch[1];
+          sessionStorage.setItem("vendorStoreSlug", slug);
+          return "vendor-store";
+        }
+      }
+    } catch (e) {
+      // Ignore errors during initialization
+    }
     return localStorage.getItem("app_page") || "home";
   });
 
@@ -421,8 +435,36 @@ function AppInner() {
         );
       case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} onRequireAuth={onRequireAuth} vendorContext={vendorContext} onClearVendorContext={clearVendorContext} />;
       case "vendor-store": {
-        const storeSlug = sessionStorage.getItem("vendorStoreSlug");
+        // Get slug from sessionStorage or URL
+        let storeSlug = null;
+        try {
+          storeSlug = sessionStorage.getItem("vendorStoreSlug");
+          if (!storeSlug && window.location.pathname) {
+            const path = window.location.pathname;
+            const match = path.match(/^\/store\/(.+?)\/?$/);
+            storeSlug = match ? match[1] : null;
+            if (storeSlug) sessionStorage.setItem("vendorStoreSlug", storeSlug);
+          }
+        } catch (e) {
+          logger.log("Error getting store slug:", e);
+        }
         logger.log("Rendering VendorStorePage with slug:", storeSlug);
+        // If no slug, show error
+        if (!storeSlug) {
+          return (
+            <div className="container" style={{ padding: "60px 20px", textAlign: "center" }}>
+              <h2>Store not found</h2>
+              <p style={{ color: "#666" }}>Invalid store URL. Please check the link.</p>
+              <button
+                className="btn btn-primary"
+                style={{ marginTop: 20 }}
+                onClick={() => setPage("home")}
+              >
+                Go to Home
+              </button>
+            </div>
+          );
+        }
         return <VendorStorePage key={`vendor-${storeSlug}`} onAddToCart={addToCart} onNavigate={handleProductNavigate} onRequireAuth={onRequireAuth} vendorSlug={storeSlug} onVendorLoaded={setVendorContextForStore} />;
       }
       case "cart": return <CartPage cart={cart} onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeFromCart} onClearCart={clearCart} onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} />;

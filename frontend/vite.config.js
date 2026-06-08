@@ -21,6 +21,11 @@ export default defineConfig({
     assetsDir: "assets",
     sourcemap: false,
     minify: "terser",
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
     terserOptions: {
       compress: {
         drop_console: false,
@@ -31,5 +36,5 @@ export default defineConfig({
       },
     },
   },
-  base: "./",
+  base: "/",
 });

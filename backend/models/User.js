@@ -17,6 +17,12 @@ const userSchema = new mongoose.Schema(
     storeName: String,
     storeDescription: String,
     storeLogo: String,
+    vendorSlug: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
     vendorStatus: {
       type: String,
       enum: ["pending", "approved", "rejected", "suspended"],

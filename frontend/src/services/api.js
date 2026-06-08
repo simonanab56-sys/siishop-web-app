@@ -373,6 +373,24 @@ export const vendorAPI = {
     const query = new URLSearchParams(params).toString();
     return apiRequest(`/vendor/list${query ? "?" + query : ""}`);
   },
+  // Public: Get vendor store by slug
+  getStoreBySlug: (slug) => apiRequest(`/vendor/store/${slug}`),
+  // Public: Get vendor products by slug
+  getStoreProducts: (slug, params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/vendor/store/${slug}/products${query ? "?" + query : ""}`);
+  },
+  // Vendor: Generate store slug
+  generateSlug: () =>
+    apiRequest("/vendor/generate-slug", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  // Vendor: Get current store slug
+  getStoreSlug: () =>
+    apiRequest("/vendor/store-slug", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
   // Admin methods for vendor management
   adminGetAll: () =>
     apiRequest("/admin/vendors", {

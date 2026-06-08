@@ -10,6 +10,7 @@ const { requireAuth } = require("../middleware/auth");
 const { sendPasswordResetEmail } = require("../services/email.service");
 const { validate, registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema, updateProfileSchema } = require("../utils/joiSchemas");
 const { vendorKYCUpload } = require("../config/multer");
+const logger = require("../utils/logger");
 
 /**
  * Helper: Sign a JWT token
@@ -120,12 +121,12 @@ router.post(
           // Cloudinary - use secure URL
           userData.idFrontImage = frontFile.secure_url || frontFile.path;
           userData.idBackImage = backFile.secure_url || backFile.path;
-          console.log("[KYC] Cloudinary upload:", { front: userData.idFrontImage, back: userData.idBackImage });
+          logger.log("[KYC] Cloudinary upload:", { front: userData.idFrontImage, back: userData.idBackImage });
         } else {
           // Local storage fallback
           userData.idFrontImage = `/uploads/vendor-docs/${frontFile.filename}`;
           userData.idBackImage = `/uploads/vendor-docs/${backFile.filename}`;
-          console.log("[KYC] Local upload:", { front: userData.idFrontImage, back: userData.idBackImage });
+          logger.log("[KYC] Local upload:", { front: userData.idFrontImage, back: userData.idBackImage });
         }
 
         userData.kycStatus = "pending"; // Admin will verify

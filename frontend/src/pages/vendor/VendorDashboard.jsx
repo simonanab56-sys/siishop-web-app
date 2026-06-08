@@ -195,6 +195,7 @@ export default function VendorDashboard({ addToast, onRequireAuth }) {
 function VendorOverview({ addToast }) {
   const { fmt } = useCurrency();
   const [stats,   setStats]   = useState(null);
+  const [storeSlug, setStoreSlug] = useState(null);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
@@ -222,6 +223,9 @@ function VendorOverview({ addToast }) {
         if (mountedRef.current) {
           const data = d || {};
           setStats(data);
+          setStoreSlug(data.storeSlug || null);
+          logger.log("Vendor dashboard data:", data);
+          logger.log("Store slug:", data.storeSlug);
           // Update cache
           dashboardCacheRef.current = { data, timestamp: now };
         }
@@ -229,6 +233,28 @@ function VendorOverview({ addToast }) {
       .catch((err) => { if (mountedRef.current) addToast?.(err.message, "error"); })
       .finally(() => { if (mountedRef.current) setLoading(false); });
   }, [addToast]);
+
+  // Generate store slug
+  const handleGenerateSlug = async () => {
+    try {
+      const result = await vendorAPI.generateSlug();
+      setStoreSlug(result.slug);
+      addToast?.("Store link generated!", "success");
+    } catch (err) {
+      addToast?.(err.message, "error");
+    }
+  };
+
+  // Copy store link
+  const handleCopyStoreLink = () => {
+    if (!storeSlug) {
+      addToast?.("Store link not available yet", "error");
+      return;
+    }
+    const link = `${window.location.origin}/store/${storeSlug}`;
+    navigator.clipboard.writeText(link);
+    addToast?.("Link copied!", "success");
+  };
 
   useEffect(() => {
     fetchDashboard();
@@ -286,6 +312,31 @@ function VendorOverview({ addToast }) {
           <span className="stat-value">{fmt(totalRevenue)}</span>
           <span className="stat-sub">from paid orders</span>
         </div>
+      </div>
+
+      {/* Store Link Section */}
+      <div className={styles.storeLinkSection}>
+        <h3 className={styles.sectionTitle}>🏪 My Store Link</h3>
+        <p className={styles.storeLinkDesc}>
+          Share this link with customers to showcase your products
+        </p>
+        {storeSlug ? (
+          <div className={styles.storeLinkBox}>
+            <input
+              type="text"
+              readOnly
+              value={`${window.location.origin}/store/${storeSlug}`}
+              className={styles.storeLinkInput}
+            />
+            <button className="btn btn-primary btn-sm" onClick={handleCopyStoreLink}>
+              📋 Copy
+            </button>
+          </div>
+        ) : (
+          <button className="btn btn-primary" onClick={handleGenerateSlug}>
+            🔗 Generate Store Link
+          </button>
+        )}
       </div>
 
       {recentOrders.length > 0 && (
@@ -482,6 +533,7 @@ function VendorOrders({ addToast, setImageModal }) {
 function VendorProducts({ addToast, isOwnProduct }) {
   const { fmt } = useCurrency();
   const [products,   setProducts]   = useState([]);
+  const [storeSlug, setStoreSlug] = useState(null);
   const [loading,    setLoading]    = useState(true);
   const [editingId,  setEditingId]  = useState(null); // _id of product being edited
   const [showForm,   setShowForm]   = useState(false);
@@ -506,6 +558,36 @@ function VendorProducts({ addToast, isOwnProduct }) {
       .catch((err) => { if (mountedRef.current) addToast?.(err.message, "error"); })
       .finally(() => { if (mountedRef.current) setLoading(false); });
   }, [addToast]);
+
+  // Fetch store slug
+  useEffect(() => {
+    vendorAPI
+      .getStoreSlug()
+      .then((data) => { if (mountedRef.current) setStoreSlug(data.slug); })
+      .catch(() => {});
+  }, []);
+
+  // Generate store slug
+  const handleGenerateSlug = async () => {
+    try {
+      const result = await vendorAPI.generateSlug();
+      setStoreSlug(result.slug);
+      addToast?.("Store link generated!", "success");
+    } catch (err) {
+      addToast?.(err.message, "error");
+    }
+  };
+
+  // Copy store link
+  const handleCopyStoreLink = () => {
+    if (!storeSlug) {
+      addToast?.("Store link not available yet", "error");
+      return;
+    }
+    const link = `${window.location.origin}/store/${storeSlug}`;
+    navigator.clipboard.writeText(link);
+    addToast?.("Link copied!", "success");
+  };
 
   function validateForm() {
     const e = {};

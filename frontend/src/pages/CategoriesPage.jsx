@@ -4,7 +4,7 @@ import { productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import styles from "./CategoriesPage.module.css";
 
-export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAuth }) {
+export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAuth, vendorContext, onClearVendorContext }) {
   const { fmt } = useCurrency();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +67,12 @@ export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAu
 
     setLoading(true);
     try {
-      const products = await productAPI.getAll({ category });
+      const params = { category };
+      // Filter by vendor if in vendor context
+      if (vendorContext?.vendorId) {
+        params.vendorId = vendorContext.vendorId;
+      }
+      const products = await productAPI.getAll(params);
       if (mountedRef.current) {
         setCategoryProducts(prev => ({ ...prev, [category]: products }));
       }
@@ -108,6 +113,38 @@ export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAu
 
   return (
     <div className={`container page-enter ${styles.page}`}>
+      {/* Vendor Context Banner */}
+      {vendorContext && (
+        <div style={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: 'white',
+          padding: '12px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px',
+          marginBottom: '20px',
+          borderRadius: '8px'
+        }}>
+          <span>🛒 Showing products from vendor store</span>
+          <button
+            onClick={onClearVendorContext}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.4)',
+              color: 'white',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600'
+            }}
+          >
+            ✕ Clear Filter
+          </button>
+        </div>
+      )}
+
       <h1 className={styles.title}>Categories</h1>
       <p className={styles.subtitle}>Browse products by category</p>
 

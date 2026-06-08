@@ -16,6 +16,7 @@ const { Server } = require("socket.io");
 const app  = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
+const logger = require("./utils/logger");
 
 /* ───────────────────────── TRUST PROXY ─────────────────────── */
 app.set("trust proxy", 1);
@@ -138,7 +139,7 @@ const activeRiders = new Map();
 
 // Socket.IO connection handler
 io.on("connection", (socket) => {
-  console.log(`[Socket] Client connected: ${socket.id}`);
+  logger.log(`[Socket] Client connected: ${socket.id}`);
 
   // Rider authentication
   socket.on("rider-auth", (data) => {
@@ -150,7 +151,7 @@ io.on("connection", (socket) => {
         connectedAt: new Date(),
       });
       socket.join(`rider:${riderId}`);
-      console.log(`[Socket] Rider authenticated: ${riderId}`);
+      logger.log(`[Socket] Rider authenticated: ${riderId}`);
     }
   });
 
@@ -181,7 +182,7 @@ io.on("connection", (socket) => {
     const { orderId, userType, userId } = data;
     if (orderId) {
       socket.join(`order:${orderId}`);
-      console.log(`[Socket] ${userType || 'user'} joined order tracking: ${orderId}`);
+      logger.log(`[Socket] ${userType || 'user'} joined order tracking: ${orderId}`);
     }
   });
 
@@ -254,7 +255,7 @@ io.on("connection", (socket) => {
       // Notify others that user is online
       socket.broadcast.emit("user-online", { userId });
 
-      console.log(`[Chat] User ${userId} joined chat ${conversationId}`);
+      logger.log(`[Chat] User ${userId} joined chat ${conversationId}`);
     }
   });
 
@@ -400,13 +401,13 @@ io.on("connection", (socket) => {
 
   // Disconnect
   socket.on("disconnect", async () => {
-    console.log(`[Socket] Client disconnected: ${socket.id}`);
+    logger.log(`[Socket] Client disconnected: ${socket.id}`);
 
     // Handle rider disconnect
     for (const [riderId, rider] of activeRiders) {
       if (rider.socketId === socket.id) {
         activeRiders.delete(riderId);
-        console.log(`[Socket] Rider disconnected: ${riderId}`);
+        logger.log(`[Socket] Rider disconnected: ${riderId}`);
         break;
       }
     }
@@ -434,7 +435,7 @@ io.on("connection", (socket) => {
 
 app.set("io", io);
 app.set("activeRiders", activeRiders);
-console.log("✅ Socket.IO initialized");
+logger.log("✅ Socket.IO initialized");
 
 // Middleware to attach io to requests
 app.use((req, res, next) => {
@@ -529,17 +530,17 @@ async function startServer() {
       throw new Error("MONGODB_URI is missing in .env");
     }
 
-    console.log("⏳ Connecting to MongoDB...");
+    logger.log("⏳ Connecting to MongoDB...");
 
     await mongoose.connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 10000,
     });
 
-    console.log("✅ MongoDB connected successfully");
+    logger.log("✅ MongoDB connected successfully");
 
     server.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌐 Allowed CORS origins:`, allowedOrigins);
+      logger.log(`🚀 Server running on port ${PORT}`);
+      logger.log(`🌐 Allowed CORS origins:`, allowedOrigins);
     });
 
   } catch (err) {

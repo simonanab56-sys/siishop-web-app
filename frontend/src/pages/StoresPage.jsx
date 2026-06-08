@@ -11,7 +11,7 @@ function safeInitials(name) {
   return s.split(/\s+/).map(w=>w[0]||"").join("").slice(0,2).toUpperCase()||"S";
 }
 
-export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth }) {
+export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, vendorContext, onClearVendorContext }) {
   const { fmt }       = useCurrency();
   const [vendors,     setVendors]     = useState([]);
   const [allVendors, setAllVendors]  = useState([]); // Keep original list for filtering
@@ -72,7 +72,13 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth }) {
       const params = searchQuery ? { search: searchQuery } : {};
       const data = await vendorAPI.getList(params);
       if (mountedRef.current) {
-        const vendorList = Array.isArray(data) ? data : [];
+        let vendorList = Array.isArray(data) ? data : [];
+
+        // Filter to show only the vendor in context
+        if (vendorContext?.vendorId) {
+          vendorList = vendorList.filter(v => v._id === vendorContext.vendorId);
+        }
+
         setAllVendors(vendorList);
         setVendors(vendorList);
       }
@@ -85,7 +91,7 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth }) {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [vendorContext]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -149,6 +155,38 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth }) {
 
   return (
     <div className={`container page-enter ${styles.page}`}>
+      {/* Vendor Context Banner */}
+      {vendorContext && (
+        <div style={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: 'white',
+          padding: '12px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px',
+          marginBottom: '20px',
+          borderRadius: '8px'
+        }}>
+          <span>🛒 Showing products from vendor store</span>
+          <button
+            onClick={onClearVendorContext}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.4)',
+              color: 'white',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600'
+            }}
+          >
+            ✕ Clear Filter
+          </button>
+        </div>
+      )}
+
       <div className="page-header">
         <h1>{search ? "Search Results" : "All Stores"}</h1>
         <p>

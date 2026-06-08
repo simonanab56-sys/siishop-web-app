@@ -7,6 +7,7 @@ const Order = require("../models/Order");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
 const asyncHandler = require("../utils/asyncHandler");
 const { validate, createOrderSchema, initializePaymentSchema, verifyPaymentSchema, updateOrderStatusSchema } = require("../utils/joiSchemas");
+const logger = require("../utils/logger");
 
 const {
   createCashOrder,
@@ -74,9 +75,9 @@ router.post(
     // ✅ Convert DB amount to kobo
     const expectedInKobo = Math.round(order.totalAmount * 100);
 
-    console.log("[VERIFY PAYMENT]");
-    console.log("DB amount:", expectedInKobo);
-    console.log("Paystack amount:", paystackData.amount);
+    logger.log("[VERIFY PAYMENT]");
+    logger.log("DB amount:", expectedInKobo);
+    logger.log("Paystack amount:", paystackData.amount);
 
     // ✅ Strict check
     if (paystackData.amount !== expectedInKobo) {

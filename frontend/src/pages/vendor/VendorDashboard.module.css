@@ -22,6 +22,42 @@
 .recentSection {}
 .sectionTitle { font-family: var(--font-body); font-size: 1rem; font-weight: 700; margin-bottom: 14px; }
 
+/* Store Link Section */
+.storeLinkSection {
+  background: white;
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--brand-border);
+}
+
+.storeLinkDesc {
+  color: var(--brand-muted);
+  font-size: 0.9rem;
+  margin: 0 0 16px;
+}
+
+.storeLinkBox {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.storeLinkInput {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1.5px solid var(--brand-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  background: var(--brand-surface);
+  color: var(--brand-dark);
+}
+
+.storeLinkInput:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
 /* Analytics Tab */
 .analyticsTab { display: flex; flex-direction: column; gap: 20px; }
 .analyticsNav { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }

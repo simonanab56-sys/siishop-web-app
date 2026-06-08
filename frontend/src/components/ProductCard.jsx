@@ -6,6 +6,7 @@ import { getImageUrl, getProductImage, PLACEHOLDER_IMAGE } from "../utils/image"
 import { wishlistAPI } from "../services/api";
 import WishlistButton from "./WishlistButton";
 import { truncateText } from "../utils/text";
+import logger from "../utils/logger";
 
 // Helper to get the primary image (supports both new images array and legacy image field)
 function getPrimaryImage(product) {
@@ -44,6 +45,7 @@ export default function ProductCard({ product, onAddToCart, onClick, onAuthRequi
   const handleClick = (e) => {
     // Don't trigger click when clicking the add to cart button
     if (e.target.closest("button")) return;
+    logger.log("ProductCard handleClick, onClick exists:", typeof onClick === "function");
     onClick?.(product);
   };
 
@@ -110,7 +112,11 @@ export default function ProductCard({ product, onAddToCart, onClick, onAuthRequi
           </div>
           <button
             className={`btn btn-primary btn-sm ${styles.addBtn}`}
-            onClick={(e) => { e.stopPropagation(); onAddToCart?.(product); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              logger.log("Add to cart clicked, onAddToCart exists:", typeof onAddToCart === "function");
+              onAddToCart?.(product);
+            }}
             disabled={outOfStock}
           >
             {outOfStock ? "Sold Out" : "+ Add"}

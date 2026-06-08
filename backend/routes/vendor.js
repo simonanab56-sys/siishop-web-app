@@ -14,6 +14,7 @@ const requireApprovedVendor = require("../middleware/requireApprovedVendor");
 const Order   = require("../models/Order");
 const { requireAuth, requireVendor } = require("../middleware/auth");
 const { notifyOrderStatusUpdate } = require("../services/notification.service");
+const logger  = require("../utils/logger");
 
 // ── CLOUDINARY CONFIGURATION ─────────────────────────────────────────────────
 // Try to use Cloudinary if configured, otherwise fallback to local storage
@@ -27,7 +28,7 @@ function checkCloudinaryConfig() {
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-  console.log("[CLOUDINARY] Config check:", { cloudName, apiKey: !!apiKey, apiSecret: !!apiSecret });
+  logger.log("[CLOUDINARY] Config check:", { cloudName, apiKey: !!apiKey, apiSecret: !!apiSecret });
 
   return !!(cloudName && apiKey && apiSecret && cloudName !== "Root");
 }
@@ -37,12 +38,12 @@ function initStorage() {
   CLOUDINARY_CONFIGURED = checkCloudinaryConfig();
 
   if (CLOUDINARY_CONFIGURED) {
-    console.log("☁️ Using Cloudinary for image storage");
+    logger.log("☁️ Using Cloudinary for image storage");
     const { productMulter } = require("../config/cloudinary");
     multiUpload = productMulter.array("images", 10);
   } else {
     // Fallback to local disk storage
-    console.log("💾 Using local disk storage for images");
+    logger.log("💾 Using local disk storage for images");
     UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
     if (!fs.existsSync(UPLOAD_DIR)) {
       fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -50,12 +51,12 @@ function initStorage() {
 
     const storage = multer.diskStorage({
       destination: (req, file, cb) => {
-        console.log("[MULTER] Saving to:", UPLOAD_DIR);
+        logger.log("[MULTER] Saving to:", UPLOAD_DIR);
         cb(null, UPLOAD_DIR);
       },
       filename: (req, file, cb) => {
         const filename = `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`;
-        console.log("[MULTER] Generated filename:", filename);
+        logger.log("[MULTER] Generated filename:", filename);
         cb(null, filename);
       },
     });
@@ -84,7 +85,7 @@ let videoUpload;
 
 function initVideoStorage() {
   if (CLOUDINARY_CONFIGURED) {
-    console.log("☁️ [VENDOR] Using Cloudinary for video storage");
+    logger.log("☁️ [VENDOR] Using Cloudinary for video storage");
     const { productVideoMulter } = require("../config/cloudinary");
     videoUpload = productVideoMulter.single("video");
   } else {
@@ -139,6 +140,119 @@ function toObjectId(id) {
     : null;
 }
 
+/* PUBLIC — Get vendor store by slug */
+router.get("/store/:slug", async (req, res) => {
+  try {
+    const { slug } = req.params;
+
+    const vendor = await User.findOne({
+      vendorSlug: slug,
+      isVendor: true,
+      vendorStatus: "approved",
+    }).select("storeName storeDescription storeLogo vendorSlug vendorStatus kycStatus approvedAt");
+
+    if (!vendor) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+
+    // Get vendor statistics
+    const Product = require("../models/Product");
+    const Order = require("../models/Order");
+
+    const productCount = await Product.countDocuments({
+      vendorId: vendor._id,
+      isDeleted: { $ne: true }
+    });
+
+    const ordersCompleted = await Order.countDocuments({
+      "items.vendorId": vendor._id,
+      orderStatus: "delivered"
+    });
+
+    res.json({
+      vendor: {
+        _id: vendor._id,
+        storeName: vendor.storeName,
+        storeDescription: vendor.storeDescription,
+        storeLogo: vendor.storeLogo,
+        vendorSlug: vendor.vendorSlug,
+        vendorStatus: vendor.vendorStatus,
+        kycStatus: vendor.kycStatus,
+        approvedAt: vendor.approvedAt,
+      },
+      stats: {
+        productCount,
+        ordersCompleted,
+      }
+    });
+  } catch (err) {
+    console.error("[VENDOR STORE] Error:", err.message);
+    res.status(500).json({ error: "Failed to load store" });
+  }
+});
+
+/* PUBLIC — Get vendor products by slug */
+router.get("/store/:slug/products", async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { limit = 20, skip = 0 } = req.query;
+    logger.log("=== VENDOR PRODUCTS DEBUG ===");
+    logger.log("Store slug:", slug);
+
+    // GUARD: Ensure slug is provided
+    if (!slug || slug.trim() === "") {
+      logger.log("ERROR: Empty slug provided, returning 400");
+      return res.status(400).json({ error: "Store slug is required" });
+    }
+
+    // Find vendor by vendorSlug field
+    let vendor = await User.findOne({
+      vendorSlug: slug,
+      isVendor: true,
+      vendorStatus: "approved",
+    }).select("_id storeName vendorSlug");
+
+    // If not found, try alternative field name storeSlug
+    if (!vendor) {
+      logger.log("Vendor not found with vendorSlug:", slug);
+      vendor = await User.findOne({
+        storeSlug: slug,
+        isVendor: true,
+        vendorStatus: "approved",
+      }).select("_id storeName storeSlug");
+
+      if (!vendor) {
+        logger.log("Vendor still not found, returning 404");
+        return res.status(404).json({ error: "Store not found" });
+      }
+      logger.log("Found vendor using storeSlug field:", vendor._id, vendor.storeName);
+    }
+
+    logger.log("Vendor found:", vendor._id, vendor.storeName, "vendorSlug:", vendor.vendorSlug || vendor.storeSlug);
+
+    const Product = require("../models/Product");
+    // CRITICAL: Filter by vendor._id - never return all products
+    const products = await Product.find({
+      vendorId: vendor._id,
+      isDeleted: { $ne: true }
+    })
+      .populate("vendorId", "storeName storeLogo vendorSlug")
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip(Number(skip))
+      .lean();
+
+    logger.log("Products count for vendor", vendor._id, ":", products.length);
+    if (products.length > 0) {
+      logger.log("First product vendor:", products[0].vendorId?.storeName);
+    }
+    res.json(products || []);
+  } catch (err) {
+    console.error("[VENDOR PRODUCTS] Error:", err.message);
+    res.status(500).json({ error: "Failed to load products" });
+  }
+});
+
 /* PUBLIC — list approved vendors (for StoresPage) with optional search */
 router.get("/list", async (req, res) => {
   try {
@@ -188,10 +302,79 @@ router.get("/profile/:id", async (req, res) => {
   }
 });
 
+/* VENDOR: Generate or get store slug */
+router.post("/generate-slug", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const User = require("../models/User");
+
+    let vendor = await User.findById(vendorId);
+
+    // If vendor already has slug, return it
+    if (vendor.vendorSlug) {
+      return res.json({ slug: vendor.vendorSlug, message: "Slug already exists" });
+    }
+
+    // Generate slug from store name
+    const baseSlug = (vendor.storeName || vendor.name || "store")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .trim();
+
+    // Check if slug exists and make it unique
+    let slug = baseSlug;
+    let counter = 1;
+
+    while (true) {
+      const existing = await User.findOne({
+        vendorSlug: slug,
+        _id: { $ne: vendorId }
+      });
+
+      if (!existing) break;
+
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
+    vendor.vendorSlug = slug;
+    await vendor.save();
+
+    res.json({ slug: vendor.vendorSlug, message: "Slug generated successfully" });
+  } catch (err) {
+    console.error("[GENERATE SLUG] Error:", err.message);
+    res.status(500).json({ error: "Failed to generate slug" });
+  }
+});
+
+/* VENDOR: Get current store slug */
+router.get("/store-slug", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const User = require("../models/User");
+
+    const vendor = await User.findById(vendorId).select("vendorSlug storeName");
+
+    res.json({
+      slug: vendor.vendorSlug || null,
+      storeName: vendor.storeName
+    });
+  } catch (err) {
+    console.error("[GET SLUG] Error:", err.message);
+    res.status(500).json({ error: "Failed to get slug" });
+  }
+});
+
 /* DASHBOARD */
 router.get("/dashboard", requireAuth, requireApprovedVendor, async (req, res) => {
   try {
     const vendorId = toObjectId(req.user.userId);
+
+    // Get vendor info (storeName, storeSlug)
+    const User = require("../models/User");
+    const vendor = await User.findById(vendorId).select("storeName vendorSlug").lean();
 
     const [productsCount, ordersCount, recentOrders] = await Promise.all([
       Product.countDocuments({ vendorId, isDeleted: { $ne: true } }),
@@ -218,6 +401,8 @@ router.get("/dashboard", requireAuth, requireApprovedVendor, async (req, res) =>
       totalOrders: ordersCount,
       totalRevenue: revenueAgg?.[0]?.total || 0,
       recentOrders,
+      storeName: vendor?.storeName || "",
+      storeSlug: vendor?.vendorSlug || "",
     });
   } catch (err) {
     res.status(500).json({ error: "Dashboard error" });
@@ -316,13 +501,13 @@ const handleMulterError = (err, req, res, next) => {
 /* VENDOR: UPLOAD PRODUCT VIDEO */
 router.post("/products/:id/video", requireAuth, requireApprovedVendor, videoUpload, handleVideoUploadError, async (req, res) => {
   try {
-    console.log("========================================");
-    console.log("[VIDEO UPLOAD] Starting upload...");
-    console.log("[VIDEO UPLOAD] videoUpload ready:", !!videoUpload);
-    console.log("[VIDEO UPLOAD] CLOUDINARY_CONFIGURED:", CLOUDINARY_CONFIGURED);
-    console.log("[VIDEO UPLOAD] req.file:", req.file ? "exists" : "MISSING");
+    logger.log("========================================");
+    logger.log("[VIDEO UPLOAD] Starting upload...");
+    logger.log("[VIDEO UPLOAD] videoUpload ready:", !!videoUpload);
+    logger.log("[VIDEO UPLOAD] CLOUDINARY_CONFIGURED:", CLOUDINARY_CONFIGURED);
+    logger.log("[VIDEO UPLOAD] req.file:", req.file ? "exists" : "MISSING");
     if (req.file) {
-      console.log("[VIDEO UPLOAD] File details:", {
+      logger.log("[VIDEO UPLOAD] File details:", {
         originalname: req.file.originalname,
         filename: req.file.filename,
         path: req.file.path,
@@ -332,7 +517,7 @@ router.post("/products/:id/video", requireAuth, requireApprovedVendor, videoUplo
         public_id: req.file.public_id
       });
     }
-    console.log("========================================");
+    logger.log("========================================");
 
     const product = await Product.findOne({ _id: req.params.id, vendorId: req.user.userId, isDeleted: { $ne: true } });
     if (!product) return res.status(404).json({ error: "Product not found" });
@@ -355,7 +540,7 @@ router.post("/products/:id/video", requireAuth, requireApprovedVendor, videoUplo
     let videoPublicId = "";
 
     // Debug: Log all available Cloudinary-related fields
-    console.log("[VIDEO UPLOAD] Debug - all file fields:", {
+    logger.log("[VIDEO UPLOAD] Debug - all file fields:", {
       secure_url: req.file.secure_url,
       public_id: req.file.public_id,
       url: req.file.url,
@@ -371,25 +556,25 @@ router.post("/products/:id/video", requireAuth, requireApprovedVendor, videoUplo
       if (req.file.secure_url && req.file.secure_url.startsWith("http")) {
         videoUrl = req.file.secure_url;
         videoPublicId = req.file.public_id || "";
-        console.log("[VIDEO UPLOAD] ✓ Using Cloudinary secure_url:", videoUrl);
+        logger.log("[VIDEO UPLOAD] ✓ Using Cloudinary secure_url:", videoUrl);
       }
       // Try public_id
       else if (req.file.public_id) {
         videoPublicId = req.file.public_id;
         videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
-        console.log("[VIDEO UPLOAD] ✓ Using constructed URL from public_id:", videoUrl);
+        logger.log("[VIDEO UPLOAD] ✓ Using constructed URL from public_id:", videoUrl);
       }
       // Try to get from path (sometimes Cloudinary puts URL here)
       else if (req.file.path && req.file.path.startsWith("http")) {
         videoUrl = req.file.path;
         videoPublicId = "";
-        console.log("[VIDEO UPLOAD] ✓ Using URL from path:", videoUrl);
+        logger.log("[VIDEO UPLOAD] ✓ Using URL from path:", videoUrl);
       }
       else {
         // Cloudinary configured but no URL - use filename as public_id fallback
         videoPublicId = `siishop/products/videos/${req.file.filename.split('.')[0]}`;
         videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
-        console.log("[VIDEO UPLOAD] ✓ Using constructed URL (fallback):", videoUrl);
+        logger.log("[VIDEO UPLOAD] ✓ Using constructed URL (fallback):", videoUrl);
       }
     } else {
       // Fallback to local storage - use full filename (includes extension)
@@ -401,15 +586,15 @@ router.post("/products/:id/video", requireAuth, requireApprovedVendor, videoUplo
         filename = filename.split('\\').pop();
       }
       videoUrl = `/uploads/videos/${filename}`;
-      console.log("[VIDEO UPLOAD] ✗ Using local URL:", videoUrl, "from req.file.filename:", req.file.filename);
+      logger.log("[VIDEO UPLOAD] ✗ Using local URL:", videoUrl, "from req.file.filename:", req.file.filename);
     }
 
     product.videoUrl = videoUrl;
     product.videoPublicId = videoPublicId;
     await product.save();
 
-    console.log("[VIDEO UPLOAD] ✓ Saved product.videoUrl:", product.videoUrl);
-    console.log("========================================");
+    logger.log("[VIDEO UPLOAD] ✓ Saved product.videoUrl:", product.videoUrl);
+    logger.log("========================================");
 
     res.json({ videoUrl, videoPublicId, message: "Video uploaded successfully" });
   } catch (err) {
@@ -448,12 +633,12 @@ router.delete("/products/:id/video", requireAuth, requireApprovedVendor, async (
 router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handleMulterError, async (req, res) => {
   try {
     // 🐛 DEBUG LOGGING (MANDATORY)
-    console.log("=== VENDOR CREATE PRODUCT DEBUG ===");
-    console.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
-    console.log("REQ.BODY:", req.body);
-    console.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
-    console.log("FILES DETAIL:", req.files ? req.files.map(f => ({ name: f.originalname, size: f.size, mimetype: f.mimetype })) : []);
-    console.log("===================================");
+    logger.log("=== VENDOR CREATE PRODUCT DEBUG ===");
+    logger.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+    logger.log("REQ.BODY:", req.body);
+    logger.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
+    logger.log("FILES DETAIL:", req.files ? req.files.map(f => ({ name: f.originalname, size: f.size, mimetype: f.mimetype })) : []);
+    logger.log("===================================");
 
     // Process uploaded files into images array
     let images = [];
@@ -471,30 +656,30 @@ router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handle
           // Cloudinary - use the cloud URL
           url = file.secure_url || file.path;
           public_id = file.public_id || "";
-          console.log("[CREATE PRODUCT] Cloudinary image:", url);
+          logger.log("[CREATE PRODUCT] Cloudinary image:", url);
         } else {
           // Local storage - use relative path
           url = `/uploads/${file.filename}`;
-          console.log("[CREATE PRODUCT] Local image:", url);
+          logger.log("[CREATE PRODUCT] Local image:", url);
         }
 
         return { url, public_id };
       });
-      console.log("[CREATE PRODUCT] Processed images:", images);
+      logger.log("[CREATE PRODUCT] Processed images:", images);
     } else {
-      console.log("[CREATE PRODUCT] No files in req.files, req.files =", req.files);
+      logger.log("[CREATE PRODUCT] No files in req.files, req.files =", req.files);
     }
 
     // Backward compatibility: if no files but legacy image field provided
     const legacyImage = req.body.image;
     if (images.length === 0 && legacyImage) {
       images.push({ url: legacyImage, public_id: "" });
-      console.log("[CREATE PRODUCT] Using legacy image:", legacyImage);
+      logger.log("[CREATE PRODUCT] Using legacy image:", legacyImage);
     }
 
     // Validate: require at least one image
     if (images.length === 0) {
-      console.log("[CREATE PRODUCT] ERROR: No images provided");
+      logger.log("[CREATE PRODUCT] ERROR: No images provided");
       return res.status(400).json({ error: "At least one product image is required" });
     }
 
@@ -511,7 +696,7 @@ router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handle
       vendorId:    req.user.userId,
     };
 
-    console.log("[CREATE PRODUCT] Creating product with:", JSON.stringify(productData));
+    logger.log("[CREATE PRODUCT] Creating product with:", JSON.stringify(productData));
 
     let product;
     try {
@@ -521,7 +706,7 @@ router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handle
       console.error("[CREATE PRODUCT] DB ERRORS:", dbErr.errors);
       return res.status(500).json({ error: "Database error: " + dbErr.message });
     }
-    console.log("[CREATE PRODUCT] Product created:", product._id);
+    logger.log("[CREATE PRODUCT] Product created:", product._id);
 
     res.status(201).json(product);
   } catch (err) {
@@ -535,12 +720,12 @@ router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handle
 router.put("/products/:id", requireAuth, requireApprovedVendor, multiUpload, handleMulterError, async (req, res) => {
   try {
     // 🐛 DEBUG LOGGING (MANDATORY)
-    console.log("=== VENDOR UPDATE PRODUCT DEBUG ===");
-    console.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
-    console.log("REQ.BODY:", req.body);
-    console.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
-    console.log("PRODUCT ID:", req.params.id);
-    console.log("===================================");
+    logger.log("=== VENDOR UPDATE PRODUCT DEBUG ===");
+    logger.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+    logger.log("REQ.BODY:", req.body);
+    logger.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
+    logger.log("PRODUCT ID:", req.params.id);
+    logger.log("===================================");
 
     const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!product) return res.status(404).json({ error: "Product not found" });

@@ -10,6 +10,7 @@ const User = require("../models/User");
 const Order = require("../models/Order");
 const { requireAuth } = require("../middleware/auth");
 const { cloudinary } = require("../config/cloudinary");
+const logger = require("../utils/logger");
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -39,7 +40,7 @@ const upload = multer({
 router.get("/conversations", requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
-    console.log("[Chat] GET conversations - userId:", userId, "req.user:", req.user);
+    logger.log("[Chat] GET conversations - userId:", userId, "req.user:", req.user);
     const { type, limit = 20, skip = 0 } = req.query;
 
     // Build query based on user role and filters
@@ -156,10 +157,10 @@ router.get("/conversations/:id", requireAuth, async (req, res) => {
 router.post("/conversations", requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
-    console.log("[Chat] POST create conversation - userId:", userId, "req.user:", req.user);
+    logger.log("[Chat] POST create conversation - userId:", userId, "req.user:", req.user);
     const { participantId, conversationType = "direct", orderId, productId } = req.body;
 
-    console.log("[Chat] Creating conversation:", { userId, participantId, conversationType, orderId, productId });
+    logger.log("[Chat] Creating conversation:", { userId, participantId, conversationType, orderId, productId });
 
     if (!participantId) {
       return res.status(400).json({ success: false, message: "Participant ID required" });
@@ -170,7 +171,7 @@ router.post("/conversations", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    console.log("[Chat] Current user:", user.name, "isVendor:", user.isVendor, "isAdmin:", user.isAdmin);
+    logger.log("[Chat] Current user:", user.name, "isVendor:", user.isVendor, "isAdmin:", user.isAdmin);
 
     // Determine roles - ensure we always have a valid role
     const currentUserRole = user.isVendor ? "vendor" : user.isAdmin ? "admin" : user.isRider ? "rider" : "customer";
@@ -183,7 +184,7 @@ router.post("/conversations", requireAuth, async (req, res) => {
 
     const otherUserRole = otherUser.isVendor ? "vendor" : otherUser.isAdmin ? "admin" : otherUser.isRider ? "rider" : "customer";
 
-    console.log("[Chat] Other user:", otherUser.name, "role:", otherUserRole);
+    logger.log("[Chat] Other user:", otherUser.name, "role:", otherUserRole);
 
     const participants = [
       { userId: user._id, role: currentUserRole },
@@ -233,7 +234,7 @@ router.post("/conversations", requireAuth, async (req, res) => {
       productId,
     });
 
-    console.log("[Chat] Conversation created:", conversation._id);
+    logger.log("[Chat] Conversation created:", conversation._id);
 
     // Populate for response
     await conversation.populate("participants.userId", "name email phone avatar storeName isOnline lastSeen");
@@ -256,9 +257,9 @@ router.post("/conversations/order/:orderId", requireAuth, async (req, res) => {
     const userId = req.user.userId;
     const { orderId } = req.params;
 
-    console.log("========== [CHAT ORDER] START ==========");
-    console.log("orderId:", orderId, "type:", typeof orderId);
-    console.log("userId:", userId, "type:", typeof userId);
+    logger.log("========== [CHAT ORDER] START ==========");
+    logger.log("orderId:", orderId, "type:", typeof orderId);
+    logger.log("userId:", userId, "type:", typeof userId);
 
     // 1. VALIDATE ORDER ID
     if (!orderId) {
@@ -268,13 +269,13 @@ router.post("/conversations/order/:orderId", requireAuth, async (req, res) => {
     // 2. FIND ORDER
     const order = await Order.findById(orderId);
     if (!order) {
-      console.log("[CHAT ORDER] Order not found:", orderId);
+      logger.log("[CHAT ORDER] Order not found:", orderId);
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    console.log("Order found, userId:", order.userId, "vendorId:", order.vendorId);
-    console.log("Order userId type:", typeof order.userId);
-    console.log("Order vendorId type:", typeof order.vendorId);
+    logger.log("Order found, userId:", order.userId, "vendorId:", order.vendorId);
+    logger.log("Order userId type:", typeof order.userId);
+    logger.log("Order vendorId type:", typeof order.vendorId);
 
     // 3. GET CUSTOMER AND VENDOR IDs
     // Order model has userId (customer) and vendorId
@@ -286,16 +287,16 @@ router.post("/conversations/order/:orderId", requireAuth, async (req, res) => {
     const vendorIdStr = String(vendorId);
     const userIdStr = String(userId);
 
-    console.log("customerIdStr:", customerIdStr);
-    console.log("vendorIdStr:", vendorIdStr);
-    console.log("userIdStr:", userIdStr);
+    logger.log("customerIdStr:", customerIdStr);
+    logger.log("vendorIdStr:", vendorIdStr);
+    logger.log("userIdStr:", userIdStr);
 
     // 4. CHECK ACCESS
     const isCustomer = customerIdStr === userIdStr;
     const isVendor = vendorIdStr === userIdStr;
     const isAdmin = req.user.isAdmin === true;
 
-    console.log("isCustomer:", isCustomer, "isVendor:", isVendor, "isAdmin:", isAdmin);
+    logger.log("isCustomer:", isCustomer, "isVendor:", isVendor, "isAdmin:", isAdmin);
 
     if (!isCustomer && !isVendor && !isAdmin) {
       return res.status(403).json({ success: false, message: "Access denied" });
@@ -315,7 +316,7 @@ router.post("/conversations/order/:orderId", requireAuth, async (req, res) => {
       participants.push({ userId: vendorIdStr, role: "vendor" });
     }
 
-    console.log("Participants:", JSON.stringify(participants));
+    logger.log("Participants:", JSON.stringify(participants));
 
     // 6. CHECK EXISTING
     const existing = await Conversation.findOne({
@@ -324,14 +325,14 @@ router.post("/conversations/order/:orderId", requireAuth, async (req, res) => {
     });
 
     if (existing) {
-      console.log("[CHAT ORDER] Found existing:", existing._id);
+      logger.log("[CHAT ORDER] Found existing:", existing._id);
       await existing.populate("participants.userId", "name email phone storeName");
       await existing.populate("orderId", "orderNumber status");
       return res.json({ success: true, conversation: existing });
     }
 
     // 7. CREATE NEW CONVERSATION
-    console.log("[CHAT ORDER] Creating new conversation...");
+    logger.log("[CHAT ORDER] Creating new conversation...");
 
     const conversationData = {
       participants: participants,
@@ -339,17 +340,17 @@ router.post("/conversations/order/:orderId", requireAuth, async (req, res) => {
       orderId: orderId,
     };
 
-    console.log("Conversation data:", JSON.stringify(conversationData));
+    logger.log("Conversation data:", JSON.stringify(conversationData));
 
     const conversation = await Conversation.create(conversationData);
 
-    console.log("[CHAT ORDER] Created:", conversation._id);
+    logger.log("[CHAT ORDER] Created:", conversation._id);
 
     // 8. POPULATE AND RETURN
     await conversation.populate("participants.userId", "name email phone storeName isOnline");
     await conversation.populate("orderId", "orderNumber status totalAmount");
 
-    console.log("========== [CHAT ORDER] SUCCESS ==========");
+    logger.log("========== [CHAT ORDER] SUCCESS ==========");
 
     res.json({
       success: true,

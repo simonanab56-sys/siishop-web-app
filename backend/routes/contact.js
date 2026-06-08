@@ -2,6 +2,7 @@
 
 const router = require("express").Router();
 const nodemailer = require("nodemailer");
+const logger = require("../utils/logger");
 
 // Contact form submission
 router.post("/", async (req, res) => {
@@ -19,8 +20,8 @@ router.post("/", async (req, res) => {
     }
 
     // Log the contact form submission (in production, you'd send an email)
-    console.log("[CONTACT FORM] New message from:", name, email);
-    console.log("[CONTACT FORM] Message:", message);
+    logger.log("[CONTACT FORM] New message from:", name, email);
+    logger.log("[CONTACT FORM] Message:", message);
 
     // If email is configured, send notification
     if (process.env.SMTP_HOST && process.env.SMTP_USER) {
@@ -41,7 +42,7 @@ router.post("/", async (req, res) => {
           subject: `New Contact Form: ${name}`,
           text: `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`,
         });
-        console.log("[CONTACT FORM] Email sent successfully");
+        logger.log("[CONTACT FORM] Email sent successfully");
       } catch (emailErr) {
         console.error("[CONTACT FORM] Email error:", emailErr.message);
         // Don't fail the request if email fails

@@ -12,6 +12,7 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
+const logger = require("../utils/logger");
 
 /**
  * GET /api/admin/vendors/pending
@@ -64,7 +65,7 @@ router.patch("/:id/approve", requireAuth, requireAdmin, async (req, res) => {
     vendor.vendorRejectedReason = ""; // Clear any previous rejection reason
     await vendor.save();
 
-    console.log(`[Admin] Vendor ${id} approved by admin`);
+    logger.log(`[Admin] Vendor ${id} approved by admin`);
 
     res.json({
       message: "Vendor approved successfully",
@@ -115,7 +116,7 @@ router.patch("/:id/reject", requireAuth, requireAdmin, async (req, res) => {
     vendor.approvedAt = null; // Clear approval date
     await vendor.save();
 
-    console.log(`[Admin] Vendor ${id} rejected by admin: ${reason}`);
+    logger.log(`[Admin] Vendor ${id} rejected by admin: ${reason}`);
 
     res.json({
       message: "Vendor rejected successfully",

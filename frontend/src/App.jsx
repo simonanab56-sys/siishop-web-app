@@ -1,5 +1,5 @@
 // App.jsx — v10: global search support
-import { useState, Component, useEffect, useCallback } from "react";
+import { useState, Component, useEffect, useCallback, useRef } from "react";
 import logger from "./utils/logger";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CurrencyProvider } from "./context/CurrencyContext";
@@ -15,6 +15,7 @@ import OrdersPage from "./pages/OrdersPage";
 import SettingsPage from "./pages/SettingsPage";
 import WishlistPage from "./pages/WishlistPage";
 import StoresPage from "./pages/StoresPage";
+import VendorStorePage from "./pages/VendorStorePage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import VendorDashboard from "./pages/vendor/VendorDashboard";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -145,6 +146,30 @@ function AppInner() {
   // Get current page SEO
   const currentPageSEO = PAGE_SEO[page] || PAGE_SEO.home;
 
+  // Handle URL path for vendor stores (e.g., /store/dzifa-fashion)
+  // Runs on mount to detect store URLs
+  useEffect(() => {
+    try {
+      const path = window.location.pathname;
+      logger.log("[App] Checking URL:", path);
+
+      // Match /store/:slug pattern (handle optional trailing slash)
+      const storeMatch = path.match(/^\/store\/(.+?)\/?$/);
+      if (storeMatch) {
+        const storeSlug = storeMatch[1];
+        logger.log("[App] Detected store URL, slug:", storeSlug);
+        // Store the slug and navigate to vendor-store page
+        sessionStorage.setItem("vendorStoreSlug", storeSlug);
+        if (page !== "vendor-store") {
+          setPage("vendor-store");
+        }
+      }
+    } catch (e) {
+      logger.log("[App] Error parsing store URL:", e.message);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount only
+
   // Handle URL query parameters from email links (e.g., ?page=orders)
   useEffect(() => {
     try {
@@ -217,6 +242,31 @@ function AppInner() {
   // Global search state - persists across page changes
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Vendor context - when browsing a vendor store, this tracks the vendor
+  const [vendorContext, setVendorContext] = useState(() => {
+    const stored = sessionStorage.getItem("vendorContext");
+    return stored ? JSON.parse(stored) : null;
+  });
+
+  // Persist vendor context to sessionStorage
+  useEffect(() => {
+    if (vendorContext) {
+      sessionStorage.setItem("vendorContext", JSON.stringify(vendorContext));
+    } else {
+      sessionStorage.removeItem("vendorContext");
+    }
+  }, [vendorContext]);
+
+  // Function to set vendor context
+  const setVendorContextForStore = useCallback((vendorSlug, vendorId) => {
+    setVendorContext({ slug: vendorSlug, vendorId });
+  }, []);
+
+  // Function to clear vendor context
+  const clearVendorContext = useCallback(() => {
+    setVendorContext(null);
+  }, []);
+
   // Handle global search from navbar
   const handleGlobalSearch = useCallback((query) => {
     const trimmed = query?.trim() || "";
@@ -274,9 +324,17 @@ function AppInner() {
   // Handle navigation from ProductDetailPage recommendations, Wishlist, etc.
   // When on product page and click a recommended product, fetch and display it
   async function handleProductNavigate(pageName, productIdOrProduct) {
+    logger.log("Navigating to:", pageName, "product:", productIdOrProduct?._id || productIdOrProduct);
+    logger.log("Current page before navigation:", page);
     if (pageName === "product") {
       // Save current page (page state) as previous BEFORE changing to product
       setPreviousPage(page);
+      logger.log("Setting previousPage to:", page);
+      // Update browser URL to /product/:id
+      const productId = productIdOrProduct?._id || productIdOrProduct;
+      if (productId && typeof productId === "string") {
+        window.history.pushState({}, document.title, `/product/${productId}`);
+      }
       try {
         // If it's a product object, use it directly
         if (productIdOrProduct && productIdOrProduct._id) {
@@ -309,8 +367,21 @@ function AppInner() {
     }
   }
 
+  // Handle vendor store navigation
+  function handleStoreNavigate(slug) {
+    sessionStorage.setItem("vendorStoreSlug", slug);
+    setPreviousPage("vendors");
+    setPage("vendor-store");
+  }
+
   function handleBackFromProduct() {
+    logger.log("Going back from product, previousPage:", previousPage);
     handleSetSelectedProduct(null);
+    // Restore URL based on previous page
+    if (previousPage === "vendor-store") {
+      const storeSlug = sessionStorage.getItem("vendorStoreSlug");
+      window.history.pushState({}, document.title, `/store/${storeSlug}`);
+    }
     setPage(previousPage || "home");
   }
 
@@ -334,9 +405,9 @@ function AppInner() {
   function renderPage() {
     switch (page) {
       case "home":
-        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} globalSearchQuery={searchQuery} onClearGlobalSearch={() => setSearchQuery("")} onRequireAuth={onRequireAuth} />;
+        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} globalSearchQuery={searchQuery} onClearGlobalSearch={() => setSearchQuery("")} onRequireAuth={onRequireAuth} vendorContext={vendorContext} onClearVendorContext={clearVendorContext} />;
       case "categories":
-        return <CategoriesPage onAddToCart={addToCart} onViewProduct={handleViewProduct} onRequireAuth={onRequireAuth} />;
+        return <CategoriesPage onAddToCart={addToCart} onViewProduct={handleViewProduct} onRequireAuth={onRequireAuth} vendorContext={vendorContext} onClearVendorContext={clearVendorContext} />;
       case "product":
         return (
           <ProductDetailPage
@@ -348,7 +419,12 @@ function AppInner() {
             onRequireAuth={onRequireAuth}
           />
         );
-      case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} onRequireAuth={onRequireAuth} />;
+      case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} onRequireAuth={onRequireAuth} vendorContext={vendorContext} onClearVendorContext={clearVendorContext} />;
+      case "vendor-store": {
+        const storeSlug = sessionStorage.getItem("vendorStoreSlug");
+        logger.log("Rendering VendorStorePage with slug:", storeSlug);
+        return <VendorStorePage key={`vendor-${storeSlug}`} onAddToCart={addToCart} onNavigate={handleProductNavigate} onRequireAuth={onRequireAuth} vendorSlug={storeSlug} onVendorLoaded={setVendorContextForStore} />;
+      }
       case "cart": return <CartPage cart={cart} onIncrease={increaseQty} onDecrease={decreaseQty} onRemove={removeFromCart} onClearCart={clearCart} onNavigate={setPage} addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "orders": return <OrdersPage addToast={addToast} onRequireAuth={onRequireAuth} onNavigate={setPage} />;
       case "wishlist": return <WishlistPage onNavigate={handleProductNavigate} addToast={addToast} onRequireAuth={onRequireAuth} onAddToCart={addToCart} />;

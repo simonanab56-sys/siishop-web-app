@@ -1,0 +1,198 @@
+/* pages/VendorStorePage.module.css */
+
+.page {
+  padding: 24px 0 60px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.loading,
+.error,
+.noProducts {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--brand-muted);
+  font-size: 1rem;
+}
+
+.error {
+  color: var(--brand-danger);
+}
+
+/* Store Header */
+.header {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--brand-border);
+}
+
+.headerContent {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.logoSection {
+  flex-shrink: 0;
+}
+
+.logo {
+  width: 100px;
+  height: 100px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.logoPlaceholder {
+  width: 100px;
+  height: 100px;
+  border-radius: var(--radius-md);
+  background: var(--brand-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
+.storeName {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.verifiedBadge {
+  color: var(--brand-primary);
+  font-size: 1rem;
+}
+
+.description {
+  color: var(--brand-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.stats {
+  display: flex;
+  gap: 20px;
+  font-size: 0.85rem;
+  color: var(--brand-muted);
+}
+
+/* Share Section */
+.shareSection {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid var(--brand-border);
+}
+
+.shareBtn,
+.copyBtn {
+  padding: 10px 20px;
+  border-radius: var(--radius-full);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  border: none;
+}
+
+.shareBtn {
+  background: var(--brand-primary);
+  color: white;
+}
+
+.shareBtn:hover {
+  background: var(--brand-secondary);
+}
+
+.copyBtn {
+  background: var(--brand-surface);
+  color: var(--brand-dark);
+  border: 1px solid var(--brand-border);
+}
+
+.copyBtn:hover {
+  background: var(--brand-light);
+}
+
+/* Products Section */
+.productsSection {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--brand-border);
+}
+
+.sectionTitle {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  margin: 0 0 20px;
+}
+
+.productsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .productsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .headerContent {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .stats {
+    justify-content: center;
+  }
+
+  .shareSection {
+    justify-content: center;
+  }
+
+  .productsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .logo,
+  .logoPlaceholder {
+    width: 80px;
+    height: 80px;
+  }
+
+  .storeName {
+    font-size: 1.3rem;
+  }
+
+  .productsGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -10,7 +10,7 @@ import styles        from "./HomePage.module.css";
 
 const DEBOUNCE_MS = 100; // Faster response for better UX
 
-export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery, onClearGlobalSearch, onRequireAuth }) {
+export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery, onClearGlobalSearch, onRequireAuth, vendorContext, onClearVendorContext }) {
   const { fmt } = useCurrency();
   const [products,       setProducts]       = useState([]);
   const [promoProducts,   setPromoProducts]   = useState([]);
@@ -33,6 +33,10 @@ export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery
       const params = {};
       if (q)               params.search   = q;
       if (cat && cat !== "All") params.category = cat;
+      // Filter by vendor if in vendor context
+      if (vendorContext?.vendorId) {
+        params.vendorId = vendorContext.vendorId;
+      }
       const data = await productAPI.getAll(params);
       if (mountedRef.current) {
         setProducts(Array.isArray(data) ? data : []);
@@ -47,7 +51,7 @@ export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery
         setLoading(false);
       }
     }
-  }, []);
+  }, [vendorContext]);
 
   // ── Initialize category from URL on mount ──────────────────────────────────
   useEffect(() => {
@@ -184,6 +188,36 @@ export default function HomePage({ onAddToCart, onViewProduct, globalSearchQuery
 
   return (
     <>
+      {/* Vendor Context Banner */}
+      {vendorContext && (
+        <div style={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: 'white',
+          padding: '12px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px'
+        }}>
+          <span>🛒 Showing products from vendor store</span>
+          <button
+            onClick={onClearVendorContext}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.4)',
+              color: 'white',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600'
+            }}
+          >
+            ✕ Clear Filter
+          </button>
+        </div>
+      )}
+
       {/* ── Helmet: Dynamic SEO tags ─────────────────────────────────────── */}
       <Helmet>
         <title>{seoData.title}</title>

@@ -2,6 +2,7 @@
 
 const Order = require("../models/Order");
 const User = require("../models/User");
+const logger = require("../utils/logger");
 const {
   sendOrderConfirmationEmail,
   sendVendorOrderNotificationEmail,
@@ -62,13 +63,13 @@ async function getAdminEmails() {
  */
 async function getVendorEmails(order) {
   const vendorIds = [...new Set(order.items.map((i) => String(i.vendorId)))];
-  console.log(`[Notification] Looking for vendors with IDs:`, vendorIds);
+  logger.log(`[Notification] Looking for vendors with IDs:`, vendorIds);
 
   const vendors = await User.find({ _id: { $in: vendorIds } })
     .select("email storeName name")
     .lean();
 
-  console.log(`[Notification] Found vendors:`, JSON.stringify(vendors, null, 2));
+  logger.log(`[Notification] Found vendors:`, JSON.stringify(vendors, null, 2));
 
   return vendors.map((v) => ({
     email: v.email,
@@ -82,8 +83,8 @@ async function getVendorEmails(order) {
  * Called after successful order creation (both COD and Paystack)
  */
 async function notifyOrderCreated(order) {
-  console.log(`[Notification] Processing notifications for order ${order._id}`);
-  console.log(`[Notification] Order customerEmail: ${order.customerEmail}, customerName: ${order.customerName}`);
+  logger.log(`[Notification] Processing notifications for order ${order._id}`);
+  logger.log(`[Notification] Order customerEmail: ${order.customerEmail}, customerName: ${order.customerName}`);
 
   try {
     // Get customer email from order (stored during checkout) OR from User model
@@ -106,7 +107,7 @@ async function notifyOrderCreated(order) {
       return;
     }
 
-    console.log(`[Notification] Sending to customer: ${customerEmail}`);
+    logger.log(`[Notification] Sending to customer: ${customerEmail}`);
 
     // 1. Send confirmation to customer
     if (customerEmail && !wasNotificationSent("customer_confirmation", order._id, customerEmail)) {
@@ -144,7 +145,7 @@ async function notifyOrderCreated(order) {
       }
     }
 
-    console.log(`[Notification] Order created notifications sent for ${order._id}`);
+    logger.log(`[Notification] Order created notifications sent for ${order._id}`);
   } catch (err) {
     console.error(`[Notification] Error in notifyOrderCreated:`, err.message);
     // Don't throw - email failures shouldn't break order creation
@@ -156,7 +157,7 @@ async function notifyOrderCreated(order) {
  * Called when order status changes
  */
 async function notifyOrderStatusUpdate(orderId, oldStatus, newStatus) {
-  console.log(`[Notification] Processing status update for order ${orderId}: ${oldStatus} -> ${newStatus}`);
+  logger.log(`[Notification] Processing status update for order ${orderId}: ${oldStatus} -> ${newStatus}`);
 
   try {
     const order = await Order.findById(orderId).lean();
@@ -206,7 +207,7 @@ async function notifyOrderStatusUpdate(orderId, oldStatus, newStatus) {
       }
     }
 
-    console.log(`[Notification] Status update notifications sent for order ${orderId}`);
+    logger.log(`[Notification] Status update notifications sent for order ${orderId}`);
   } catch (err) {
     console.error(`[Notification] Error in notifyOrderStatusUpdate:`, err.message);
     // Don't throw - email failures shouldn't break status updates
@@ -218,7 +219,7 @@ async function notifyOrderStatusUpdate(orderId, oldStatus, newStatus) {
  * Placeholder for future implementation
  */
 async function sendSMSNotification(phone, message) {
-  console.log(`[SMS] Would send to ${phone}: ${message}`);
+  logger.log(`[SMS] Would send to ${phone}: ${message}`);
   // TODO: Integrate with SMS provider (Twilio, etc.)
 }
 
@@ -227,7 +228,7 @@ async function sendSMSNotification(phone, message) {
  * Placeholder for future implementation
  */
 async function sendPushNotification(userId, title, body) {
-  console.log(`[Push] Would send to user ${userId}: ${title} - ${body}`);
+  logger.log(`[Push] Would send to user ${userId}: ${title} - ${body}`);
   // TODO: Integrate with FCM or similar
 }
 

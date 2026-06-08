@@ -10,6 +10,7 @@ const Product = require("../models/Product");
 const Promo = require("../models/Promo");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
 const { createProductSchema, updateProductSchema, validate } = require("../utils/joiSchemas");
+const logger = require("../utils/logger");
 
 // ── CLOUDINARY CONFIGURATION ─────────────────────────────────────────────────
 let multiUpload;
@@ -27,12 +28,12 @@ function initStorage() {
   CLOUDINARY_CONFIGURED = checkCloudinaryConfig();
 
   if (CLOUDINARY_CONFIGURED) {
-    console.log("☁️ [ADMIN] Using Cloudinary for image storage");
+    logger.log("☁️ [ADMIN] Using Cloudinary for image storage");
     const { productMulter } = require("../config/cloudinary");
     multiUpload = productMulter.array("images", 10);
   } else {
     // Fallback to local disk storage
-    console.log("💾 [ADMIN] Using local disk storage for images");
+    logger.log("💾 [ADMIN] Using local disk storage for images");
     const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
     if (!fs.existsSync(UPLOAD_DIR)) {
       fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -67,12 +68,12 @@ let videoStorage;
 
 function initVideoStorage() {
   if (CLOUDINARY_CONFIGURED) {
-    console.log("☁️ [ADMIN] Using Cloudinary for video storage");
+    logger.log("☁️ [ADMIN] Using Cloudinary for video storage");
     const { productVideoMulter } = require("../config/cloudinary");
     videoUpload = productVideoMulter.single("video");
   } else {
     // Fallback to local disk storage for videos
-    console.log("💾 [ADMIN] Using local disk storage for videos");
+    logger.log("💾 [ADMIN] Using local disk storage for videos");
     const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads", "videos");
     if (!fs.existsSync(UPLOAD_DIR)) {
       fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -244,13 +245,13 @@ router.get("/:id", async (req, res) => {
 // ── ADMIN: UPLOAD PRODUCT VIDEO ────────────────────────────────────────────
 router.post("/:id/video", requireAuth, requireAdmin, videoUpload, handleVideoUploadError, async (req, res) => {
   try {
-    console.log("========================================");
-    console.log("[VIDEO UPLOAD] Admin - Starting upload...");
-    console.log("[VIDEO UPLOAD] Admin - videoUpload ready:", !!videoUpload);
-    console.log("[VIDEO UPLOAD] Admin - CLOUDINARY_CONFIGURED:", CLOUDINARY_CONFIGURED);
-    console.log("[VIDEO UPLOAD] Admin - req.file:", req.file ? "exists" : "MISSING");
+    logger.log("========================================");
+    logger.log("[VIDEO UPLOAD] Admin - Starting upload...");
+    logger.log("[VIDEO UPLOAD] Admin - videoUpload ready:", !!videoUpload);
+    logger.log("[VIDEO UPLOAD] Admin - CLOUDINARY_CONFIGURED:", CLOUDINARY_CONFIGURED);
+    logger.log("[VIDEO UPLOAD] Admin - req.file:", req.file ? "exists" : "MISSING");
     if (req.file) {
-      console.log("[VIDEO UPLOAD] Admin - File details:", {
+      logger.log("[VIDEO UPLOAD] Admin - File details:", {
         originalname: req.file.originalname,
         filename: req.file.filename,
         path: req.file.path,
@@ -260,7 +261,7 @@ router.post("/:id/video", requireAuth, requireAdmin, videoUpload, handleVideoUpl
         public_id: req.file.public_id
       });
     }
-    console.log("========================================");
+    logger.log("========================================");
 
     const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!product) return res.status(404).json({ error: "Product not found" });
@@ -274,7 +275,7 @@ router.post("/:id/video", requireAuth, requireAdmin, videoUpload, handleVideoUpl
       try {
         const { cloudinary } = require("../config/cloudinary");
         await cloudinary.uploader.destroy(product.videoPublicId, { resource_type: "video" });
-        console.log("[VIDEO] Deleted old video:", product.videoPublicId);
+        logger.log("[VIDEO] Deleted old video:", product.videoPublicId);
       } catch (e) {
         console.error("[VIDEO] Failed to delete old video:", e.message);
       }
@@ -285,7 +286,7 @@ router.post("/:id/video", requireAuth, requireAdmin, videoUpload, handleVideoUpl
     let videoPublicId = "";
 
     // Debug: Log all available Cloudinary-related fields
-    console.log("[VIDEO UPLOAD] Admin - Debug - all file fields:", {
+    logger.log("[VIDEO UPLOAD] Admin - Debug - all file fields:", {
       secure_url: req.file.secure_url,
       public_id: req.file.public_id,
       url: req.file.url,
@@ -300,20 +301,20 @@ router.post("/:id/video", requireAuth, requireAdmin, videoUpload, handleVideoUpl
       if (req.file.secure_url && req.file.secure_url.startsWith("http")) {
         videoUrl = req.file.secure_url;
         videoPublicId = req.file.public_id || "";
-        console.log("[VIDEO UPLOAD] Admin - ✓ Using Cloudinary secure_url:", videoUrl);
+        logger.log("[VIDEO UPLOAD] Admin - ✓ Using Cloudinary secure_url:", videoUrl);
       } else if (req.file.public_id) {
         videoPublicId = req.file.public_id;
         videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
-        console.log("[VIDEO UPLOAD] Admin - ✓ Using constructed URL from public_id:", videoUrl);
+        logger.log("[VIDEO UPLOAD] Admin - ✓ Using constructed URL from public_id:", videoUrl);
       } else if (req.file.path && req.file.path.startsWith("http")) {
         videoUrl = req.file.path;
         videoPublicId = "";
-        console.log("[VIDEO UPLOAD] Admin - ✓ Using URL from path:", videoUrl);
+        logger.log("[VIDEO UPLOAD] Admin - ✓ Using URL from path:", videoUrl);
       } else {
         // Cloudinary configured but no URL - construct from filename
         videoPublicId = `siishop/products/videos/${req.file.filename.split('.')[0]}`;
         videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
-        console.log("[VIDEO UPLOAD] Admin - ✓ Using constructed URL (fallback):", videoUrl);
+        logger.log("[VIDEO UPLOAD] Admin - ✓ Using constructed URL (fallback):", videoUrl);
       }
     } else {
       // Fallback to local storage - use full filename (includes extension)
@@ -325,7 +326,7 @@ router.post("/:id/video", requireAuth, requireAdmin, videoUpload, handleVideoUpl
         filename = filename.split('\\').pop();
       }
       videoUrl = `/uploads/videos/${filename}`;
-      console.log("[VIDEO UPLOAD] Admin - ✗ Using local URL:", videoUrl, "from req.file.filename:", req.file.filename);
+      logger.log("[VIDEO UPLOAD] Admin - ✗ Using local URL:", videoUrl, "from req.file.filename:", req.file.filename);
     }
 
     // Update product with video
@@ -333,8 +334,8 @@ router.post("/:id/video", requireAuth, requireAdmin, videoUpload, handleVideoUpl
     product.videoPublicId = videoPublicId || "";
     await product.save();
 
-    console.log("[VIDEO UPLOAD] Admin - ✓ Saved product.videoUrl:", product.videoUrl);
-    console.log("========================================");
+    logger.log("[VIDEO UPLOAD] Admin - ✓ Saved product.videoUrl:", product.videoUrl);
+    logger.log("========================================");
 
     res.json({ videoUrl, videoPublicId, message: "Video uploaded successfully" });
   } catch (err) {
@@ -354,7 +355,7 @@ router.delete("/:id/video", requireAuth, requireAdmin, async (req, res) => {
       try {
         const { cloudinary } = require("../config/cloudinary");
         await cloudinary.uploader.destroy(product.videoPublicId, { resource_type: "video" });
-        console.log("[VIDEO] Deleted video from Cloudinary:", product.videoPublicId);
+        logger.log("[VIDEO] Deleted video from Cloudinary:", product.videoPublicId);
       } catch (e) {
         console.error("[VIDEO] Failed to delete video:", e.message);
       }
@@ -377,11 +378,11 @@ router.delete("/:id/video", requireAuth, requireAdmin, async (req, res) => {
 router.post("/", requireAuth, requireAdmin, multiUpload, handleMulterError, async (req, res) => {
   try {
     // 🐛 DEBUG LOGGING (MANDATORY)
-    console.log("=== ADMIN CREATE PRODUCT DEBUG ===");
-    console.log("ADMIN USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
-    console.log("ADMIN BODY:", req.body);
-    console.log("ADMIN FILES:", req.files);
-    console.log("=====================================");
+    logger.log("=== ADMIN CREATE PRODUCT DEBUG ===");
+    logger.log("ADMIN USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+    logger.log("ADMIN BODY:", req.body);
+    logger.log("ADMIN FILES:", req.files);
+    logger.log("=====================================");
 
     // Validate at least one image
     if (!req.files || req.files.length === 0) {
@@ -432,10 +433,10 @@ router.post("/", requireAuth, requireAdmin, multiUpload, handleMulterError, asyn
       vendorId:    req.user.userId,
     };
 
-    console.log("[ADMIN CREATE] Creating product:", productData);
+    logger.log("[ADMIN CREATE] Creating product:", productData);
 
     const product = await Product.create(productData);
-    console.log("[ADMIN CREATE] Product created:", product._id);
+    logger.log("[ADMIN CREATE] Product created:", product._id);
 
     res.status(201).json(product);
   } catch (err) {
@@ -447,8 +448,8 @@ router.post("/", requireAuth, requireAdmin, multiUpload, handleMulterError, asyn
 // ── ADMIN: UPDATE PRODUCT ────────────────────────────────────────────────
 router.put("/:id", requireAuth, requireAdmin, multiUpload, handleMulterError, async (req, res) => {
   try {
-    console.log("[ADMIN UPDATE] Files:", req.files);
-    console.log("[ADMIN UPDATE] Body:", req.body);
+    logger.log("[ADMIN UPDATE] Files:", req.files);
+    logger.log("[ADMIN UPDATE] Body:", req.body);
 
     const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!product) return res.status(404).json({ error: "Not found" });
@@ -515,7 +516,7 @@ router.put("/:id", requireAuth, requireAdmin, multiUpload, handleMulterError, as
     if (req.body.available !== undefined)   product.available = req.body.available === "true" || req.body.available === true;
 
     await product.save();
-    console.log("[ADMIN UPDATE] Product updated:", product._id);
+    logger.log("[ADMIN UPDATE] Product updated:", product._id);
 
     res.json(product);
   } catch (err) {
@@ -574,7 +575,7 @@ router.post("/migrate-video-urls", requireAuth, requireAdmin, async (req, res) =
         product.videoUrl = newUrl;
         await product.save();
         fixed++;
-        console.log(`[VIDEO MIGRATION] Fixed product ${product._id}: ${newUrl}`);
+        logger.log(`[VIDEO MIGRATION] Fixed product ${product._id}: ${newUrl}`);
       } else {
         alreadyCorrect++;
       }

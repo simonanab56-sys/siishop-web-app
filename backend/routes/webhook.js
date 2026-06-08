@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const Order = require("../models/Order");
 const { updateRevenueForPaidOrder } = require("../services/revenue");
 const { notifyOrderCreated } = require("../services/notification.service");
+const logger = require("../utils/logger");
 
 /* ─── PAYSTACK WEBHOOK ────────────────────────────────────────────────────────
  * Paystack calls this when a transaction is completed.
@@ -54,7 +55,7 @@ router.post(
       return res.status(400).json({ error: "Invalid JSON body" });
     }
 
-    console.log(`[Webhook] Received event: ${event.event}`, JSON.stringify(event.data || {}));
+    logger.log(`[Webhook] Received event: ${event.event}`, JSON.stringify(event.data || {}));
 
     if (event.event === "charge.success") {
       const tx = event.data;
@@ -72,12 +73,12 @@ router.post(
           existingOrder.paymentStatus = "paid";
           existingOrder.orderStatus = "confirmed";
           await existingOrder.save();
-          console.log(`[Webhook] Order ${existingOrder._id} marked PAID via webhook for ref ${ref}`);
+          logger.log(`[Webhook] Order ${existingOrder._id} marked PAID via webhook for ref ${ref}`);
 
           // ✅ ADDED: Update vendor revenue when order is paid
           const revenueResult = await updateRevenueForPaidOrder(existingOrder._id);
           if (revenueResult.success) {
-            console.log(`[Webhook] Revenue updated for order ${existingOrder._id}`);
+            logger.log(`[Webhook] Revenue updated for order ${existingOrder._id}`);
           } else {
             console.warn(`[Webhook] Revenue update failed: ${revenueResult.message}`);
           }
@@ -87,7 +88,7 @@ router.post(
             console.error(`[Webhook] Failed to send notifications:`, err.message);
           });
         } else {
-          console.log(`[Webhook] Order ${existingOrder._id} already paid, skipping`);
+          logger.log(`[Webhook] Order ${existingOrder._id} already paid, skipping`);
         }
       } else {
         // Order not found — could be a duplicate webhook or the order was created

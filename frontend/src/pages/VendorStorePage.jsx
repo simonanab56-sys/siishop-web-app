@@ -131,11 +131,29 @@ export default function VendorStorePage({ onAddToCart, onNavigate, onRequireAuth
     );
   }
 
+  // Build breadcrumbs for vendor store
+  const breadcrumbs = [
+    { name: "Home", url: "https://siishops.com/" },
+    { name: "Vendors", url: "https://siishops.com/vendors" },
+    { name: store.storeName, url: `https://siishops.com/store/${vendorSlug}` },
+  ];
+
   return (
     <>
       <SEO
-        title={`${store.storeName} | SiiShop`}
-        description={store.storeDescription || `Shop products from ${store.storeName} on SiiShop`}
+        title={`${store.storeName} Store | SiiShop Ghana`}
+        description={store.storeDescription || `Shop electronics, accessories and more from ${store.storeName} on SiiShop Ghana. Verified vendor with ${store.stats?.productCount || 0} products.`}
+        keywords={`${store.storeName}, vendor store, electronics Ghana, fashion Ghana, verified seller, SiiShop`}
+        image={storeLogo || "https://siishops.com/og-image.jpg"}
+        url={`https://siishops.com/store/${vendorSlug}`}
+        type="website"
+        vendor={{
+          storeName: store.storeName,
+          slug: vendorSlug,
+          description: store.storeDescription,
+          avatar: storeLogo,
+        }}
+        breadcrumbs={breadcrumbs}
       />
       <div className={styles.page}>
         {/* Store Header */}

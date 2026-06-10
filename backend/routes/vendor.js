@@ -1333,4 +1333,34 @@ router.post("/migrate-video-urls", requireAuth, requireApprovedVendor, async (re
   }
 });
 
+// ── PUBLIC: GET POPULAR STORES ─────────────────────────────────────────────────
+// Based on product count, sales, and orders completed
+router.get("/popular", async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+
+    // Get approved vendors with their stats
+    const vendors = await User.find({
+      isVendor: true,
+      vendorStatus: "approved",
+      isDeleted: { $ne: true }
+    })
+      .select("storeName slug avatar description stats")
+      .lean();
+
+    // Sort by a composite score: product count + orders completed
+    const sorted = vendors
+      .map(v => ({
+        ...v,
+        score: (v.stats?.productCount || 0) + (v.stats?.ordersCompleted || 0) * 2
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, parseInt(limit));
+
+    res.json(sorted || []);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch popular stores" });
+  }
+});
+
 module.exports = router;

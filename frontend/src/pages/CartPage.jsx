@@ -5,6 +5,7 @@ import { openPaystackPopup } from "../services/paystack";
 import { useAuth } from "../context/AuthContext";
 import { useCurrency } from "../context/CurrencyContext";
 import CartItem from "../components/CartItem";
+import SEO from "../components/SEO";
 import styles from "./CartPage.module.css";
 
 const STAGE = { IDLE:"idle", PAYING:"paying", SAVING:"saving", SUCCESS:"success", FAILED:"failed" };
@@ -227,6 +228,12 @@ export default function CartPage({ cart: cartProp, onIncrease, onDecrease, onRem
 
   return (
     <div className={`container page-enter ${styles.page}`}>
+      <SEO
+        title="Shopping Cart | SiiShop"
+        description="Review your cart items and proceed to secure checkout on SiiShop marketplace."
+        keywords="shopping cart, checkout, online payment, Ghana"
+        url="https://siishops.com/cart"
+      />
       <h1 className={styles.title}>Your Cart</h1>
 
       {!isLoggedIn && (

@@ -593,4 +593,94 @@ router.post("/migrate-video-urls", requireAuth, requireAdmin, async (req, res) =
   }
 });
 
+// ── PUBLIC: GET TRENDING PRODUCTS ──────────────────────────────────────────────
+// Based on views, purchases, and recent activity
+router.get("/trending", async (req, res) => {
+  try {
+    const { limit = 12 } = req.query;
+
+    // Get products with highest viewCount or sales, available only
+    const products = await Product.find({ available: true })
+      .sort({ views: -1, salesCount: -1, updatedAt: -1 })
+      .limit(parseInt(limit))
+      .populate("vendorId", "storeName slug")
+      .lean();
+
+    res.json(products || []);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch trending products" });
+  }
+});
+
+// ── PUBLIC: GET RECENTLY ADDED PRODUCTS ───────────────────────────────────────────
+router.get("/recent", async (req, res) => {
+  try {
+    const { limit = 12 } = req.query;
+
+    const products = await Product.find({ available: true })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .populate("vendorId", "storeName slug")
+      .lean();
+
+    res.json(products || []);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch recent products" });
+  }
+});
+
+// ── PUBLIC: GET RELATED PRODUCTS ─────────────────────────────────────────────────
+// Based on category and vendor
+router.get("/related/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 6 } = req.query;
+
+    // Get the product to find related products
+    const product = await Product.findById(id).lean();
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    // Find products in same category, excluding current product
+    const related = await Product.find({
+      _id: { $ne: id },
+      available: true,
+      $or: [
+        { category: product.category },
+        { "vendorId._id": product.vendorId?._id }
+      ]
+    })
+      .sort({ salesCount: -1, views: -1 })
+      .limit(parseInt(limit))
+      .populate("vendorId", "storeName slug")
+      .lean();
+
+    res.json(related || []);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch related products" });
+  }
+});
+
+// ── INCREMENT PRODUCT VIEW ─────────────────────────────────────────────────────
+router.post("/:id/view", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const product = await Product.findByIdAndUpdate(
+      id,
+      { $inc: { views: 1 } },
+      { new: true }
+    );
+
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    res.json({ success: true, views: product.views });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to increment view" });
+  }
+});
+
 module.exports = router;

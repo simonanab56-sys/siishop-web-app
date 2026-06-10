@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
+import SEO from "../components/SEO";
 import styles from "./CategoriesPage.module.css";
 
 export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAuth, vendorContext, onClearVendorContext }) {
@@ -113,6 +114,12 @@ export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAu
 
   return (
     <div className={`container page-enter ${styles.page}`}>
+      <SEO
+        title="Browse Categories | SiiShop"
+        description="Shop by category on SiiShop Ghana. Find electronics, fashion, home & garden, beauty, sports and more from verified vendors."
+        keywords="shop by category, electronics, fashion, home decor, beauty products, sports equipment, Ghana marketplace"
+        url="https://siishops.com/categories"
+      />
       {/* Vendor Context Banner */}
       {vendorContext && (
         <div style={{

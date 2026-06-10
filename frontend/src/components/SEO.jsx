@@ -1,13 +1,13 @@
-// components/SEO.jsx - Complete SEO component with meta tags, Open Graph, Twitter Cards, and JSON-LD
+// components/SEO.jsx - Advanced SEO component with meta tags, Open Graph, Twitter Cards, JSON-LD, and Breadcrumbs
 import { useEffect } from "react";
 
 const DEFAULT_SEO = {
-  title: "SiiShops Online Marketplace in Ghana | Multi-Vendor Marketplace in Ghana",
-  description: "Shop a wide range of products from trusted vendors across Ghana. Fast delivery and secure payments., and local vendors. Shop from the best stores near you.",
-  keywords: "multi vendor ecommerce Ghana, online marketplace Ghana, buy products online Ghana, local vendors Ghana, food delivery Ghana, grocery delivery, online shopping Ghana",
+  title: "SiiShop - Multi-Vendor Marketplace",
+  description: "Discover amazing products from verified vendors. Shop electronics, fashion, home & garden, beauty, sports and more. Secure payments, fast delivery.",
+  keywords: "online shopping, multi-vendor marketplace, electronics, fashion, home decor, beauty products, sports equipment, buy online, e-commerce Ghana",
   image: "https://siishops.com/og-image.jpg",
   url: "https://siishops.com",
-  siteName: "SiiShops",
+  siteName: "SiiShop",
   twitter: "@siishops",
 };
 
@@ -20,8 +20,10 @@ export default function SEO({
   type = "website",
   product,
   vendor,
+  category,
+  breadcrumbs,
 }) {
-  const fullTitle = title ? `${title} | SiiShops` : DEFAULT_SEO.title;
+  const fullTitle = title ? `${title} | SiiShop` : DEFAULT_SEO.title;
   const metaDescription = description || DEFAULT_SEO.description;
   const metaKeywords = keywords || DEFAULT_SEO.keywords;
   const ogImage = image || DEFAULT_SEO.image;
@@ -34,7 +36,7 @@ export default function SEO({
   jsonLd.push({
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "SiiShops",
+    name: "SiiShop",
     url: "https://siishops.com",
     logo: "https://siishops.com/logo.png",
     sameAs: [
@@ -44,7 +46,7 @@ export default function SEO({
     ],
     contactPoint: {
       "@type": "ContactPoint",
-      telephone: "+233",
+      telephone: "+233-000-000-000",
       contactType: "customer service",
       availableLanguage: "English",
     },
@@ -54,7 +56,7 @@ export default function SEO({
   jsonLd.push({
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: "SiiShops",
+    name: "SiiShop",
     url: "https://siishops.com",
     potentialAction: {
       "@type": "SearchAction",
@@ -65,38 +67,70 @@ export default function SEO({
 
   // Product schema (if product data provided)
   if (product) {
-    jsonLd.push({
+    const productSchema = {
       "@context": "https://schema.org",
       "@type": "Product",
       name: product.name,
       description: product.description,
-      image: product.image || product.images?.[0],
+      image: product.images ? product.images.filter(Boolean) : (product.image ? [product.image] : []),
+      sku: product._id,
+      brand: {
+        "@type": "Brand",
+        name: product.vendorName || product.vendorId?.storeName || "SiiShop",
+      },
       offers: {
         "@type": "Offer",
         price: product.price,
         priceCurrency: "GHS",
         availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+        seller: {
+          "@type": "Organization",
+          name: product.vendorName || product.vendorId?.storeName || "SiiShop",
+        },
       },
-      seller: {
-        "@type": "Organization",
-        name: product.vendorName || "SiiShops",
-      },
-    });
+    };
+    jsonLd.push(productSchema);
   }
 
-  // Vendor/LocalBusiness schema (if vendor data provided)
+  // Vendor/Store schema (if vendor data provided)
   if (vendor) {
     jsonLd.push({
       "@context": "https://schema.org",
-      "@type": "LocalBusiness",
+      "@type": "Store",
       name: vendor.storeName,
-      description: vendor.description,
+      url: `https://siishops.com/store/${vendor.slug}`,
+      description: vendor.description || `Shop products from ${vendor.storeName} on SiiShop`,
       image: vendor.avatar || vendor.image,
+      priceRange: "GHS",
       address: {
         "@type": "PostalAddress",
         addressCountry: "GH",
       },
-      priceRange: "$$",
+    });
+  }
+
+  // Category schema
+  if (category) {
+    jsonLd.push({
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: `${category} Products in Ghana | SiiShop`,
+      description: `Shop ${category} products from verified vendors on SiiShop Ghana. Best prices, secure payments.`,
+      url: `https://siishops.com/categories?category=${encodeURIComponent(category)}`,
+    });
+  }
+
+  // BreadcrumbList schema
+  if (breadcrumbs && breadcrumbs.length > 0) {
+    jsonLd.push({
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: breadcrumbs.map((crumb, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: crumb.name,
+        item: crumb.url,
+      })),
     });
   }
 
@@ -109,7 +143,7 @@ export default function SEO({
       { name: "description", content: metaDescription },
       { name: "keywords", content: metaKeywords },
       { name: "robots", content: "index, follow" },
-      { name: "author", content: "SiiShops" },
+      { name: "author", content: "SiiShop" },
       { name: "revisit-after", content: "7 days" },
     ];
 
@@ -136,16 +170,12 @@ export default function SEO({
     // Set meta tags
     const setMetaTags = (tags) => {
       tags.forEach((tag) => {
-        const existing = document.querySelector(
-          tag.name
-            ? `meta[name="${tag.name}"]`
-            : `meta[property="${tag.property}"]`
-        );
+        const selector = tag.name
+          ? `meta[name="${tag.name}"]`
+          : `meta[property="${tag.property}"]`;
+        const existing = document.querySelector(selector);
         if (existing) {
-          existing.setAttribute(
-            tag.name ? "content" : "content",
-            tag.name ? tag.content : tag.content
-          );
+          existing.setAttribute("content", tag.content);
         } else {
           const newTag = document.createElement("meta");
           if (tag.name) {

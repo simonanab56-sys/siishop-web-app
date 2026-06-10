@@ -212,6 +212,10 @@ export const productAPI = {
     if (!response.ok) throw new Error(result.error || "Failed to delete video");
     return result;
   },
+  getTrending: (limit = 12) => apiRequest(`/products/trending?limit=${limit}`),
+  getRecent: (limit = 12) => apiRequest(`/products/recent?limit=${limit}`),
+  getRelated: (productId, limit = 6) => apiRequest(`/products/related/${productId}?limit=${limit}`),
+  incrementView: (productId) => apiRequest(`/products/${productId}/view`, { method: "POST" }),
 };
 
 /* ── Orders ────────────────────────────────────────────────────────────────── */
@@ -434,6 +438,7 @@ export const vendorAPI = {
     apiRequest(`/vendor/analytics/chart?type=${type}&days=${days}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  getPopular: (limit = 10) => apiRequest(`/vendor/popular?limit=${limit}`),
 };
 
 /* ── Admin ─────────────────────────────────────────────────────────────────── */

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { vendorAPI, productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import { getImageUrl } from "../utils/image";
+import SEO from "../components/SEO";
 import styles from "./StoresPage.module.css";
 
 function safeInitials(name) {
@@ -155,6 +156,12 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, ven
 
   return (
     <div className={`container page-enter ${styles.page}`}>
+      <SEO
+        title="Our Vendors | SiiShop Marketplace"
+        description="Discover trusted vendors and sellers on SiiShop Ghana. Browse verified stores, shop quality products, secure checkout."
+        keywords="vendor stores, seller marketplace, verified vendors, online shopping Ghana"
+        url="https://siishops.com/vendors"
+      />
       {/* Vendor Context Banner */}
       {vendorContext && (
         <div style={{

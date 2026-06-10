@@ -9,6 +9,7 @@ import GalleryModal from "../components/GalleryModal";
 import ProductCard from "../components/ProductCard";
 import SEO from "../components/SEO";
 import { getImageUrl, PLACEHOLDER_IMAGE } from "../utils/image";
+import { addRecentlyViewed } from "../utils/recentlyViewed";
 import styles from "./ProductDetailPage.module.css";
 
 export default function ProductDetailPage({ product: initialProduct, productId, onBack, onAddToCart, onNavigate, onRequireAuth }) {
@@ -65,6 +66,17 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
 
     fetchProduct();
   }, [productId]); // Only depend on productId, not product
+
+  // Track product views and add to recently viewed
+  useEffect(() => {
+    if (!product?._id) return;
+
+    // Add to recently viewed
+    addRecentlyViewed(product);
+
+    // Increment view count (fire and forget, no need to wait)
+    productAPI.incrementView(product._id).catch(() => {});
+  }, [product?._id]);
 
   // Fetch recommendations based on product category
   useEffect(() => {
@@ -184,21 +196,32 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
   // Get product image for SEO
   const productImage = product?.images?.[0] || product?.image || "https://siishops.com/og-image.jpg";
 
+  // Build breadcrumbs for product page
+  const breadcrumbs = [
+    { name: "Home", url: "https://siishops.com/" },
+    { name: product?.category || "Products", url: `https://siishops.com/categories?category=${encodeURIComponent(product?.category || "")}` },
+    { name: product?.name, url: `https://siishops.com/product/${product?._id}` },
+  ];
+
   return (
     <div className={`container ${styles.page}`}>
       <SEO
-        title={product?.name || "Product"}
-        description={product?.description || `Buy ${product?.name} on SiiShops - Ghana's leading marketplace`}
+        title={`${product?.name} | ${vendorName || "SiiShop"}`}
+        description={`Buy ${product?.name} from ${vendorName || "SiiShop"} on SiiShop Ghana. Secure payments, trusted vendors, and convenient delivery. Price: GHS ${product?.price}.`}
+        keywords={`${product?.name}, ${product?.category}, buy online, SiiShop Ghana, ${vendorName || ""}`}
         image={productImage}
+        url={`https://siishops.com/product/${product?._id}`}
         type="product"
         product={{
           name: product?.name,
           description: product?.description,
-          image: productImage,
+          images: product?.images,
           price: product?.price,
           stock: product?.stock,
           vendorName: product?.vendorId?.storeName,
+          vendorId: product?.vendorId,
         }}
+        breadcrumbs={breadcrumbs}
       />
       {/* Back button */}
       <button className={styles.backBtn} onClick={onBack}>

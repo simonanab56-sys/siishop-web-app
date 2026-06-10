@@ -245,12 +245,152 @@ router.get(
   requireAuth,
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const orders = await Order.find()
+    // Only show non-delivered orders (active orders)
+    const orders = await Order.find({ orderStatus: { $ne: "delivered" } })
       .populate("userId", "name email phone")
       .populate("items.vendorId", "storeName")
       .sort({ createdAt: -1 })
       .lean();
     res.json(orders || []);
+  })
+);
+
+/* ───────────────────────── GET DELIVERED ORDERS ───────────────────────── */
+router.get(
+  "/orders/delivered",
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { filter, startDate, endDate, search, vendorId } = req.query;
+
+    // Build date filter
+    const dateFilter = {};
+    const now = new Date();
+
+    switch (filter) {
+      case "today":
+        const todayStart = new Date(now.setHours(0, 0, 0, 0));
+        const todayEnd = new Date(now.setHours(23, 59, 59, 999));
+        dateFilter.deliveredAt = { $gte: todayStart, $lte: todayEnd };
+        break;
+      case "last7days":
+        dateFilter.deliveredAt = { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+        break;
+      case "last30days":
+        dateFilter.deliveredAt = { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+        break;
+      case "custom":
+        if (startDate && endDate) {
+          dateFilter.deliveredAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
+        break;
+    }
+
+    // Base query: only delivered orders
+    const query = { orderStatus: "delivered", ...dateFilter };
+
+    // Filter by vendor if specified
+    if (vendorId) {
+      query["items.vendorId"] = vendorId;
+    }
+
+    // Search filter
+    if (search) {
+      const searchRegex = new RegExp(search, "i");
+      query.$or = [
+        { _id: searchRegex },
+        { "userId.name": searchRegex },
+        { "items.vendorId.storeName": searchRegex },
+      ];
+    }
+
+    const orders = await Order.find(query)
+      .populate("userId", "name email phone")
+      .populate("items.vendorId", "storeName")
+      .sort({ deliveredAt: -1 })
+      .lean();
+
+    res.json(orders || []);
+  })
+);
+
+/* ───────────────────────── MIGRATION: Set deliveredAt for existing delivered orders ───────────────────────── */
+router.post(
+  "/orders/delivered/migrate",
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    // Find all delivered orders without deliveredAt
+    const ordersWithoutDate = await Order.find({
+      orderStatus: "delivered",
+      deliveredAt: { $exists: false }
+    });
+
+    // Set deliveredAt to createdAt (approximate)
+    let updated = 0;
+    for (const order of ordersWithoutDate) {
+      order.deliveredAt = order.createdAt;
+      await order.save();
+      updated++;
+    }
+
+    res.json({
+      message: "Migration complete",
+      updatedCount: updated
+    });
+  })
+);
+
+/* ───────────────────────── DELIVERED ORDERS STATISTICS ───────────────────────── */
+router.get(
+  "/orders/delivered/stats",
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const now = new Date();
+    const startOfToday = new Date(now.setHours(0, 0, 0, 0));
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Total delivered orders
+    const totalDelivered = await Order.countDocuments({ orderStatus: "delivered" });
+
+    // Total revenue from delivered orders
+    const revenueAgg = await Order.aggregate([
+      { $match: { orderStatus: "delivered", paymentStatus: "paid" } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]);
+    const totalRevenue = revenueAgg[0]?.total || 0;
+
+    // Delivered today
+    const deliveredToday = await Order.countDocuments({
+      orderStatus: "delivered",
+      deliveredAt: { $gte: startOfToday },
+    });
+
+    // Delivered this month
+    const deliveredThisMonth = await Order.countDocuments({
+      orderStatus: "delivered",
+      deliveredAt: { $gte: startOfMonth },
+    });
+
+    // Monthly revenue
+    const monthlyRevenueAgg = await Order.aggregate([
+      { $match: { orderStatus: "delivered", paymentStatus: "paid", deliveredAt: { $gte: startOfMonth } } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]);
+    const monthlyRevenue = monthlyRevenueAgg[0]?.total || 0;
+
+    // Average order value
+    const avgOrderValue = totalDelivered > 0 ? totalRevenue / totalDelivered : 0;
+
+    res.json({
+      totalDelivered,
+      totalRevenue,
+      deliveredToday,
+      deliveredThisMonth,
+      monthlyRevenue,
+      avgOrderValue,
+    });
   })
 );
 

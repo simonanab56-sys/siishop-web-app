@@ -409,18 +409,154 @@ router.get("/dashboard", requireAuth, requireApprovedVendor, async (req, res) =>
   }
 });
 
-/* MY ORDERS — vendor sees orders containing their products */
+/* MY ORDERS — vendor sees orders containing their products (active orders only) */
 router.get("/orders", requireAuth, requireApprovedVendor, async (req, res) => {
   try {
     const vendorId = toObjectId(req.user.userId);
 
-    const orders = await Order.find({ "items.vendorId": vendorId })
+    const orders = await Order.find({
+      "items.vendorId": vendorId,
+      orderStatus: { $ne: "delivered" }
+    })
       .sort({ createdAt: -1 })
       .lean();
 
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch orders" });
+  }
+});
+
+/* MY DELIVERED ORDERS — vendor sees their delivered orders */
+router.get("/orders/delivered", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const { filter, startDate, endDate, search } = req.query;
+
+    // Build date filter
+    const dateFilter = {};
+    const now = new Date();
+
+    switch (filter) {
+      case "today":
+        const todayStart = new Date(now.setHours(0, 0, 0, 0));
+        const todayEnd = new Date(now.setHours(23, 59, 59, 999));
+        dateFilter.deliveredAt = { $gte: todayStart, $lte: todayEnd };
+        break;
+      case "last7days":
+        dateFilter.deliveredAt = { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+        break;
+      case "last30days":
+        dateFilter.deliveredAt = { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+        break;
+      case "custom":
+        if (startDate && endDate) {
+          dateFilter.deliveredAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
+        break;
+    }
+
+    // Base query: delivered orders for this vendor
+    const query = {
+      "items.vendorId": vendorId,
+      orderStatus: "delivered",
+      ...dateFilter
+    };
+
+    // Search filter
+    if (search) {
+      const searchRegex = new RegExp(search, "i");
+      query.$or = [
+        { _id: searchRegex },
+        { "userId.name": searchRegex },
+      ];
+    }
+
+    const orders = await Order.find(query)
+      .populate("userId", "name email phone")
+      .sort({ deliveredAt: -1 })
+      .lean();
+
+    res.json(orders);
+  } catch (err) {
+    logger.error("Failed to fetch delivered orders:", err);
+    res.status(500).json({ error: "Failed to fetch delivered orders" });
+  }
+});
+
+/* MY DELIVERED ORDERS STATISTICS */
+router.get("/orders/delivered/stats", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const now = new Date();
+    const startOfToday = new Date(now.setHours(0, 0, 0, 0));
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Total delivered orders for this vendor
+    const totalDelivered = await Order.countDocuments({
+      "items.vendorId": vendorId,
+      orderStatus: "delivered"
+    });
+
+    // Total revenue from delivered orders (paid only)
+    const revenueAgg = await Order.aggregate([
+      {
+        $match: {
+          "items.vendorId": vendorId,
+          orderStatus: "delivered",
+          paymentStatus: "paid"
+        }
+      },
+      { $unwind: "$items" },
+      { $match: { "items.vendorId": vendorId } },
+      { $group: { _id: null, total: { $sum: "$items.price" } } },
+    ]);
+    const totalRevenue = revenueAgg[0]?.total || 0;
+
+    // Delivered today
+    const deliveredToday = await Order.countDocuments({
+      "items.vendorId": vendorId,
+      orderStatus: "delivered",
+      deliveredAt: { $gte: startOfToday },
+    });
+
+    // Delivered this month
+    const deliveredThisMonth = await Order.countDocuments({
+      "items.vendorId": vendorId,
+      orderStatus: "delivered",
+      deliveredAt: { $gte: startOfMonth },
+    });
+
+    // Monthly revenue
+    const monthlyRevenueAgg = await Order.aggregate([
+      {
+        $match: {
+          "items.vendorId": vendorId,
+          orderStatus: "delivered",
+          paymentStatus: "paid",
+          deliveredAt: { $gte: startOfMonth }
+        }
+      },
+      { $unwind: "$items" },
+      { $match: { "items.vendorId": vendorId } },
+      { $group: { _id: null, total: { $sum: "$items.price" } } },
+    ]);
+    const monthlyRevenue = monthlyRevenueAgg[0]?.total || 0;
+
+    // Average order value
+    const avgOrderValue = totalDelivered > 0 ? totalRevenue / totalDelivered : 0;
+
+    res.json({
+      totalDelivered,
+      totalRevenue,
+      deliveredToday,
+      deliveredThisMonth,
+      monthlyRevenue,
+      avgOrderValue,
+    });
+  } catch (err) {
+    logger.error("Failed to fetch delivered orders stats:", err);
+    res.status(500).json({ error: "Failed to fetch statistics" });
   }
 });
 
@@ -448,6 +584,12 @@ router.patch(
 
       const oldStatus = order.orderStatus;
       order.orderStatus = orderStatus;
+
+      // Set deliveredAt timestamp when order is delivered
+      if (orderStatus === "delivered" && !order.deliveredAt) {
+        order.deliveredAt = new Date();
+      }
+
       await order.save();
 
       // Send status update notification to customer (async, don't block response)

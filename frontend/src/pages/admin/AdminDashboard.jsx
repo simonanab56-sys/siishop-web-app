@@ -76,7 +76,7 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
   if (!isLoggedIn) return <GateScreen msg="Sign in to access the Admin Dashboard" onAuth={onRequireAuth} icon="🔐" />;
   if (!isAdmin)    return <GateScreen msg="Admin access required." icon="🚫" />;
 
-  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["analytics","📈 Analytics"],["wallet","💰 Wallet"],["promos","🏷️ Promos"],["chat","💬 Chat"]];
+  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["delivered-orders","✅ Delivered"],["analytics","📈 Analytics"],["wallet","💰 Wallet"],["promos","🏷️ Promos"],["chat","💬 Chat"]];
 
   return (
     <React.Fragment>
@@ -112,6 +112,7 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
       {tab === "vendors"    && <AdminVendors    addToast={addToast} />}
       {tab === "products"   && <AdminProducts   addToast={addToast} fmt={fmt} />}
       {tab === "orders"     && <AdminOrders     addToast={addToast} fmt={fmt} setImageModal={setImageModal} />}
+      {tab === "delivered-orders" && <AdminDeliveredOrders addToast={addToast} fmt={fmt} />}
       {tab === "analytics"  && <AdminAnalytics  addToast={addToast} fmt={fmt} />}
       {tab === "wallet"     && <AdminWallet    addToast={addToast} fmt={fmt} />}
       {tab === "promos"     && <AdminPromos     addToast={addToast} fmt={fmt} />}
@@ -227,6 +228,154 @@ function AdminOverview({ addToast, fmt }) {
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
+/* ───────────────────────────────────────── */
+/* DELIVERED ORDERS TAB                     */
+/* ───────────────────────────────────────── */
+function AdminDeliveredOrders({ addToast, fmt }) {
+  const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const mountedRef = useRef(true);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const data = await adminAPI.getDeliveredOrdersStats();
+      if (mountedRef.current) setStats(data);
+    } catch (err) {
+      logger.error("Failed to load stats:", err);
+    }
+  }, []);
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = { filter };
+      if (filter === "custom") {
+        params.startDate = startDate;
+        params.endDate = endDate;
+      }
+      if (search) params.search = search;
+      const data = await adminAPI.getDeliveredOrders(params);
+      if (mountedRef.current) setOrders(data || []);
+    } catch (err) {
+      logger.error("Failed to load delivered orders:", err);
+      addToast?.("Failed to load delivered orders", "error");
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [filter, startDate, endDate, search, addToast]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    fetchStats();
+    fetchOrders();
+    return () => { mountedRef.current = false; };
+  }, [fetchStats, fetchOrders]);
+
+  const handleFilterChange = (newFilter) => {
+    setFilter(newFilter);
+    if (newFilter !== "custom") {
+      setStartDate("");
+      setEndDate("");
+    }
+  };
+
+  const formatDate = (date) => {
+    if (!date) return "-";
+    return new Date(date).toLocaleDateString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit"
+    });
+  };
+
+  return (
+    <div className={styles.deliveredTab}>
+      {/* Stats Cards */}
+      <div className={styles.statsGrid}>
+        <div className="stat-card">
+          <span className="stat-icon">✅</span>
+          <span className="stat-label">Total Delivered</span>
+          <span className="stat-value">{stats?.totalDelivered || 0}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon">💰</span>
+          <span className="stat-label">Total Revenue</span>
+          <span className="stat-value">{fmt(stats?.totalRevenue || 0)}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon">📅</span>
+          <span className="stat-label">Today</span>
+          <span className="stat-value">{stats?.deliveredToday || 0}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon">📆</span>
+          <span className="stat-label">This Month</span>
+          <span className="stat-value">{stats?.deliveredThisMonth || 0}</span>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className={styles.filtersRow}>
+        <div className={styles.filterBtns}>
+          {["all", "today", "last7days", "last30days", "custom"].map((f) => (
+            <button key={f} className={`${styles.filterBtn} ${filter === f ? styles.filterBtnActive : ""}`} onClick={() => handleFilterChange(f)}>
+              {f === "all" ? "All" : f === "today" ? "Today" : f === "last7days" ? "7 Days" : f === "last30days" ? "30 Days" : "Custom"}
+            </button>
+          ))}
+        </div>
+        {filter === "custom" && (
+          <div className={styles.dateInputs}>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={styles.dateInput} />
+            <span>to</span>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={styles.dateInput} />
+          </div>
+        )}
+        <input type="text" placeholder="Search order ID, customer..." value={search} onChange={(e) => setSearch(e.target.value)} className={styles.searchInput} />
+      </div>
+
+      {/* Orders Table */}
+      {loading ? (
+        <div className="loading-center"><div className="spinner" /></div>
+      ) : orders.length === 0 ? (
+        <div className="empty-state"><div className="empty-icon">📦</div><h3>No delivered orders found</h3></div>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th>Vendor</th>
+                <th>Products</th>
+                <th>Total</th>
+                <th>Delivery Date</th>
+                <th>Payment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => (
+                <tr key={order._id}>
+                  <td>{safeId(order._id)}</td>
+                  <td>{order.userId?.name || "Unknown"}</td>
+                  <td>{(order.items || []).map((i) => i.vendorId?.storeName).filter(Boolean).join(", ") || "Unknown"}</td>
+                  <td>{(order.items || []).length} items</td>
+                  <td>{fmt(order.totalAmount)}</td>
+                  <td>{formatDate(order.deliveredAt)}</td>
+                  <td>{order.paymentMethod === "paystack" ? "Online" : "COD"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminAnalytics({ addToast, fmt }) {
   const [view, setView] = useState("calendar"); // calendar | summary | chart
   const [period, setPeriod] = useState("30days");

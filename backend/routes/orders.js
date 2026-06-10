@@ -201,6 +201,12 @@ router.patch(
 
     const oldStatus = order.orderStatus;
     order.orderStatus = orderStatus;
+
+    // Set deliveredAt timestamp when order is delivered
+    if (orderStatus === "delivered" && !order.deliveredAt) {
+      order.deliveredAt = new Date();
+    }
+
     await order.save();
 
     // Send status update notification to customer (async, don't block response)

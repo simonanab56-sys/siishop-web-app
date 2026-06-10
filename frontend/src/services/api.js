@@ -362,6 +362,17 @@ export const vendorAPI = {
     apiRequest("/vendor/orders", {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  // Delivered Orders
+  getDeliveredOrders: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/vendor/orders/delivered${query ? "?" + query : ""}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+  },
+  getDeliveredOrdersStats: () =>
+    apiRequest("/vendor/orders/delivered/stats", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
   updateStatus: (id, orderStatus) =>
     apiRequest(`/vendor/orders/${id}/status`, {
       method: "PATCH",
@@ -464,6 +475,17 @@ export const adminAPI = {
     }),
   getOrders: () =>
     apiRequest("/admin/orders", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  // Delivered Orders
+  getDeliveredOrders: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/admin/orders/delivered${query ? "?" + query : ""}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+  },
+  getDeliveredOrdersStats: () =>
+    apiRequest("/admin/orders/delivered/stats", {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
   // Analytics

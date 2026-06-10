@@ -1,6 +1,30 @@
 {
   "rewrites": [
     {
+      "source": "/sitemap.xml",
+      "destination": "https://siishop-web-app-backend.onrender.com/sitemap.xml"
+    },
+    {
+      "source": "/sitemap-pages.xml",
+      "destination": "https://siishop-web-app-backend.onrender.com/sitemap-pages.xml"
+    },
+    {
+      "source": "/sitemap-products.xml",
+      "destination": "https://siishop-web-app-backend.onrender.com/sitemap-products.xml"
+    },
+    {
+      "source": "/sitemap-vendors.xml",
+      "destination": "https://siishop-web-app-backend.onrender.com/sitemap-vendors.xml"
+    },
+    {
+      "source": "/sitemap-categories.xml",
+      "destination": "https://siishop-web-app-backend.onrender.com/sitemap-categories.xml"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "https://siishop-web-app-backend.onrender.com/robots.txt"
+    },
+    {
       "source": "/((?!.*\\.).*)",
       "destination": "/index.html"
     }

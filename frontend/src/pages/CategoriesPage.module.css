@@ -184,3 +184,155 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Location filter */
+.locationFilter {
+  margin-bottom: 20px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+.locationFilterLabel {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.locationFilter select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 0.88rem;
+  min-width: 150px;
+  background: white;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+  min-height: 40px;
+}
+
+.locationFilter select:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.locationFilter select:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+}
+
+.locationFilterRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.clearFilterBtn {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.88rem;
+  min-height: 40px;
+}
+
+.clearFilterBtn:hover {
+  background: #f5f5f5;
+}
+
+/* Mobile responsive for location filter */
+@media (max-width: 480px) {
+  .locationFilter {
+    padding: 10px;
+  }
+
+  .locationFilterRow {
+    gap: 8px;
+  }
+
+  .locationFilter select {
+    flex: 1;
+    min-width: 120px;
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    padding-right: 32px;
+    min-height: 44px;
+  }
+
+  .clearFilterBtn {
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+}
+
+/* Small screens */
+@media (max-width: 360px) {
+  .locationFilter select {
+    min-width: 100px;
+    font-size: 0.8rem;
+    padding: 9px 10px;
+    padding-right: 28px;
+  }
+}
+
+/* Touch-friendly for mobile */
+@media (hover: none) and (pointer: coarse) {
+  .locationFilter select {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .clearFilterBtn {
+    min-height: 48px;
+    font-size: 16px;
+  }
+}
+
+/* Custom input for location */
+.locationInput {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 0.88rem;
+  min-height: 40px;
+  box-sizing: border-box;
+}
+
+.locationInput:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+}
+
+.locationInput:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+@media (max-width: 480px) {
+  .locationInput {
+    min-height: 44px;
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .locationInput {
+    min-width: 100px;
+    font-size: 0.85rem;
+    padding: 9px 10px;
+  }
+}

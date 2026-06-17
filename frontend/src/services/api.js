@@ -121,6 +121,13 @@ export const productAPI = {
     const query = new URLSearchParams(params).toString();
     return apiRequest(`/products${query ? "?" + query : ""}`);
   },
+  // Get products by location
+  getByLocation: (region, city) => {
+    const params = new URLSearchParams();
+    if (region) params.append("region", region);
+    if (city) params.append("city", city);
+    return apiRequest(`/products?${params.toString()}`);
+  },
   getById: (id) => apiRequest(`/products/${id}`),
   getCategories: () => apiRequest("/products/categories"),
   create: async (data, imageFiles = []) => {
@@ -388,6 +395,13 @@ export const vendorAPI = {
     const query = new URLSearchParams(params).toString();
     return apiRequest(`/vendor/list${query ? "?" + query : ""}`);
   },
+  // Get vendors by location
+  getByLocation: (region, city) => {
+    const params = new URLSearchParams();
+    if (region) params.append("region", region);
+    if (city) params.append("city", city);
+    return apiRequest(`/vendor/list?${params.toString()}`);
+  },
   // Public: Get vendor store by slug
   getStoreBySlug: (slug) => apiRequest(`/vendor/store/${slug}`),
   // Public: Get vendor products by slug
@@ -406,6 +420,10 @@ export const vendorAPI = {
     apiRequest("/vendor/store-slug", {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  // Get locations (regions and cities)
+  getLocations: () => apiRequest("/vendor/locations"),
+  // Get cities for a specific region
+  getCitiesByRegion: (region) => apiRequest(`/vendor/locations/${encodeURIComponent(region)}`),
   // Admin methods for vendor management
   adminGetAll: () =>
     apiRequest("/admin/vendors", {

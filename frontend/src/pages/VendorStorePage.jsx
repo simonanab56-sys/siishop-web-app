@@ -176,9 +176,17 @@ export default function VendorStorePage({ onAddToCart, onNavigate, onRequireAuth
               {store.storeDescription && (
                 <p className={styles.description}>{store.storeDescription}</p>
               )}
+              {(store.location?.region || store.location?.city) && (
+                <p className={styles.description} style={{ fontSize: '14px', color: '#666' }}>
+                  📍 Store Location: {store.formattedLocation || `${store.location.city}, ${store.location.region}`}
+                </p>
+              )}
               <div className={styles.stats}>
                 <span>📦 {store.stats?.productCount || 0} Products</span>
                 <span>✅ {store.stats?.ordersCompleted || 0} Orders</span>
+                {(store.location?.region || store.location?.city) && (
+                  <span>📍 {store.location.city}, {store.location.region}</span>
+                )}
               </div>
             </div>
           </div>

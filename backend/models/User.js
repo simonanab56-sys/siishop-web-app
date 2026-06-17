@@ -71,6 +71,13 @@ const userSchema = new mongoose.Schema(
       min: 0,
     },
     lastRevenueUpdate: Date,
+
+    /* ── Vendor Location (Ghana-focused) ── */
+    location: {
+      country: { type: String, default: "Ghana" },
+      region: { type: String, default: "" },
+      city: { type: String, default: "" },
+    },
   },
   { timestamps: true }
 );
@@ -85,6 +92,10 @@ userSchema.index({ isAdmin: 1 });
 userSchema.index({ createdAt: -1 });
 // ✅ ADDED: Revenue index for vendor earnings queries
 userSchema.index({ isVendor: 1, revenue: -1 });
+// ✅ ADDED: Location indexes for filtering
+userSchema.index({ "location.region": 1 });
+userSchema.index({ "location.city": 1 });
+userSchema.index({ "location.region": 1, "location.city": 1 });
 
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) return;
@@ -123,6 +134,19 @@ userSchema.methods.getKYCProgress = function () {
 /* ── Helper: Check if vendor is approved ── */
 userSchema.methods.isApprovedVendor = function () {
   return this.isVendor && this.vendorStatus === "approved";
+};
+
+/* ── Helper: Get formatted location string ── */
+userSchema.methods.getFormattedLocation = function () {
+  if (!this.location || !this.location.region || !this.location.city) {
+    return "Location not specified";
+  }
+  return `${this.location.city}, ${this.location.region}`;
+};
+
+/* ── Helper: Check if vendor has location ── */
+userSchema.methods.hasLocation = function () {
+  return !!(this.location && this.location.region && this.location.city);
 };
 
 module.exports = mongoose.model("User", userSchema);

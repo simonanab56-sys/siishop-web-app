@@ -5,12 +5,13 @@ import { useState, useEffect } from "react";
 import { GoogleLogin } from "@react-oauth/google";
 import { authAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
+import { regions, getCitiesByRegion } from "../../config/ghanaLocations";
 import styles from "./AuthModal.module.css";
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "login" }) {
   // ── ALL HOOKS AT TOP LEVEL (BEFORE ANY CONDITIONAL LOGIC) ──
   const { login } = useAuth();
-  
+
   const [view,    setView]    = useState(initialView);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
@@ -23,7 +24,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
   const [asVendor,         setAsVendor]         = useState(false);
   const [storeName,        setStoreName]        = useState("");
   const [storeDescription, setStoreDescription] = useState("");
-  
+
   const [phoneNumber,      setPhoneNumber]      = useState("");
   const [idType,           setIdType]           = useState("national_id");
   const [idFrontImage,     setIdFrontImage]     = useState(null);
@@ -31,6 +32,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
   const [idFrontPreview,   setIdFrontPreview]   = useState("");
   const [idBackPreview,    setIdBackPreview]    = useState("");
   const [oauthLoading,     setOauthLoading]     = useState(false);
+
+  // ── LOCATION FIELDS FOR VENDORS ──
+  const [country, setCountry] = useState("Ghana");
+  const [region, setRegion] = useState("");
+  const [city, setCity] = useState("");
+  const [availableCities, setAvailableCities] = useState([]);
+  const [customRegion, setCustomRegion] = useState("");
+  const [customCity, setCustomCity] = useState("");
+  const [useCustomRegion, setUseCustomRegion] = useState(false);
+  const [useCustomCity, setUseCustomCity] = useState(false);
 
   // ── EFFECTS AT TOP LEVEL ──
   useEffect(() => {
@@ -41,7 +52,50 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
     setPhoneNumber(""); setIdType("national_id"); setIdFrontImage(null); setIdBackImage(null);
     setIdFrontPreview(""); setIdBackPreview("");
     setLoading(false); setOauthLoading(false);
+    // Reset location fields
+    setCountry("Ghana"); setRegion(""); setCity(""); setAvailableCities([]);
+    setCustomRegion(""); setCustomCity(""); setUseCustomRegion(false); setUseCustomCity(false);
   }, [isOpen, initialView]);
+
+  // ── UPDATE AVAILABLE CITIES WHEN REGION CHANGES ──
+  useEffect(() => {
+    if (region && !useCustomRegion) {
+      setAvailableCities(getCitiesByRegion(region));
+      setCity("");
+      setUseCustomCity(false);
+    } else if (!region) {
+      setAvailableCities([]);
+      setCity("");
+    }
+  }, [region, useCustomRegion]);
+
+  // Handle region change - switch between dropdown and custom
+  const handleRegionChange = (value) => {
+    if (value === "other") {
+      setUseCustomRegion(true);
+      setRegion("");
+      setAvailableCities([]);
+    } else {
+      setUseCustomRegion(false);
+      setRegion(value);
+      setCustomRegion("");
+    }
+    setUseCustomCity(false);
+    setCity("");
+    setCustomCity("");
+  };
+
+  // Handle city change - switch between dropdown and custom
+  const handleCityChange = (value) => {
+    if (value === "other") {
+      setUseCustomCity(true);
+      setCity("");
+    } else {
+      setUseCustomCity(false);
+      setCity(value);
+      setCustomCity("");
+    }
+  };
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape" && !loading) onClose?.(); };
@@ -134,12 +188,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
     if (password !== confirm)  { setError("Passwords do not match"); return; }
     if (password.length < 6)   { setError("Password must be at least 6 characters"); return; }
     if (asVendor && !storeName.trim()) { setError("Store name is required"); return; }
-    
+
     if (asVendor) {
       if (!phoneNumber.trim()) { setError("Phone number is required for vendors"); return; }
       if (!idType) { setError("ID type is required for vendors"); return; }
       if (!idFrontImage) { setError("ID front image is required for vendors"); return; }
       if (!idBackImage) { setError("ID back image is required for vendors"); return; }
+
+      // Validate location fields (either dropdown or custom input)
+      const finalRegion = useCustomRegion ? customRegion.trim() : region;
+      const finalCity = useCustomCity ? customCity.trim() : city;
+
+      if (!finalRegion) { setError("Region is required for vendors"); return; }
+      if (!finalCity) { setError("City is required for vendors"); return; }
     }
     
     setLoading(true);
@@ -157,6 +218,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
         formData.append("idType", idType);
         formData.append("idFrontImage", idFrontImage);
         formData.append("idBackImage", idBackImage);
+        // Location fields (Ghana-focused) - use dropdown or custom input
+        const finalRegion = useCustomRegion ? customRegion.trim() : region;
+        const finalCity = useCustomCity ? customCity.trim() : city;
+        formData.append("country", country);
+        formData.append("region", finalRegion);
+        formData.append("city", finalCity);
       }
       
       const res = await authAPI.register(formData);
@@ -205,16 +272,19 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
     }
   }
 
-  function sw(v) { 
-    if (!loading) { 
-      setView(v); 
-      setError(""); 
-      setSuccess(""); 
+  function sw(v) {
+    if (!loading) {
+      setView(v);
+      setError("");
+      setSuccess("");
       if (v !== "register") {
         setPhoneNumber(""); setIdType("national_id"); setIdFrontImage(null); setIdBackImage(null);
         setIdFrontPreview(""); setIdBackPreview("");
+        // Reset location fields
+        setRegion(""); setCity(""); setAvailableCities([]);
+        setCustomRegion(""); setCustomCity(""); setUseCustomRegion(false); setUseCustomCity(false);
       }
-    } 
+    }
   }
 
   // ── RENDER: Only check isOpen in JSX, NOT before hooks ──
@@ -320,7 +390,59 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
                   <textarea rows={2} placeholder="What do you sell?" value={storeDescription}
                     onChange={e => setStoreDescription(e.target.value)} disabled={loading} />
                 </div>
-                
+
+                <div className={styles.kycSection}>
+                  <h4 className={styles.kycTitle}>📍 Store Location (Required)</h4>
+
+                  <div className={styles.field}><label>Country *</label>
+                    <select value={country} onChange={e => setCountry(e.target.value)} required disabled={loading}>
+                      <option value="Ghana">Ghana</option>
+                    </select>
+                  </div>
+
+                  <div className={styles.field}><label>Region *</label>
+                    {useCustomRegion ? (
+                      <input
+                        type="text"
+                        placeholder="Enter your region"
+                        value={customRegion}
+                        onChange={e => setCustomRegion(e.target.value)}
+                        required
+                        disabled={loading}
+                      />
+                    ) : (
+                      <select value={region} onChange={e => handleRegionChange(e.target.value)} required disabled={loading}>
+                        <option value="">Select Region</option>
+                        {regions.map(r => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                        <option value="other">Other (type manually)</option>
+                      </select>
+                    )}
+                  </div>
+
+                  <div className={styles.field}><label>City/Town *</label>
+                    {useCustomCity ? (
+                      <input
+                        type="text"
+                        placeholder="Enter your city/town"
+                        value={customCity}
+                        onChange={e => setCustomCity(e.target.value)}
+                        required
+                        disabled={loading}
+                      />
+                    ) : (
+                      <select value={city} onChange={e => handleCityChange(e.target.value)} required disabled={loading || (!region && !useCustomRegion)}>
+                        <option value="">{(region || useCustomRegion) ? "Select City" : "Select Region first"}</option>
+                        {availableCities.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        <option value="other">Other (type manually)</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+
                 <div className={styles.kycSection}>
                   <h4 className={styles.kycTitle}>📄 Verification Documents (Required)</h4>
                   

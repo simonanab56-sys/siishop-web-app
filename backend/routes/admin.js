@@ -174,11 +174,49 @@ router.patch(
 router.get(
   "/vendors",
   asyncHandler(async (req, res) => {
-    const vendors = await User.find({ isVendor: true })
+    const filter = { isVendor: true };
+
+    // ── SEARCH: by name, storeName, location ───────────────────────────────
+    if (req.query.search) {
+      const searchTerm = req.query.search.trim();
+      const searchRegex = new RegExp(searchTerm, "i");
+      filter.$or = [
+        { name: { $regex: searchRegex } },
+        { storeName: { $regex: searchRegex } },
+        { "location.region": { $regex: searchRegex } },
+        { "location.city": { $regex: searchRegex } }
+      ];
+    }
+
+    // ── FILTER BY REGION ───────────────────────────────────────────────
+    if (req.query.region) {
+      filter["location.region"] = req.query.region;
+    }
+
+    // ── FILTER BY CITY ───────────────────────────────────────────────
+    if (req.query.city) {
+      filter["location.city"] = req.query.city;
+    }
+
+    // ── FILTER BY STATUS ───────────────────────────────────────────────
+    if (req.query.status) {
+      filter.vendorStatus = req.query.status;
+    }
+
+    const vendors = await User.find(filter)
       .select("-password -resetToken -resetExpires")
       .sort({ createdAt: -1 })
       .lean();
-    res.json(vendors || []);
+
+    // Add formatted location to each vendor
+    const vendorsWithLocation = (vendors || []).map(v => ({
+      ...v,
+      formattedLocation: (v.location?.region && v.location?.city)
+        ? `${v.location.city}, ${v.location.region}`
+        : "Location not specified"
+    }));
+
+    res.json(vendorsWithLocation || []);
   })
 );
 /* ───────────────────────── APPROVE VENDOR (PATCH) ───────────────────────── */

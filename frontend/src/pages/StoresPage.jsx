@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { vendorAPI, productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import { getImageUrl } from "../utils/image";
+import { regions, getCitiesByRegion, formatLocation } from "../config/ghanaLocations";
 import SEO from "../components/SEO";
 import styles from "./StoresPage.module.css";
 
@@ -20,6 +21,12 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, ven
   const [error,       setError]       = useState(null);
   const [initialized, setInitialized] = useState(false);
   const [search,      setSearch]     = useState("");
+
+  // Location filter state
+  const [locationFilter, setLocationFilter] = useState({ region: "", city: "" });
+  const [availableCities, setAvailableCities] = useState([]);
+  const [customLocation, setCustomLocation] = useState({ region: "", city: "" });
+  const [useCustomLocation, setUseCustomLocation] = useState({ region: false, city: false });
 
   // Initialize state from sessionStorage
   const [selected, setSelected] = useState(() => {
@@ -58,7 +65,7 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, ven
     return ()=>{mountedRef.current=false;};
   }, []);
 
-  // Fetch vendors from API with optional search
+  // Fetch vendors from API with optional search and location filter
   const fetchVendors = useCallback(async (searchQuery = "") => {
     if (typeof vendorAPI?.getList !== "function") {
       if (mountedRef.current) {
@@ -70,7 +77,15 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, ven
 
     setLoading(true);
     try {
-      const params = searchQuery ? { search: searchQuery } : {};
+      // Build params with search and location (dropdown or custom)
+      const params = {};
+      if (searchQuery) params.search = searchQuery;
+      // Use custom input if selected, otherwise use dropdown
+      const finalRegion = useCustomLocation.region ? customLocation.region : locationFilter.region;
+      const finalCity = useCustomLocation.city ? customLocation.city : locationFilter.city;
+      if (finalRegion) params.region = finalRegion;
+      if (finalCity) params.city = finalCity;
+
       const data = await vendorAPI.getList(params);
       if (mountedRef.current) {
         let vendorList = Array.isArray(data) ? data : [];
@@ -102,9 +117,38 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, ven
 
   useEffect(() => {
     // Only fetch vendors if we don't have them cached and no search
-    if (vendors.length > 0 && !search) return;
+    if (vendors.length > 0 && !search && !locationFilter.region && !locationFilter.city) return;
     fetchVendors(search);
-  }, [vendors.length, search, fetchVendors]);
+  }, [vendors.length, search, locationFilter, fetchVendors]);
+
+  // Update available cities when region changes
+  useEffect(() => {
+    if (locationFilter.region && !useCustomLocation.region) {
+      setAvailableCities(getCitiesByRegion(locationFilter.region));
+      // Reset city when region changes
+      setLocationFilter(prev => ({ ...prev, city: "" }));
+      setUseCustomLocation(prev => ({ ...prev, city: false }));
+    } else if (!locationFilter.region) {
+      setAvailableCities([]);
+    }
+  }, [locationFilter.region, useCustomLocation.region]);
+
+  // Handle location filter change
+  const handleLocationFilterChange = (field, value) => {
+    if (value === "other") {
+      setUseCustomLocation(prev => ({ ...prev, [field]: true }));
+      setLocationFilter(prev => ({ ...prev, [field]: "" }));
+    } else {
+      setUseCustomLocation(prev => ({ ...prev, [field]: false }));
+      setCustomLocation(prev => ({ ...prev, [field]: "" }));
+      setLocationFilter(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
+  // Handle custom location input
+  const handleCustomLocationChange = (field, value) => {
+    setCustomLocation(prev => ({ ...prev, [field]: value }));
+  };
 
   // ── Initialize search from mobile header or global search ───────────────────
   useEffect(() => {
@@ -202,15 +246,62 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, ven
             : `${safeVendors.length} verified vendor${safeVendors.length !== 1 ? "s" : ""} on SiiShop`
           }
         </p>
-        {search && (
+        {(search || locationFilter.region || locationFilter.city) && (
           <button
             className="btn btn-secondary btn-sm"
             style={{ marginTop: 8 }}
-            onClick={() => { setSearch(""); }}
+            onClick={() => { setSearch(""); setLocationFilter({ region: "", city: "" }); }}
           >
-            Clear Search
+            Clear Filters
           </button>
         )}
+
+        {/* Location Filters */}
+        <div className={styles.locationFilter}>
+          {useCustomLocation.region ? (
+            <input
+              type="text"
+              placeholder="Type region..."
+              value={customLocation.region}
+              onChange={(e) => handleCustomLocationChange('region', e.target.value)}
+              className={styles.locationInput}
+            />
+          ) : (
+            <select
+              value={locationFilter.region}
+              onChange={(e) => handleLocationFilterChange('region', e.target.value)}
+            >
+              <option value="">All Regions</option>
+              {regions.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+              <option value="other">Other (type)</option>
+            </select>
+          )}
+
+          {useCustomLocation.city ? (
+            <input
+              type="text"
+              placeholder="Type city..."
+              value={customLocation.city}
+              onChange={(e) => handleCustomLocationChange('city', e.target.value)}
+              className={styles.locationInput}
+              disabled={!useCustomLocation.region && !locationFilter.region}
+            />
+          ) : (
+            <select
+              value={locationFilter.city}
+              onChange={(e) => handleLocationFilterChange('city', e.target.value)}
+              disabled={!locationFilter.region && !useCustomLocation.region}
+            >
+              <option value="">{(locationFilter.region || useCustomLocation.region) ? "All Cities" : "Select Region first"}</option>
+              {availableCities.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+              <option value="other">Other (type)</option>
+            </select>
+          )}
+        </div>
       </div>
 
       {safeVendors.length === 0 ? (
@@ -240,6 +331,9 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, ven
                     <h3 className={styles.storeName}>{storeName}</h3>
                     <p className={styles.storeDesc}>{v.storeDescription||"Quality products"}</p>
                     <p className={styles.vendorMeta}>by {v.name||"Vendor"}</p>
+                    {v.formattedLocation && v.formattedLocation !== "Location not specified" && (
+                      <p className={styles.vendorMeta}>📍 {v.formattedLocation}</p>
+                    )}
                   </div>
                   <span className={styles.chevron}>›</span>
                 </button>

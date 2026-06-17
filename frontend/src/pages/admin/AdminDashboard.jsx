@@ -4,6 +4,7 @@ import { adminAPI, vendorAPI, productAPI, orderAPI, promoAPI, adminWalletAPI } f
 import { useAuth }     from "../../context/AuthContext";
 import { useCurrency } from "../../context/CurrencyContext";
 import { getImageUrl, PLACEHOLDER_IMAGE } from "../../utils/image";
+import { regions, getCitiesByRegion } from "../../config/ghanaLocations";
 import ImageUpload     from "../../components/ImageUpload";
 import MultiImageUpload from "../../components/MultiImageUpload";
 import { StatusBadge } from "../../components/OrderStatusBadge";
@@ -729,14 +730,41 @@ function AdminVendors({ addToast }) {
   const [filter,     setFilter]     = useState("all");
   const [processing, setProcessing] = useState(null);
   const [selectedVendor, setSelectedVendor] = useState(null);
+  // Location filters
+  const [locationFilter, setLocationFilter] = useState({ region: "", city: "" });
+  const [availableCities, setAvailableCities] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current=true; return ()=>{mountedRef.current=false;}; }, []);
-  useEffect(() => {
+
+  // Fetch vendors with filters
+  const fetchVendors = useCallback(() => {
+    setLoading(true);
+    const params = {};
+    if (locationFilter.region) params.region = locationFilter.region;
+    if (locationFilter.city) params.city = locationFilter.city;
+    if (searchQuery) params.search = searchQuery;
+
     vendorAPI.adminGetAll()
       .then(d => { if(mountedRef.current) setVendors(Array.isArray(d)?d:[]); })
       .catch(err => { if(mountedRef.current) addToast?.(err.message,"error"); setVendors([]); })
       .finally(() => { if(mountedRef.current) setLoading(false); });
-  }, [addToast]);
+  }, [locationFilter, searchQuery, addToast]);
+
+  useEffect(() => {
+    fetchVendors();
+  }, [fetchVendors]);
+
+  // Update cities when region changes
+  useEffect(() => {
+    if (locationFilter.region) {
+      setAvailableCities(getCitiesByRegion(locationFilter.region));
+      setLocationFilter(prev => ({ ...prev, city: "" }));
+    } else {
+      setAvailableCities([]);
+    }
+  }, [locationFilter.region]);
+
   async function approve(id) {
     if (processing) return; setProcessing(id);
     try {
@@ -762,23 +790,55 @@ function AdminVendors({ addToast }) {
   return (
     <div>
       <div className={styles.toolbar}>
+        {/* Search */}
+        <input
+          type="text"
+          placeholder="Search vendors..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid #ddd", width: "200px" }}
+        />
+        {/* Status filter */}
         {["all","pending","approved","suspended"].map(f => (
           <button key={f} className={`btn ${filter===f?"btn-primary":"btn-secondary"} btn-sm`} onClick={() => setFilter(f)}>
             {f.charAt(0).toUpperCase()+f.slice(1)}
           </button>
         ))}
+        {/* Location filters */}
+        <select
+          value={locationFilter.region}
+          onChange={(e) => setLocationFilter(prev => ({ ...prev, region: e.target.value }))}
+          style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #ddd" }}
+        >
+          <option value="">All Regions</option>
+          {regions.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select
+          value={locationFilter.city}
+          onChange={(e) => setLocationFilter(prev => ({ ...prev, city: e.target.value }))}
+          disabled={!locationFilter.region}
+          style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #ddd" }}
+        >
+          <option value="">{locationFilter.region ? "All Cities" : "Select Region"}</option>
+          {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {(locationFilter.region || locationFilter.city || searchQuery) && (
+          <button className="btn btn-ghost btn-sm" onClick={() => { setLocationFilter({ region: "", city: "" }); setSearchQuery(""); }}>
+            Clear Filters
+          </button>
+        )}
       </div>
       {loading ? <div className="loading-center"><div className="spinner"/></div> : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Store</th><th>Owner</th><th>Email</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Store</th><th>Owner</th><th>Region</th><th>City</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {filtered.map(v => v?._id && (
                 <tr key={v._id}>
                   <td><strong>{v.storeName||"—"}</strong></td>
                   <td>{v.name||"—"}</td>
-                  <td>{v.email||"—"}</td>
-                  <td>{v.phoneNumber||"—"}</td>
+                  <td>{v.location?.region || "—"}</td>
+                  <td>{v.location?.city || "—"}</td>
                   <td><span className={`badge badge-${v.vendorStatus==="approved"?"delivered":v.vendorStatus==="suspended"?"pending":"preparing"}`}>{v.vendorStatus||"pending"}</span></td>
                   <td>
                     <div className={styles.actionBtns}>
@@ -809,6 +869,14 @@ function AdminVendors({ addToast }) {
                 <div><strong>Phone:</strong> {selectedVendor.phoneNumber||"—"}</div>
                 <div><strong>ID Type:</strong> {selectedVendor.idType||"—"}</div>
                 <div><strong>Status:</strong> <span className={`badge badge-${selectedVendor.vendorStatus==="approved"?"delivered":selectedVendor.vendorStatus==="suspended"?"pending":"preparing"}`}>{selectedVendor.vendorStatus||"pending"}</span></div>
+              </div>
+              <div style={{marginTop:"20px",padding:"12px",background:"#f5f5f5",borderRadius:"8px"}}>
+                <h4>📍 Location</h4>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginTop:"8px"}}>
+                  <div><strong>Country:</strong> {selectedVendor.location?.country || "Ghana"}</div>
+                  <div><strong>Region:</strong> {selectedVendor.location?.region || "Not specified"}</div>
+                  <div><strong>City:</strong> {selectedVendor.location?.city || "Not specified"}</div>
+                </div>
               </div>
               <div style={{marginTop:"20px"}}>
                 <h4>National ID Documents</h4>

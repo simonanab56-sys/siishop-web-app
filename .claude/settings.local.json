@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :5000)",
+      "Bash(node server.js)",
+      "Bash(curl *)"
     ]
   }
 }

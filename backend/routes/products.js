@@ -147,19 +147,21 @@ router.get("/", async (req, res) => {
   try {
     const filter = { isDeleted: { $ne: true } };
 
-    // ── COMPREHENSIVE SEARCH: Search by name, description, category, brand, tags, vendor ─
+    // ── COMPREHENSIVE SEARCH: Search by name, description, category, brand, tags, vendor, location ─
     if (req.query.search) {
       const searchTerm = req.query.search.trim();
       const searchRegex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"); // escape special chars
 
-      // First, find vendors matching the search term
+      // First, find vendors matching the search term (including location)
       const Vendor = require("../models/User");
       const matchingVendors = await Vendor.find({
         isVendor: true,
         vendorStatus: "approved",
         $or: [
           { storeName: { $regex: searchRegex } },
-          { name: { $regex: searchRegex } }
+          { name: { $regex: searchRegex } },
+          { "location.region": { $regex: searchRegex } },
+          { "location.city": { $regex: searchRegex } }
         ]
       }).select("_id").lean();
 
@@ -187,6 +189,17 @@ router.get("/", async (req, res) => {
       filter.vendorId = req.query.vendorId;
     }
 
+    // ── LOCATION FILTER: Filter by vendor's region ───────────────────────
+    if (req.query.region) {
+      // Need to filter by vendor's location - we'll do this after fetching
+      req.query._regionFilter = req.query.region;
+    }
+
+    // ── LOCATION FILTER: Filter by vendor's city ─────────────────────────
+    if (req.query.city) {
+      req.query._cityFilter = req.query.city;
+    }
+
     // ── PAGINATION (optional) ─────────────────────────────────────────────
     const limit = Math.min(Number(req.query.limit) || 100, 1000);
     const skip = Number(req.query.skip) || 0;
@@ -197,14 +210,38 @@ router.get("/", async (req, res) => {
 
     // ── FETCH PRODUCTS ────────────────────────────────────────────────────
     const products = await Product.find(filter)
-      .populate("vendorId", "storeName name email")
+      .populate("vendorId", "storeName name email location")
       .sort({ [sortBy]: sortOrder })
       .limit(limit)
       .skip(skip)
       .lean();
 
+    // ── APPLY LOCATION FILTERS (post-query because vendor location is in referenced document) ─
+    let filteredProducts = products;
+    if (req.query._regionFilter || req.query._cityFilter) {
+      filteredProducts = products.filter(p => {
+        const vendor = p.vendorId;
+        if (!vendor) return false;
+
+        const vendorLocation = vendor.location || {};
+        if (req.query._regionFilter && vendorLocation.region !== req.query._regionFilter) {
+          return false;
+        }
+        if (req.query._cityFilter && vendorLocation.city !== req.query._cityFilter) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // ── ADD FORMATTED LOCATION TO EACH PRODUCT ────────────────────────────
+    const productsWithLocation = (filteredProducts || []).map(p => ({
+      ...p,
+      vendorLocation: p.vendorId?.location || null,
+    }));
+
     // ── RETURN RESULTS ────────────────────────────────────────────────────
-    res.json(products || []);
+    res.json(productsWithLocation);
   } catch (err) {
     console.error("❌ Search error:", err.message);
     res.status(500).json({ error: "Failed to search products" });
@@ -233,10 +270,16 @@ router.get("/:id", async (req, res) => {
     const product = await Product.findOne({
       _id: req.params.id,
       isDeleted: { $ne: true }
-    }).populate("vendorId", "storeName name email").lean();
-    
+    }).populate("vendorId", "storeName name email location").lean();
+
     if (!product) return res.status(404).json({ error: "Product not found" });
-    res.json(product);
+
+    // Add vendor location to product response
+    const productWithLocation = {
+      ...product,
+      vendorLocation: product.vendorId?.location || null,
+    };
+    res.json(productWithLocation);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch product" });
   }

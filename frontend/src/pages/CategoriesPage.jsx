@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { productAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
+import { regions, getCitiesByRegion } from "../config/ghanaLocations";
 import SEO from "../components/SEO";
 import styles from "./CategoriesPage.module.css";
 
@@ -13,6 +14,12 @@ export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAu
   const [categoryProducts, setCategoryProducts] = useState({});
   const [expandedCategory, setExpandedCategory] = useState(null);
   const mountedRef = useRef(true);
+
+  // Location filter state
+  const [locationFilter, setLocationFilter] = useState({ region: "", city: "" });
+  const [availableCities, setAvailableCities] = useState([]);
+  const [customLocation, setCustomLocation] = useState({ region: "", city: "" });
+  const [useCustomLocation, setUseCustomLocation] = useState({ region: false, city: false });
 
   // Category icons (emoji-based for simplicity)
   const categoryIcons = {
@@ -54,6 +61,40 @@ export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAu
     fetchCategories();
   }, []);
 
+  // Update available cities when region changes
+  useEffect(() => {
+    if (locationFilter.region && !useCustomLocation.region) {
+      setAvailableCities(getCitiesByRegion(locationFilter.region));
+      setLocationFilter(prev => ({ ...prev, city: "" }));
+      setUseCustomLocation(prev => ({ ...prev, city: false }));
+    } else if (!locationFilter.region) {
+      setAvailableCities([]);
+    }
+  }, [locationFilter.region, useCustomLocation.region]);
+
+  // Clear category products when location changes (to refetch with new filters)
+  useEffect(() => {
+    setCategoryProducts({});
+    setExpandedCategory(null);
+  }, [locationFilter, customLocation, useCustomLocation]);
+
+  // Handle location filter change
+  const handleLocationFilterChange = (field, value) => {
+    if (value === "other") {
+      setUseCustomLocation(prev => ({ ...prev, [field]: true }));
+      setLocationFilter(prev => ({ ...prev, [field]: "" }));
+    } else {
+      setUseCustomLocation(prev => ({ ...prev, [field]: false }));
+      setCustomLocation(prev => ({ ...prev, [field]: "" }));
+      setLocationFilter(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
+  // Handle custom location input
+  const handleCustomLocationChange = (field, value) => {
+    setCustomLocation(prev => ({ ...prev, [field]: value }));
+  };
+
   // Fetch products for a category when expanded
   const handleCategoryClick = async (category) => {
     if (expandedCategory === category) {
@@ -73,6 +114,12 @@ export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAu
       if (vendorContext?.vendorId) {
         params.vendorId = vendorContext.vendorId;
       }
+      // Add location filters (dropdown or custom)
+      const finalRegion = useCustomLocation.region ? customLocation.region : locationFilter.region;
+      const finalCity = useCustomLocation.city ? customLocation.city : locationFilter.city;
+      if (finalRegion) params.region = finalRegion;
+      if (finalCity) params.city = finalCity;
+
       const products = await productAPI.getAll(params);
       if (mountedRef.current) {
         setCategoryProducts(prev => ({ ...prev, [category]: products }));
@@ -151,6 +198,69 @@ export default function CategoriesPage({ onAddToCart, onViewProduct, onRequireAu
           </button>
         </div>
       )}
+
+      {/* Location Filters */}
+      <div className={styles.locationFilter}>
+        <p className={styles.locationFilterLabel}>Filter by vendor location:</p>
+        <div className={styles.locationFilterRow}>
+          {useCustomLocation.region ? (
+            <input
+              type="text"
+              placeholder="Type region..."
+              value={customLocation.region}
+              onChange={(e) => handleCustomLocationChange('region', e.target.value)}
+              className={styles.locationInput}
+            />
+          ) : (
+            <select
+              value={locationFilter.region}
+              onChange={(e) => handleLocationFilterChange('region', e.target.value)}
+            >
+              <option value="">All Regions</option>
+              {regions.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+              <option value="other">Other (type)</option>
+            </select>
+          )}
+
+          {useCustomLocation.city ? (
+            <input
+              type="text"
+              placeholder="Type city..."
+              value={customLocation.city}
+              onChange={(e) => handleCustomLocationChange('city', e.target.value)}
+              className={styles.locationInput}
+              disabled={!useCustomLocation.region && !locationFilter.region}
+            />
+          ) : (
+            <select
+              value={locationFilter.city}
+              onChange={(e) => handleLocationFilterChange('city', e.target.value)}
+              disabled={!locationFilter.region && !useCustomLocation.region}
+            >
+              <option value="">{(locationFilter.region || useCustomLocation.region) ? "All Cities" : "Select Region first"}</option>
+              {availableCities.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+              <option value="other">Other (type)</option>
+            </select>
+          )}
+
+          {(locationFilter.region || locationFilter.city || customLocation.region || customLocation.city) && (
+            <button
+              className={styles.clearFilterBtn}
+              onClick={() => {
+                setLocationFilter({ region: "", city: "" });
+                setCustomLocation({ region: "", city: "" });
+                setUseCustomLocation({ region: false, city: false });
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
 
       <h1 className={styles.title}>Categories</h1>
       <p className={styles.subtitle}>Browse products by category</p>

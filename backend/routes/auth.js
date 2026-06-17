@@ -12,6 +12,15 @@ const { validate, registerSchema, loginSchema, forgotPasswordSchema, resetPasswo
 const { vendorKYCUpload } = require("../config/multer");
 const logger = require("../utils/logger");
 
+// ── LOCATION CONFIG ─────────────────────────────────────────────────────────────
+// Load Ghana locations configuration safely
+let ghanaLocations = null;
+try {
+  ghanaLocations = require("../config/ghanaLocations");
+} catch (err) {
+  console.error("[AUTH] Failed to load ghanaLocations:", err.message);
+}
+
 /**
  * Helper: Sign a JWT token
  */
@@ -37,6 +46,10 @@ function cleanUser(user) {
     storeName: user.storeName,
     storeDescription: user.storeDescription,
     storeLogo: user.storeLogo,
+    /* ── Location Fields (if vendor) ── */
+    ...(user.isVendor && {
+      location: user.location || { country: "Ghana", region: "", city: "" },
+    }),
     /* ── KYC Fields (if vendor) ── */
     ...(user.isVendor && {
       phoneNumber: user.phoneNumber,
@@ -81,6 +94,32 @@ router.post(
           return res.status(400).json({ error: "ID back image is required for vendors" });
         }
 
+        // ✅ Validate location fields for vendors (Ghana-focused)
+        // Accept predefined OR custom input (user typed)
+        // Defensive: Check ghanaLocations is properly loaded
+        const locationConfig = ghanaLocations && typeof ghanaLocations.isValidRegion === 'function'
+          ? ghanaLocations
+          : null;
+
+        if (!value.region || value.region.trim() === "") {
+          return res.status(400).json({ error: "Region is required for vendors" });
+        }
+        // Only validate against predefined list if it's a predefined region (and config is available)
+        const isPredefinedRegion = locationConfig ? locationConfig.isValidRegion(value.region) : false;
+        if (!isPredefinedRegion && value.region.trim().length < 2) {
+          return res.status(400).json({ error: "Region must be at least 2 characters" });
+        }
+        if (!value.city || value.city.trim() === "") {
+          return res.status(400).json({ error: "City is required for vendors" });
+        }
+        // Only validate against predefined cities if region is predefined (and config is available)
+        const isPredefinedCity = isPredefinedRegion && locationConfig
+          ? locationConfig.isValidCity(value.region, value.city)
+          : false;
+        if (!isPredefinedCity && value.city.trim().length < 2) {
+          return res.status(400).json({ error: "City must be at least 2 characters" });
+        }
+
         // ✅ Process uploaded ID documents
         const frontFile = req.files.idFrontImage[0];
         const backFile = req.files.idBackImage[0];
@@ -100,6 +139,15 @@ router.post(
         ...value,
         isVendor,
       };
+
+      // ✅ Add location data if vendor (Ghana-focused)
+      if (isVendor) {
+        userData.location = {
+          country: value.country || "Ghana",
+          region: value.region || "",
+          city: value.city || "",
+        };
+      }
 
       // ✅ Add KYC data if vendor
       if (isVendor) {
@@ -229,7 +277,7 @@ router.put("/me", requireAuth, async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const { name, email, storeName, storeDescription, storeLogo } = value;
+    const { name, email, storeName, storeDescription, storeLogo, location } = value;
     const updates = {};
 
     // Update fields
@@ -239,6 +287,36 @@ router.put("/me", requireAuth, async (req, res) => {
     if (storeDescription !== undefined) updates.storeDescription = storeDescription;
     if (storeLogo !== undefined) updates.storeLogo = storeLogo;
 
+    // ✅ Update location (for vendors)
+    if (location !== undefined && req.user.isVendor) {
+      // Validate location if provided (accept both predefined and custom)
+      if (location && (location.region || location.city)) {
+        // Defensive: Check ghanaLocations is properly loaded
+        const locationConfig = ghanaLocations && typeof ghanaLocations.isValidRegion === 'function'
+          ? ghanaLocations
+          : null;
+
+        const isPredefinedRegion = locationConfig ? locationConfig.isValidRegion(location.region) : false;
+        // Allow custom regions with min 2 chars
+        if (!isPredefinedRegion && location.region && location.region.trim().length < 2) {
+          return res.status(400).json({ error: "Region must be at least 2 characters" });
+        }
+        // Allow custom cities with min 2 chars
+        const isPredefinedCity = isPredefinedRegion && locationConfig
+          ? locationConfig.isValidCity(location.region, location.city)
+          : false;
+        if (!isPredefinedCity && location.city && location.city.trim().length < 2) {
+          return res.status(400).json({ error: "City must be at least 2 characters" });
+        }
+      }
+
+      updates.location = {
+        country: location?.country || "Ghana",
+        region: location?.region || "",
+        city: location?.city || "",
+      };
+    }
+
     const user = await User.findByIdAndUpdate(
       req.user.userId,
       { $set: updates },
@@ -246,7 +324,7 @@ router.put("/me", requireAuth, async (req, res) => {
     ).lean();
 
     if (!user) return res.status(404).json({ message: "User not found" });
-    
+
     // Return user and fresh token for frontend context
     const token = sign(user);
     res.json({ user: cleanUser(user), token });

@@ -26,7 +26,7 @@ router.get("/pending", requireAuth, requireAdmin, async (req, res) => {
       vendorStatus: "pending",
     })
       .select(
-        "name email phoneNumber idType idFrontImage idBackImage storeName storeDescription createdAt kycStatus"
+        "name email phoneNumber idType idFrontImage idBackImage storeName storeDescription createdAt kycStatus location"
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -141,14 +141,34 @@ router.patch("/:id/reject", requireAuth, requireAdmin, async (req, res) => {
  */
 router.get("/all", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const vendors = await User.find({ isVendor: true })
+    const filter = { isVendor: true };
+
+    // ── FILTER BY REGION ───────────────────────────────────────────────
+    if (req.query.region) {
+      filter["location.region"] = req.query.region;
+    }
+
+    // ── FILTER BY CITY ───────────────────────────────────────────────
+    if (req.query.city) {
+      filter["location.city"] = req.query.city;
+    }
+
+    const vendors = await User.find(filter)
       .select(
-        "name email phoneNumber idType idFrontImage idBackImage storeName storeDescription createdAt kycStatus vendorStatus approvedAt vendorRejectedReason"
+        "name email phoneNumber idType idFrontImage idBackImage storeName storeDescription createdAt kycStatus vendorStatus approvedAt vendorRejectedReason location"
       )
       .sort({ createdAt: -1 })
       .lean();
 
-    res.json(vendors || []);
+    // Add formatted location to each vendor
+    const vendorsWithLocation = (vendors || []).map(v => ({
+      ...v,
+      formattedLocation: (v.location?.region && v.location?.city)
+        ? `${v.location.city}, ${v.location.region}`
+        : "Location not specified"
+    }));
+
+    res.json(vendorsWithLocation);
   } catch (err) {
     console.error("[Admin] Error fetching all vendors:", err.message);
     res.status(500).json({ error: "Failed to fetch vendors" });

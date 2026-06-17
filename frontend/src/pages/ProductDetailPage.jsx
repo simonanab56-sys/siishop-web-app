@@ -244,6 +244,13 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
             <p className={styles.vendor}>🏪 {vendorName}</p>
           )}
 
+          {/* Display vendor location */}
+          {(product.vendorLocation?.region || product.vendorLocation?.city) && (
+            <p className={styles.vendor} style={{ fontSize: '13px', color: '#666' }}>
+              📍 Sold from: {product.vendorLocation.city}, {product.vendorLocation.region}
+            </p>
+          )}
+
           {product.category && (
             <span className={styles.category}>{product.category}</span>
           )}

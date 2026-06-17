@@ -327,6 +327,16 @@ function VendorOverview({ addToast }) {
         <p className={styles.storeLinkDesc}>
           Share this link with customers to showcase your products
         </p>
+
+        {/* Location Display */}
+        {(stats.location?.region || stats.location?.city) && (
+          <div style={{ marginBottom: '16px', padding: '12px', background: '#f5f5f5', borderRadius: '8px' }}>
+            <p style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+              📍 Store Location: {stats.location.city}, {stats.location.region}
+            </p>
+          </div>
+        )}
+
         {storeSlug ? (
           <div className={styles.storeLinkBox}>
             <input

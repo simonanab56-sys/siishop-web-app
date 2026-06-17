@@ -16,6 +16,15 @@ const { requireAuth, requireVendor } = require("../middleware/auth");
 const { notifyOrderStatusUpdate } = require("../services/notification.service");
 const logger  = require("../utils/logger");
 
+// ── LOCATION CONFIG ─────────────────────────────────────────────────────────────
+// Load Ghana locations configuration safely
+let ghanaLocations = null;
+try {
+  ghanaLocations = require("../config/ghanaLocations");
+} catch (err) {
+  console.error("[VENDOR] Failed to load ghanaLocations:", err.message);
+}
+
 // ── CLOUDINARY CONFIGURATION ─────────────────────────────────────────────────
 // Try to use Cloudinary if configured, otherwise fallback to local storage
 let multiUpload;
@@ -149,7 +158,7 @@ router.get("/store/:slug", async (req, res) => {
       vendorSlug: slug,
       isVendor: true,
       vendorStatus: "approved",
-    }).select("storeName storeDescription storeLogo vendorSlug vendorStatus kycStatus approvedAt");
+    }).select("storeName storeDescription storeLogo vendorSlug vendorStatus kycStatus approvedAt location");
 
     if (!vendor) {
       return res.status(404).json({ error: "Store not found" });
@@ -179,6 +188,8 @@ router.get("/store/:slug", async (req, res) => {
         vendorStatus: vendor.vendorStatus,
         kycStatus: vendor.kycStatus,
         approvedAt: vendor.approvedAt,
+        location: vendor.location || null,
+        formattedLocation: vendor.getFormattedLocation?.() || "Location not specified",
       },
       stats: {
         productCount,
@@ -210,7 +221,7 @@ router.get("/store/:slug/products", async (req, res) => {
       vendorSlug: slug,
       isVendor: true,
       vendorStatus: "approved",
-    }).select("_id storeName vendorSlug");
+    }).select("_id storeName vendorSlug location");
 
     // If not found, try alternative field name storeSlug
     if (!vendor) {
@@ -219,7 +230,7 @@ router.get("/store/:slug/products", async (req, res) => {
         storeSlug: slug,
         isVendor: true,
         vendorStatus: "approved",
-      }).select("_id storeName storeSlug");
+      }).select("_id storeName storeSlug location");
 
       if (!vendor) {
         logger.log("Vendor still not found, returning 404");
@@ -236,7 +247,7 @@ router.get("/store/:slug/products", async (req, res) => {
       vendorId: vendor._id,
       isDeleted: { $ne: true }
     })
-      .populate("vendorId", "storeName storeLogo vendorSlug")
+      .populate("vendorId", "storeName storeLogo vendorSlug location")
       .sort({ createdAt: -1 })
       .limit(Number(limit))
       .skip(Number(skip))
@@ -261,7 +272,7 @@ router.get("/list", async (req, res) => {
       vendorStatus: "approved",
     };
 
-    // ── SEARCH: Search by store name, name, or description ────────────────
+    // ── SEARCH: Search by store name, name, description, or location ────────────────
     if (req.query.search) {
       const searchTerm = req.query.search.trim();
       const searchRegex = new RegExp(searchTerm, "i"); // case-insensitive
@@ -269,16 +280,36 @@ router.get("/list", async (req, res) => {
       filter.$or = [
         { storeName: { $regex: searchRegex } },
         { name: { $regex: searchRegex } },
-        { storeDescription: { $regex: searchRegex } }
+        { storeDescription: { $regex: searchRegex } },
+        { "location.region": { $regex: searchRegex } },
+        { "location.city": { $regex: searchRegex } }
       ];
     }
 
+    // ── LOCATION FILTER: Filter by region ────────────────
+    if (req.query.region) {
+      filter["location.region"] = req.query.region;
+    }
+
+    // ── LOCATION FILTER: Filter by city ────────────────
+    if (req.query.city) {
+      filter["location.city"] = req.query.city;
+    }
+
     const vendors = await User.find(filter)
-      .select("name storeName storeDescription storeLogo email")
+      .select("name storeName storeDescription storeLogo email location")
       .sort({ createdAt: -1 })
       .lean();
 
-    res.json(vendors || []);
+    // Add formatted location to each vendor
+    const vendorsWithLocation = (vendors || []).map(v => ({
+      ...v,
+      formattedLocation: (v.location?.region && v.location?.city)
+        ? `${v.location.city}, ${v.location.region}`
+        : "Location not specified"
+    }));
+
+    res.json(vendorsWithLocation);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch vendors" });
   }
@@ -292,11 +323,19 @@ router.get("/profile/:id", async (req, res) => {
       isVendor: true,
       vendorStatus: "approved",
     })
-      .select("name storeName storeDescription storeLogo email")
+      .select("name storeName storeDescription storeLogo email location")
       .lean();
 
     if (!vendor) return res.status(404).json({ error: "Vendor not found" });
-    res.json(vendor);
+
+    // Add formatted location
+    const vendorWithLocation = {
+      ...vendor,
+      formattedLocation: (vendor.location?.region && vendor.location?.city)
+        ? `${vendor.location.city}, ${vendor.location.region}`
+        : "Location not specified"
+    };
+    res.json(vendorWithLocation);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch vendor profile" });
   }
@@ -372,9 +411,9 @@ router.get("/dashboard", requireAuth, requireApprovedVendor, async (req, res) =>
   try {
     const vendorId = toObjectId(req.user.userId);
 
-    // Get vendor info (storeName, storeSlug)
+    // Get vendor info (storeName, storeSlug, location)
     const User = require("../models/User");
-    const vendor = await User.findById(vendorId).select("storeName vendorSlug").lean();
+    const vendor = await User.findById(vendorId).select("storeName vendorSlug location").lean();
 
     const [productsCount, ordersCount, recentOrders] = await Promise.all([
       Product.countDocuments({ vendorId, isDeleted: { $ne: true } }),
@@ -403,6 +442,7 @@ router.get("/dashboard", requireAuth, requireApprovedVendor, async (req, res) =>
       recentOrders,
       storeName: vendor?.storeName || "",
       storeSlug: vendor?.vendorSlug || "",
+      location: vendor?.location || null,
     });
   } catch (err) {
     res.status(500).json({ error: "Dashboard error" });
@@ -1360,6 +1400,56 @@ router.get("/popular", async (req, res) => {
     res.json(sorted || []);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch popular stores" });
+  }
+});
+
+// ── PUBLIC: GET GHANA LOCATIONS ─────────────────────────────────────────────────
+// Returns all Ghana regions and their cities
+router.get("/locations", async (req, res) => {
+  try {
+    // Reload to ensure we have the latest
+    if (!ghanaLocations) {
+      ghanaLocations = require("../config/ghanaLocations");
+    }
+
+    // Defensive: Check ghanaLocations is properly loaded
+    if (!ghanaLocations || typeof ghanaLocations.getRegions !== 'function') {
+      return res.status(500).json({ error: "Location service unavailable" });
+    }
+
+    res.json({
+      regions: ghanaLocations.getRegions(),
+      citiesByRegion: ghanaLocations.citiesByRegion,
+    });
+  } catch (err) {
+    console.error("[LOCATIONS] Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch locations" });
+  }
+});
+
+// ── PUBLIC: GET CITIES BY REGION ─────────────────────────────────────────────────
+// Returns cities for a specific region
+router.get("/locations/:region", async (req, res) => {
+  try {
+    const { region } = req.params;
+
+    // Defensive: Check ghanaLocations is properly loaded
+    if (!ghanaLocations || typeof ghanaLocations.isValidRegion !== 'function') {
+      return res.status(500).json({ error: "Location service unavailable" });
+    }
+
+    // Accept any region with at least 2 characters (allow custom)
+    if (!region || region.trim().length < 2) {
+      return res.status(400).json({ error: "Invalid region" });
+    }
+
+    const isValid = ghanaLocations.isValidRegion(region);
+    const cities = isValid ? ghanaLocations.getCitiesByRegion(region) : [];
+
+    res.json({ region, cities });
+  } catch (err) {
+    console.error("[LOCATIONS] Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch cities" });
   }
 });
 

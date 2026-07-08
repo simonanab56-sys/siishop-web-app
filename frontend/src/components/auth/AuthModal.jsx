@@ -6,6 +6,7 @@ import { GoogleLogin } from "@react-oauth/google";
 import { authAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { regions, getCitiesByRegion } from "../../config/ghanaLocations";
+import { cuisineTypes } from "../../config/cuisineTypes";
 import styles from "./AuthModal.module.css";
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "login" }) {
@@ -22,8 +23,18 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
   const [password,         setPassword]         = useState("");
   const [confirm,          setConfirm]          = useState("");
   const [asVendor,         setAsVendor]         = useState(false);
+  const [vendorType, setVendorType] = useState("marketplace"); // marketplace or restaurant
   const [storeName,        setStoreName]        = useState("");
   const [storeDescription, setStoreDescription] = useState("");
+
+  // ✅ NEW: Restaurant-specific fields
+  const [restaurantName, setRestaurantName] = useState("");
+  const [restaurantDescription, setRestaurantDescription] = useState("");
+  const [cuisineType, setCuisineType] = useState("");
+  const [address, setAddress] = useState("");
+  const [deliveryRadius, setDeliveryRadius] = useState(5);
+  const [openingHours, setOpeningHours] = useState("08:00");
+  const [closingHours, setClosingHours] = useState("22:00");
 
   const [phoneNumber,      setPhoneNumber]      = useState("");
   const [idType,           setIdType]           = useState("national_id");
@@ -49,12 +60,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
     setError(""); setSuccess("");
     setName(""); setEmail(""); setPassword(""); setConfirm("");
     setAsVendor(false); setStoreName(""); setStoreDescription("");
+    setVendorType("marketplace");
     setPhoneNumber(""); setIdType("national_id"); setIdFrontImage(null); setIdBackImage(null);
     setIdFrontPreview(""); setIdBackPreview("");
     setLoading(false); setOauthLoading(false);
     // Reset location fields
     setCountry("Ghana"); setRegion(""); setCity(""); setAvailableCities([]);
     setCustomRegion(""); setCustomCity(""); setUseCustomRegion(false); setUseCustomCity(false);
+    // ✅ Reset restaurant fields
+    setRestaurantName(""); setRestaurantDescription(""); setCuisineType("");
+    setAddress(""); setDeliveryRadius(5); setOpeningHours("08:00"); setClosingHours("22:00");
   }, [isOpen, initialView]);
 
   // ── UPDATE AVAILABLE CITIES WHEN REGION CHANGES ──
@@ -170,6 +185,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
     setError(""); setLoading(true);
     try {
       const res = await authAPI.login(email.trim(), password);
+      console.log("[AuthModal] ============ FRONTEND DEBUG ============");
+      console.log("[AuthModal] Full response keys:", Object.keys(res));
+      console.log("[AuthModal] Full user keys:", res.user ? Object.keys(res.user) : "NO USER");
+      console.log("[AuthModal] Full user object:", JSON.stringify(res.user, null, 2));
+      console.log("[AuthModal] vendorType from response:", res.user?.vendorType);
+      console.log("[AuthModal] restaurantDetails from response:", res.user?.restaurantDetails);
+      console.log("[AuthModal] vendorStatus from response:", res.user?.vendorStatus);
+      console.log("[AuthModal] ===========================================");
       if (!res?.token || !res?.user) throw new Error("Invalid response from server");
       login(res.token, res.user);
       onSuccess?.(res.user);
@@ -187,7 +210,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
     setError("");
     if (password !== confirm)  { setError("Passwords do not match"); return; }
     if (password.length < 6)   { setError("Password must be at least 6 characters"); return; }
-    if (asVendor && !storeName.trim()) { setError("Store name is required"); return; }
+    // Only require storeName for marketplace vendors (restaurants use restaurantName)
+    if (asVendor && vendorType !== "restaurant" && !storeName.trim()) { setError("Store name is required"); return; }
 
     if (asVendor) {
       if (!phoneNumber.trim()) { setError("Phone number is required for vendors"); return; }
@@ -201,6 +225,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
 
       if (!finalRegion) { setError("Region is required for vendors"); return; }
       if (!finalCity) { setError("City is required for vendors"); return; }
+
+      // ✅ NEW: Validate restaurant-specific fields
+      if (vendorType === "restaurant") {
+        if (!restaurantName.trim() && !storeName.trim()) { setError("Restaurant name is required"); return; }
+        if (!cuisineType) { setError("Cuisine type is required for restaurants"); return; }
+        if (!address.trim()) { setError("Restaurant address is required"); return; }
+      }
     }
     
     setLoading(true);
@@ -212,8 +243,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
       
       if (asVendor) {
         formData.append("isVendor", "true");
-        formData.append("storeName", storeName.trim());
-        formData.append("storeDescription", storeDescription.trim());
+        formData.append("vendorType", vendorType); // ✅ NEW: marketplace or restaurant
+        // For restaurants, use restaurantName as storeName; for marketplace, use storeName
+        const finalStoreName = vendorType === "restaurant"
+          ? (restaurantName.trim() || storeName.trim())
+          : storeName.trim();
+        formData.append("storeName", finalStoreName);
+        formData.append("storeDescription", vendorType === "restaurant"
+          ? (restaurantDescription.trim() || storeDescription.trim())
+          : storeDescription.trim());
         formData.append("phoneNumber", phoneNumber.trim());
         formData.append("idType", idType);
         formData.append("idFrontImage", idFrontImage);
@@ -224,6 +262,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
         formData.append("country", country);
         formData.append("region", finalRegion);
         formData.append("city", finalCity);
+
+        // ✅ NEW: Restaurant-specific fields
+        if (vendorType === "restaurant") {
+          formData.append("restaurantName", restaurantName.trim() || storeName.trim());
+          formData.append("restaurantDescription", restaurantDescription.trim() || storeDescription.trim());
+          formData.append("cuisineType", cuisineType);
+          formData.append("address", address.trim());
+          formData.append("deliveryRadius", deliveryRadius);
+          formData.append("openingHours", openingHours);
+          formData.append("closingHours", closingHours);
+        }
       }
       
       const res = await authAPI.register(formData);
@@ -380,16 +429,84 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
               <span>Register as a Vendor (sell on SiiShop)</span>
             </label>
 
+            {/* ✅ NEW: Vendor Type Selection */}
             {asVendor && (
               <div className={styles.vendorFields}>
-                <div className={styles.field}><label>Store Name *</label>
-                  <input type="text" placeholder="e.g. Jane's Electronics" value={storeName}
-                    onChange={e => setStoreName(e.target.value)} required disabled={loading} />
+                <div className={styles.kycSection}>
+                  <h4 className={styles.kycTitle}>Choose Business Type</h4>
+                  <label className={styles.radioLabel}>
+                    <input
+                      type="radio"
+                      name="vendorType"
+                      value="marketplace"
+                      checked={vendorType === "marketplace"}
+                      onChange={e => setVendorType(e.target.value)}
+                      disabled={loading}
+                    />
+                    <span>🛒 <strong>Marketplace Vendor</strong> <small>(Electronics, Fashion, etc.)</small></span>
+                  </label>
+                  <label className={styles.radioLabel}>
+                    <input
+                      type="radio"
+                      name="vendorType"
+                      value="restaurant"
+                      checked={vendorType === "restaurant"}
+                      onChange={e => setVendorType(e.target.value)}
+                      disabled={loading}
+                    />
+                    <span>🍔 <strong>Restaurant / Food Vendor</strong> <small>(Food delivery, meals, etc.)</small></span>
+                  </label>
                 </div>
-                <div className={styles.field}><label>Store Description</label>
-                  <textarea rows={2} placeholder="What do you sell?" value={storeDescription}
-                    onChange={e => setStoreDescription(e.target.value)} disabled={loading} />
-                </div>
+
+                {/* ✅ Restaurant-specific fields */}
+                {vendorType === "restaurant" ? (
+                  <div className={styles.kycSection}>
+                    <h4 className={styles.kycTitle}>🍽️ Restaurant Details</h4>
+                    <div className={styles.field}><label>Restaurant Name *</label>
+                      <input type="text" placeholder="e.g. Mama's Kitchen" value={restaurantName}
+                        onChange={e => setRestaurantName(e.target.value)} required disabled={loading} />
+                    </div>
+                    <div className={styles.field}><label>Restaurant Description</label>
+                      <textarea rows={2} placeholder="Describe your restaurant and cuisine..." value={restaurantDescription}
+                        onChange={e => setRestaurantDescription(e.target.value)} disabled={loading} />
+                    </div>
+                    <div className={styles.field}><label>Cuisine Type *</label>
+                      <select value={cuisineType} onChange={e => setCuisineType(e.target.value)} required disabled={loading}>
+                        <option value="">Select Cuisine Type</option>
+                        {cuisineTypes.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className={styles.field}><label>Address *</label>
+                      <input type="text" placeholder="Restaurant address" value={address}
+                        onChange={e => setAddress(e.target.value)} required disabled={loading} />
+                    </div>
+                    <div className={styles.field}><label>Delivery Radius (km)</label>
+                      <input type="number" min="1" max="50" value={deliveryRadius}
+                        onChange={e => setDeliveryRadius(e.target.value)} disabled={loading} />
+                    </div>
+                    <div className={styles.field}><label>Opening Hours</label>
+                      <input type="time" value={openingHours}
+                        onChange={e => setOpeningHours(e.target.value)} disabled={loading} />
+                    </div>
+                    <div className={styles.field}><label>Closing Hours</label>
+                      <input type="time" value={closingHours}
+                        onChange={e => setClosingHours(e.target.value)} disabled={loading} />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className={styles.field}><label>Store Name *</label>
+                      <input type="text" placeholder="e.g. Jane's Electronics" value={storeName}
+                        onChange={e => setStoreName(e.target.value)} required disabled={loading} />
+                    </div>
+                    <div className={styles.field}><label>Store Description</label>
+                      <textarea rows={2} placeholder="What do you sell?" value={storeDescription}
+                        onChange={e => setStoreDescription(e.target.value)} disabled={loading} />
+                    </div>
+                  </>
+                )}
 
                 <div className={styles.kycSection}>
                   <h4 className={styles.kycTitle}>📍 Store Location (Required)</h4>
@@ -474,7 +591,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
                   </div>
                 </div>
                 
-                <p className={styles.vendorNote}>⛳ Your vendor account will be reviewed by an admin before you can list products.</p>
+                <p className={styles.vendorNote}>⛳ Your vendor account will be reviewed by an siishop before you can list products.</p>
               </div>
             )}
 

@@ -1,0 +1,1 @@
+module.exports.requireAuth = (req,res,next)=>next(); module.exports.requireRestaurantVendor = (req,res,next)=>next();

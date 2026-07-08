@@ -43,7 +43,7 @@ function getCartImage(item) {
   return getImageUrl(img);
 }
 
-export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
+export default function CartItem({ item, onIncrease, onDecrease, onRemove, showRestaurant }) {
   const { fmt } = useCurrency();
   if (!item || !item._id) return null;
 
@@ -51,16 +51,22 @@ export default function CartItem({ item, onIncrease, onDecrease, onRemove }) {
   const quantity = typeof item.quantity === "number" ? item.quantity : 1;
   const name     = item.name || "Unknown item";
   const cartImage = getCartImage(item);
+  const isFood = item.itemType === "food";
 
   return (
     <div className={styles.item}>
       {cartImage
         ? <img src={cartImage} alt={name} className={styles.image} />
-        : <div className={styles.imagePlaceholder}>🛍️</div>
+        : <div className={styles.imagePlaceholder}>{isFood ? "🍔" : "🛍️"}</div>
       }
 
       <div className={styles.info}>
         <h4 className={styles.name}>{name}</h4>
+        {showRestaurant && isFood && item.restaurantName && (
+          <span className={styles.price} style={{ color: "#f97316", fontSize: "0.75rem" }}>
+            📍 {item.restaurantName}
+          </span>
+        )}
         <span className={styles.price}>{fmt(price)} each</span>
       </div>
 

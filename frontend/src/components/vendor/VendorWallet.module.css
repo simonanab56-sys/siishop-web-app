@@ -1,0 +1,58 @@
+/* VendorWallet.module.css
+ * Styles for the shared VendorWallet component used by both Marketplace
+ * VendorDashboard and Restaurant Dashboard. Self-contained so the component
+ * is portable — importing this single CSS module brings the full wallet UI
+ * (online cards, COD cards, action buttons, modals, transactions list,
+ * withdrawal history) to either dashboard without touching their host CSS.
+ */
+
+.walletContainer { display: flex; flex-direction: column; gap: 24px; }
+.walletCards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 1024px) { .walletCards { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .walletCards { grid-template-columns: 1fr; } }
+.walletCard { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; flex-direction: column; gap: 8px; }
+.walletCardLabel { font-size: 0.85rem; color: var(--brand-muted); font-weight: 500; }
+.walletCardValue { font-size: 1.5rem; font-weight: 700; color: var(--brand-dark); }
+.walletCardValuePending { font-size: 1.5rem; font-weight: 700; color: #f59e0b; }
+.walletCardValueCOD { font-size: 1.5rem; font-weight: 700; color: #059669; }
+.walletCardValueNegative { color: #dc2626 !important; }
+
+.walletActions { display: flex; gap: 12px; flex-wrap: wrap; }
+.walletInfo { background: #fef3c7; border-radius: 8px; padding: 12px 16px; }
+.walletInfo p { margin: 0; font-size: 0.9rem; color: #92400e; }
+.walletSections { display: flex; gap: 8px; border-bottom: 2px solid var(--brand-border); padding-bottom: 0; }
+.walletSectionTab { background: none; border: none; padding: 10px 16px; font-size: 0.9rem; font-weight: 600; color: var(--brand-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+.walletSectionTabActive { color: var(--brand-primary); border-bottom-color: var(--brand-primary); }
+
+.walletSectionTitle { margin: 24px 0 16px; font-size: 1.1rem; color: var(--brand-dark); }
+.walletSectionTitle:first-child { margin-top: 0; }
+
+.transactionList { display: flex; flex-direction: column; gap: 8px; }
+.transactionItem { background: #fff; border-radius: 8px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
+.transactionInfo { display: flex; flex-direction: column; gap: 2px; }
+.transactionType { font-size: 0.9rem; font-weight: 600; text-transform: capitalize; color: var(--brand-dark); }
+.transactionDesc { font-size: 0.8rem; color: var(--brand-muted); }
+.transactionDate { font-size: 0.75rem; color: var(--brand-muted); }
+.transactionAmount { font-size: 1rem; font-weight: 700; }
+.transactionPositive { color: #10b981; }
+.transactionNegative { color: #ef4444; }
+.transactionAmountNegative { font-size: 1rem; font-weight: 700; color: #ef4444; }
+.transactionRight { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.transactionStatus { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; text-transform: capitalize; }
+.statuspending { background: #fef3c7; color: #92400e; }
+.statusapproved { background: #d1fae5; color: #065f46; }
+.statusrejected { background: #fee2e2; color: #991b1b; }
+.statuscompleted { background: #d1fae5; color: #065f46; }
+.statusprocessing { background: #dbeafe; color: #1e40af; }
+
+.modalOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modalContent { background: #fff; border-radius: 16px; padding: 28px; max-width: 420px; width: 100%; max-height: 90vh; overflow-y: auto; }
+.modalContent h3 { margin: 0 0 20px; font-size: 1.25rem; color: var(--brand-dark); }
+.formGroup { margin-bottom: 16px; }
+.formGroup label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; color: var(--brand-dark); }
+.formGroup input, .formGroup select { width: 100%; padding: 10px 12px; border: 1px solid var(--brand-border); border-radius: 8px; font-size: 0.95rem; }
+.formGroup input:focus, .formGroup select:focus { outline: none; border-color: var(--brand-primary); }
+.modalActions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+
+.commissionInfo { background: #fef3c7; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; }
+.commissionInfo p { margin: 0; font-size: 1rem; color: #92400e; }

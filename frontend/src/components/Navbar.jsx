@@ -86,6 +86,7 @@ export default function Navbar({ cartCount, chatUnreadCount = 0, currentPage, on
   const NAV_LINKS = [
     ["home",    "Shop"],
     ["vendors", "Stores"],
+    ["food", "🍔 Food"],
     ["wishlist", "Wishlist"],
   ];
 

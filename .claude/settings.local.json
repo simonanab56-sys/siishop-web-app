@@ -5,7 +5,14 @@
       "Bash(netstat -ano)",
       "Bash(findstr :5000)",
       "Bash(node server.js)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(node migrations/migrateVendorType.js)",
+      "Bash(node migrations/migrateToUnifiedProducts.js)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const svc = require\\('./services/order.service.js'\\); console.log\\('exports:', Object.keys\\(svc\\)\\);\")",
+      "Bash(node -e \"const { notifyOrderCreated } = require\\('./services/notification.service.js'\\); console.log\\('notifyOrderCreated:', typeof notifyOrderCreated\\);\")",
+      "Bash(node -e \"require\\('./routes/food-orders.js'\\); console.log\\('food-orders route loads OK'\\);\")",
+      "Bash(node -c routes/auth.js)"
     ]
   }
 }

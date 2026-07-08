@@ -3,10 +3,6 @@
 const express = require("express");
 const router  = express.Router();
 const mongoose = require("mongoose");
-const multer  = require("multer");
-const path    = require("path");
-const fs      = require("fs");
-const { v4: uuidv4 } = require("uuid");
 
 const User    = require("../models/User");
 const Product = require("../models/Product");
@@ -14,6 +10,12 @@ const requireApprovedVendor = require("../middleware/requireApprovedVendor");
 const Order   = require("../models/Order");
 const { requireAuth, requireVendor } = require("../middleware/auth");
 const { notifyOrderStatusUpdate } = require("../services/notification.service");
+const { validate, vendorUpdateOrderStatusSchema } = require("../utils/joiSchemas");
+const { validateCategory } = require("../utils/categoryValidator");
+const { prepareProductForSave } = require("../services/product.service");
+const walletService = require("../services/wallet.service");
+const mediaService = require("../services/media.service");
+const restaurantStats = require("../services/restaurantStats.service");
 const logger  = require("../utils/logger");
 
 // ── LOCATION CONFIG ─────────────────────────────────────────────────────────────
@@ -25,123 +27,14 @@ try {
   console.error("[VENDOR] Failed to load ghanaLocations:", err.message);
 }
 
-// ── CLOUDINARY CONFIGURATION ─────────────────────────────────────────────────
-// Try to use Cloudinary if configured, otherwise fallback to local storage
-let multiUpload;
-let UPLOAD_DIR;
-let CLOUDINARY_CONFIGURED = false;
-
-// Check if Cloudinary is configured (after dotenv loaded)
-function checkCloudinaryConfig() {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  const apiKey = process.env.CLOUDINARY_API_KEY;
-  const apiSecret = process.env.CLOUDINARY_API_SECRET;
-
-  logger.log("[CLOUDINARY] Config check:", { cloudName, apiKey: !!apiKey, apiSecret: !!apiSecret });
-
-  return !!(cloudName && apiKey && apiSecret && cloudName !== "Root");
-}
-
-// Initialize storage based on configuration
-function initStorage() {
-  CLOUDINARY_CONFIGURED = checkCloudinaryConfig();
-
-  if (CLOUDINARY_CONFIGURED) {
-    logger.log("☁️ Using Cloudinary for image storage");
-    const { productMulter } = require("../config/cloudinary");
-    multiUpload = productMulter.array("images", 10);
-  } else {
-    // Fallback to local disk storage
-    logger.log("💾 Using local disk storage for images");
-    UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-
-    const storage = multer.diskStorage({
-      destination: (req, file, cb) => {
-        logger.log("[MULTER] Saving to:", UPLOAD_DIR);
-        cb(null, UPLOAD_DIR);
-      },
-      filename: (req, file, cb) => {
-        const filename = `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`;
-        logger.log("[MULTER] Generated filename:", filename);
-        cb(null, filename);
-      },
-    });
-
-    const fileFilter = (req, file, cb) => {
-      const allowed = /jpeg|jpg|webp|png|gif/;
-      const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
-      const mime = allowed.test(file.mimetype);
-      if (ext && mime) return cb(null, true);
-      cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
-    };
-
-    multiUpload = multer({
-      storage,
-      fileFilter,
-      limits: { fileSize: 5 * 1024 * 1024 },
-    }).array("images", 10);
-  }
-}
-
-// Initialize on module load
-initStorage();
-
-// ── VIDEO UPLOAD STORAGE ──────────────────────────────────────────────────────
-let videoUpload;
-
-function initVideoStorage() {
-  if (CLOUDINARY_CONFIGURED) {
-    logger.log("☁️ [VENDOR] Using Cloudinary for video storage");
-    const { productVideoMulter } = require("../config/cloudinary");
-    videoUpload = productVideoMulter.single("video");
-  } else {
-    // Fallback to local disk storage for videos
-    const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads", "videos");
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-
-    const storage = multer.diskStorage({
-      destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-      filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
-    });
-
-    const fileFilter = (req, file, cb) => {
-      const allowed = /mp4|webm|mov/;
-      const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
-      const mime = allowed.test(file.mimetype) || file.mimetype.startsWith("video/");
-      if (ext && mime) return cb(null, true);
-      cb(new Error("Only video files (MP4, WebM, MOV) are allowed"));
-    };
-
-    videoUpload = multer({
-      storage,
-      fileFilter,
-      limits: { fileSize: 50 * 1024 * 1024 },
-    }).single("video");
-  }
-}
-
-initVideoStorage();
-
-// Video upload error handler
-const handleVideoUploadError = (err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    console.error("[VIDEO UPLOAD ERROR] Code:", err.code, "Message:", err.message);
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(413).json({ error: "Video file too large. Max 50MB allowed." });
-    }
-    return res.status(400).json({ error: err.message });
-  }
-  if (err) {
-    console.error("[VIDEO UPLOAD ERROR]", err.message);
-    return res.status(400).json({ error: err.message });
-  }
-  next();
-};
+// ── UPLOAD MIDDLEWARE (shared via media.service) ────────────────────────────
+// Same presets as routes/products.js — Cloudinary-backed when env vars are
+// set, local-disk fallback otherwise. The named `productMulter` /
+// `productVideoMulter` instances know about the right folders, size limits,
+// and file filters; routes just chain them and call `toImageRecords` /
+// `toVideoRecord` / `destroyAsset` to normalize the result.
+const multiUpload = mediaService.productMulter.array("images", 10);
+const videoUpload = mediaService.productVideoMulter.single("video");
 
 function toObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id)
@@ -154,13 +47,26 @@ router.get("/store/:slug", async (req, res) => {
   try {
     const { slug } = req.params;
 
+    // ✅ ADDED: Filter by vendorType to only show marketplace vendors
+    // BACKWARD COMPATIBLE: Include vendors without vendorType (legacy data)
     const vendor = await User.findOne({
       vendorSlug: slug,
       isVendor: true,
       vendorStatus: "approved",
-    }).select("storeName storeDescription storeLogo vendorSlug vendorStatus kycStatus approvedAt location");
+      $or: [
+        { vendorType: "marketplace" },
+        { vendorType: { $exists: false } },
+        { vendorType: null },
+        { vendorType: "" }
+      ]
+    }).select("storeName storeDescription storeLogo vendorSlug vendorStatus kycStatus approvedAt location vendorType");
 
     if (!vendor) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+
+    // Double-check vendor is marketplace type (or legacy without vendorType = marketplace)
+    if (vendor.vendorType && vendor.vendorType !== "marketplace") {
       return res.status(404).json({ error: "Store not found" });
     }
 
@@ -217,11 +123,19 @@ router.get("/store/:slug/products", async (req, res) => {
     }
 
     // Find vendor by vendorSlug field
+    // ✅ ADDED: Filter by vendorType to only show marketplace vendors
+    // BACKWARD COMPATIBLE: Include vendors without vendorType (legacy data)
     let vendor = await User.findOne({
       vendorSlug: slug,
       isVendor: true,
       vendorStatus: "approved",
-    }).select("_id storeName vendorSlug location");
+      $or: [
+        { vendorType: "marketplace" },
+        { vendorType: { $exists: false } },
+        { vendorType: null },
+        { vendorType: "" }
+      ]
+    }).select("_id storeName vendorSlug location vendorType");
 
     // If not found, try alternative field name storeSlug
     if (!vendor) {
@@ -230,13 +144,26 @@ router.get("/store/:slug/products", async (req, res) => {
         storeSlug: slug,
         isVendor: true,
         vendorStatus: "approved",
-      }).select("_id storeName storeSlug location");
+        $or: [
+          { vendorType: "marketplace" },
+          { vendorType: { $exists: false } },
+          { vendorType: null },
+          { vendorType: "" }
+        ]
+      }).select("_id storeName storeSlug location vendorType");
 
       if (!vendor) {
         logger.log("Vendor still not found, returning 404");
         return res.status(404).json({ error: "Store not found" });
       }
       logger.log("Found vendor using storeSlug field:", vendor._id, vendor.storeName);
+    }
+
+    // Double-check vendor is marketplace type (belt and suspenders)
+    // BACKWARD COMPATIBLE: Allow vendors without vendorType (legacy data)
+    if (vendor.vendorType && vendor.vendorType !== "marketplace") {
+      logger.log("Vendor is not a marketplace vendor:", slug, vendor.vendorType);
+      return res.status(404).json({ error: "Store not found" });
     }
 
     logger.log("Vendor found:", vendor._id, vendor.storeName, "vendorSlug:", vendor.vendorSlug || vendor.storeSlug);
@@ -267,10 +194,31 @@ router.get("/store/:slug/products", async (req, res) => {
 /* PUBLIC — list approved vendors (for StoresPage) with optional search */
 router.get("/list", async (req, res) => {
   try {
-    const filter = {
-      isVendor: true,
-      vendorStatus: "approved",
-    };
+    // ✅ NEW: Filter by vendorType (default to marketplace for backward compatibility)
+    // Accept both "type" and "vendorType" for backward compatibility
+    const vendorType = req.query.vendorType || req.query.type || "marketplace";
+
+    // BACKWARD COMPATIBLE: Include vendors without vendorType (legacy data)
+    let filter;
+    if (vendorType === "marketplace") {
+      filter = {
+        isVendor: true,
+        vendorStatus: "approved",
+        $or: [
+          { vendorType: "marketplace" },
+          { vendorType: { $exists: false } },
+          { vendorType: null },
+          { vendorType: "" }
+        ]
+      };
+    } else {
+      // For restaurant, only show explicit restaurant vendors
+      filter = {
+        isVendor: true,
+        vendorType: "restaurant",
+        vendorStatus: "approved",
+      };
+    }
 
     // ── SEARCH: Search by store name, name, description, or location ────────────────
     if (req.query.search) {
@@ -449,6 +397,37 @@ router.get("/dashboard", requireAuth, requireApprovedVendor, async (req, res) =>
   }
 });
 
+/* CONSOLIDATED STATS — single source of truth for every page
+ *
+ * Used by Restaurant Dashboard, Restaurant Wallet, Restaurant Customers,
+ * and Restaurant Analytics. Returns the same five numbers (Total Revenue,
+ * Online Revenue, COD Revenue, Total Orders, Total Customers) computed in
+ * a single MongoDB aggregation in services/restaurantStats.service.js.
+ *
+ * Why a new endpoint rather than calling /api/wallet/summary for the
+ * wallet numbers: the wallet service reads from a `Wallet` document that
+ * is only credited when an order transitions to "delivered" via
+ * walletService.processOrderEarnings. If the vendor has historical
+ * delivered orders that pre-date that hook, the wallet shows zero
+ * even though the orders exist. Aggregating directly from the Order
+ * collection guarantees the numbers the vendor sees on Wallet match
+ * the numbers on Dashboard, Customers and Analytics.
+ *
+ * Vendor scope: `requireApprovedVendor` + `items.vendorId = req.user.userId`
+ * (mirrors every other /vendor/* endpoint — works for both marketplace
+ * and restaurant vendors because both write items[].vendorId).
+ */
+router.get("/stats", requireAuth, requireApprovedVendor, async (req, res) => {
+  try {
+    const vendorId = toObjectId(req.user.userId);
+    const stats = await restaurantStats.getStats(vendorId);
+    res.json(stats);
+  } catch (err) {
+    console.error("[VENDOR STATS] Error:", err.message);
+    res.status(500).json({ error: "Failed to load stats" });
+  }
+});
+
 /* MY ORDERS — vendor sees orders containing their products (active orders only) */
 router.get("/orders", requireAuth, requireApprovedVendor, async (req, res) => {
   try {
@@ -524,62 +503,132 @@ router.get("/orders/delivered", requireAuth, requireApprovedVendor, async (req, 
   }
 });
 
-/* MY DELIVERED ORDERS STATISTICS */
+/* MY DELIVERED ORDERS STATISTICS
+ *
+ * Mirrors the list endpoint's filter contract so the four stat cards stay
+ * in lockstep with the table. The active filter (today / last7days /
+ * last30days / custom) narrows every count and every revenue aggregation
+ * to the same window the table shows.
+ *
+ * Revenue is summed as `price × quantity` per line item, matching the
+ * formula used in services/wallet.service.js#processOrderEarnings so the
+ * numbers here agree with what the Wallet tab credits.
+ *
+ * Scope: `items.vendorId = req.user.userId` — works identically for
+ * marketplace vendors and restaurants because restaurant orders write
+ * `items[].vendorId = restaurant.userId`.
+ */
 router.get("/orders/delivered/stats", requireAuth, requireApprovedVendor, async (req, res) => {
   try {
     const vendorId = toObjectId(req.user.userId);
+    const { filter, startDate, endDate, search } = req.query;
+
+    // Reuse the same window builder as the list endpoint so the cards and
+    // the table cannot drift apart.
     const now = new Date();
-    const startOfToday = new Date(now.setHours(0, 0, 0, 0));
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-    // Total delivered orders for this vendor
-    const totalDelivered = await Order.countDocuments({
-      "items.vendorId": vendorId,
-      orderStatus: "delivered"
-    });
-
-    // Total revenue from delivered orders (paid only)
-    const revenueAgg = await Order.aggregate([
-      {
-        $match: {
-          "items.vendorId": vendorId,
-          orderStatus: "delivered",
-          paymentStatus: "paid"
+    let filterStart = null;
+    let filterEnd = null;
+    switch (filter) {
+      case "today":
+        filterStart = todayStart;
+        filterEnd = todayEnd;
+        break;
+      case "last7days":
+        filterStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filterEnd = now;
+        break;
+      case "last30days":
+        filterStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        filterEnd = now;
+        break;
+      case "custom":
+        if (startDate && endDate) {
+          filterStart = new Date(startDate);
+          filterEnd = new Date(endDate);
         }
-      },
+        break;
+      default:
+        // "all" or unset → no filter window.
+        break;
+    }
+
+    // deliveredAt constraint applied to every query so cards stay
+    // synchronized with the table.
+    const deliveredAtFilter = (filterStart || filterEnd)
+      ? { deliveredAt: { ...(filterStart ? { $gte: filterStart } : {}), ...(filterEnd ? { $lte: filterEnd } : {}) } }
+      : {};
+
+    // Optional search (matches the table's case-insensitive _id / userId.name regex).
+    const searchMatch = search
+      ? { $or: [{ _id: new RegExp(search, "i") }, { "userId.name": new RegExp(search, "i") }] }
+      : {};
+
+    const baseMatch = {
+      "items.vendorId": vendorId,
+      orderStatus: "delivered",
+      ...deliveredAtFilter,
+      ...searchMatch,
+    };
+
+    // Total delivered orders for this vendor (filter-aware)
+    const totalDelivered = await Order.countDocuments(baseMatch);
+
+    // Revenue from delivered orders — sum of price × quantity per line item
+    // that belongs to this vendor. Mirrors services/wallet.service.js so the
+    // stats agree with the wallet accounting.
+    const revenueAgg = await Order.aggregate([
+      { $match: baseMatch },
       { $unwind: "$items" },
       { $match: { "items.vendorId": vendorId } },
-      { $group: { _id: null, total: { $sum: "$items.price" } } },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $multiply: [
+                { $ifNull: ["$items.price", 0] },
+                { $ifNull: ["$items.quantity", 1] },
+              ],
+            },
+          },
+        },
+      },
     ]);
     const totalRevenue = revenueAgg[0]?.total || 0;
 
-    // Delivered today
-    const deliveredToday = await Order.countDocuments({
-      "items.vendorId": vendorId,
-      orderStatus: "delivered",
-      deliveredAt: { $gte: startOfToday },
-    });
+    // Monthly revenue — revenue whose `deliveredAt` falls in the
+    // intersection of the current calendar month and the active filter
+    // window, so "7 Days" / "30 Days" / "Today" / "Custom" all narrow the
+    // Monthly Revenue card in step with the table.
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStart = filterStart && filterStart > startOfMonth ? filterStart : startOfMonth;
+    const monthEnd = filterEnd || now;
 
-    // Delivered this month
-    const deliveredThisMonth = await Order.countDocuments({
-      "items.vendorId": vendorId,
-      orderStatus: "delivered",
-      deliveredAt: { $gte: startOfMonth },
-    });
-
-    // Monthly revenue
     const monthlyRevenueAgg = await Order.aggregate([
       {
         $match: {
-          "items.vendorId": vendorId,
-          orderStatus: "delivered",
-          paymentStatus: "paid",
-          deliveredAt: { $gte: startOfMonth }
-        }
+          ...baseMatch,
+          deliveredAt: { $gte: monthStart, $lte: monthEnd },
+        },
       },
       { $unwind: "$items" },
       { $match: { "items.vendorId": vendorId } },
-      { $group: { _id: null, total: { $sum: "$items.price" } } },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $multiply: [
+                { $ifNull: ["$items.price", 0] },
+                { $ifNull: ["$items.quantity", 1] },
+              ],
+            },
+          },
+        },
+      },
     ]);
     const monthlyRevenue = monthlyRevenueAgg[0]?.total || 0;
 
@@ -589,8 +638,6 @@ router.get("/orders/delivered/stats", requireAuth, requireApprovedVendor, async 
     res.json({
       totalDelivered,
       totalRevenue,
-      deliveredToday,
-      deliveredThisMonth,
       monthlyRevenue,
       avgOrderValue,
     });
@@ -600,21 +647,33 @@ router.get("/orders/delivered/stats", requireAuth, requireApprovedVendor, async 
   }
 });
 
-/* UPDATE ORDER STATUS — vendor updates their own orders */
+/* UPDATE ORDER STATUS — vendor updates their own orders
+ * Single source of truth for ALL vendors (marketplace + restaurant).
+ * Restaurant vendors use this same endpoint via the shared item-owner check.
+ */
 router.patch(
   "/orders/:id/status",
   requireAuth,
   requireVendor,
   async (req, res) => {
     try {
-      const { orderStatus } = req.body;
+      // Validate against the canonical 6-status enum so restaurants cannot
+      // set legacy restaurant-only statuses (received/ready/rider_assigned/on_the_way).
+      const { error, value } = validate(req.body, vendorUpdateOrderStatusSchema);
+      if (error) {
+        return res.status(400).json({ error: error.details[0].message });
+      }
+
+      const { orderStatus } = value;
       const vendorId = toObjectId(req.user.userId);
 
       const order = await Order.findById(req.params.id);
 
       if (!order) return res.status(404).json({ error: "Order not found" });
 
-      // Ensure this vendor owns at least one item in this order
+      // Ensure this vendor owns at least one item in this order.
+      // For restaurant orders, items[].vendorId is set to the restaurant's userId
+      // (see food-orders.js POST flow), so the same check covers both vendor types.
       const vendorItem = order.items?.find(
         (item) => String(item.vendorId) === String(vendorId)
       );
@@ -636,6 +695,18 @@ router.patch(
       notifyOrderStatusUpdate(order._id, oldStatus, orderStatus).catch((err) => {
         console.error(`[Vendor] Failed to send status notification:`, err.message);
       });
+
+      // Process wallet earnings when the order transitions to delivered.
+      // This mirrors the rider delivery flow in routes/delivery.js and ensures
+      // vendors who mark orders delivered from their own dashboard (e.g.
+      // restaurants) still credit the wallet correctly. processOrderEarnings
+      // is idempotent (guarded by order._walletEarningsProcessed), so the
+      // delivery.js hook remains safe if both fire.
+      if (orderStatus === "delivered" && oldStatus !== "delivered") {
+        walletService.processOrderEarnings(req.params.id).catch((err) => {
+          console.error(`[Vendor] Failed to process wallet earnings:`, err.message);
+        });
+      }
 
       res.json(order);
     } catch (err) {
@@ -660,130 +731,47 @@ router.get("/products", requireAuth, requireApprovedVendor, async (req, res) => 
   }
 });
 
-/* CREATE PRODUCT — handles multipart/form-data (multiple image uploads) */
-// Wrapper to catch multer errors explicitly
-const handleMulterError = (err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    console.error("[MULTER ERROR] Code:", err.code, "Message:", err.message);
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(413).json({ error: "Image file too large. Max 5MB per file." });
-    }
-    if (err.code === "LIMIT_FILE_COUNT") {
-      return res.status(413).json({ error: "Too many files. Max 10 images allowed." });
-    }
-    return res.status(400).json({ error: err.message });
-  }
-  if (err) {
-    console.error("[UPLOAD ERROR]", err.message);
-    return res.status(400).json({ error: err.message });
-  }
-  next();
-};
-
 /* VENDOR: UPLOAD PRODUCT VIDEO */
-router.post("/products/:id/video", requireAuth, requireApprovedVendor, videoUpload, handleVideoUploadError, async (req, res) => {
-  try {
-    logger.log("========================================");
-    logger.log("[VIDEO UPLOAD] Starting upload...");
-    logger.log("[VIDEO UPLOAD] videoUpload ready:", !!videoUpload);
-    logger.log("[VIDEO UPLOAD] CLOUDINARY_CONFIGURED:", CLOUDINARY_CONFIGURED);
-    logger.log("[VIDEO UPLOAD] req.file:", req.file ? "exists" : "MISSING");
-    if (req.file) {
-      logger.log("[VIDEO UPLOAD] File details:", {
-        originalname: req.file.originalname,
-        filename: req.file.filename,
-        path: req.file.path,
-        destination: req.file.destination,
-        size: req.file.size,
-        secure_url: req.file.secure_url,
-        public_id: req.file.public_id
-      });
+router.post(
+  "/products/:id/video",
+  requireAuth, requireApprovedVendor,
+  videoUpload,
+  mediaService.handleVideoUploadError,
+  async (req, res) => {
+    try {
+      const product = await Product.findOne({ _id: req.params.id, vendorId: req.user.userId, isDeleted: { $ne: true } });
+      if (!product) return res.status(404).json({ error: "Product not found" });
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file uploaded" });
+      }
+
+      // Delete old video from Cloudinary if we have a public_id.
+      if (product.videoPublicId) {
+        const result = await mediaService.destroyAsset(product.videoPublicId, { resourceType: "video" });
+        logger.log("[VIDEO] Destroyed old video:", product.videoPublicId, "→", result?.result || "ok");
+      }
+
+      // Normalize the uploaded file. `toVideoRecord` returns the canonical
+      // `{ url, public_id, duration }` shape regardless of Cloudinary vs.
+      // local-disk fallback, so we don't need a giant if/else here.
+      const rec = mediaService.toVideoRecord(req.file);
+      const videoUrl = rec.url;
+      const videoPublicId = rec.public_id;
+      const videoDuration = rec.duration || 0;
+
+      product.videoUrl = videoUrl;
+      product.videoPublicId = videoPublicId;
+      product.videoDuration = videoDuration;
+      await product.save();
+
+      res.json({ videoUrl, videoPublicId, videoDuration, message: "Video uploaded successfully" });
+    } catch (err) {
+      console.error("[VIDEO UPLOAD] Error:", err.message);
+      res.status(500).json({ error: "Failed to upload video: " + err.message });
     }
-    logger.log("========================================");
-
-    const product = await Product.findOne({ _id: req.params.id, vendorId: req.user.userId, isDeleted: { $ne: true } });
-    if (!product) return res.status(404).json({ error: "Product not found" });
-
-    if (!req.file) {
-      return res.status(400).json({ error: "No video file uploaded" });
-    }
-
-    // Delete old video from Cloudinary if exists
-    if (product.videoPublicId && CLOUDINARY_CONFIGURED) {
-      try {
-        const { cloudinary } = require("../config/cloudinary");
-        await cloudinary.uploader.destroy(product.videoPublicId, { resource_type: "video" });
-      } catch (e) {
-        console.error("[VIDEO] Failed to delete old video:", e.message);
-      }
-    }
-
-    let videoUrl = "";
-    let videoPublicId = "";
-
-    // Debug: Log all available Cloudinary-related fields
-    logger.log("[VIDEO UPLOAD] Debug - all file fields:", {
-      secure_url: req.file.secure_url,
-      public_id: req.file.public_id,
-      url: req.file.url,
-      path: req.file.path,
-      filename: req.file.filename,
-      originalname: req.file.originalname,
-      CLOUDINARY_CONFIGURED: CLOUDINARY_CONFIGURED
-    });
-
-    // FIXED: Check Cloudinary first, even if secure_url seems empty
-    if (CLOUDINARY_CONFIGURED) {
-      // Try secure_url first
-      if (req.file.secure_url && req.file.secure_url.startsWith("http")) {
-        videoUrl = req.file.secure_url;
-        videoPublicId = req.file.public_id || "";
-        logger.log("[VIDEO UPLOAD] ✓ Using Cloudinary secure_url:", videoUrl);
-      }
-      // Try public_id
-      else if (req.file.public_id) {
-        videoPublicId = req.file.public_id;
-        videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
-        logger.log("[VIDEO UPLOAD] ✓ Using constructed URL from public_id:", videoUrl);
-      }
-      // Try to get from path (sometimes Cloudinary puts URL here)
-      else if (req.file.path && req.file.path.startsWith("http")) {
-        videoUrl = req.file.path;
-        videoPublicId = "";
-        logger.log("[VIDEO UPLOAD] ✓ Using URL from path:", videoUrl);
-      }
-      else {
-        // Cloudinary configured but no URL - use filename as public_id fallback
-        videoPublicId = `siishop/products/videos/${req.file.filename.split('.')[0]}`;
-        videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
-        logger.log("[VIDEO UPLOAD] ✓ Using constructed URL (fallback):", videoUrl);
-      }
-    } else {
-      // Fallback to local storage - use full filename (includes extension)
-      let filename = req.file.filename;
-      if (filename.includes('/')) {
-        filename = filename.split('/').pop();
-      }
-      if (filename.includes('\\')) {
-        filename = filename.split('\\').pop();
-      }
-      videoUrl = `/uploads/videos/${filename}`;
-      logger.log("[VIDEO UPLOAD] ✗ Using local URL:", videoUrl, "from req.file.filename:", req.file.filename);
-    }
-
-    product.videoUrl = videoUrl;
-    product.videoPublicId = videoPublicId;
-    await product.save();
-
-    logger.log("[VIDEO UPLOAD] ✓ Saved product.videoUrl:", product.videoUrl);
-    logger.log("========================================");
-
-    res.json({ videoUrl, videoPublicId, message: "Video uploaded successfully" });
-  } catch (err) {
-    console.error("[VIDEO UPLOAD] Error:", err.message);
-    res.status(500).json({ error: "Failed to upload video: " + err.message });
   }
-});
+);
 
 /* VENDOR: DELETE PRODUCT VIDEO */
 router.delete("/products/:id/video", requireAuth, requireApprovedVendor, async (req, res) => {
@@ -791,13 +779,9 @@ router.delete("/products/:id/video", requireAuth, requireApprovedVendor, async (
     const product = await Product.findOne({ _id: req.params.id, vendorId: req.user.userId, isDeleted: { $ne: true } });
     if (!product) return res.status(404).json({ error: "Product not found" });
 
-    if (product.videoPublicId && CLOUDINARY_CONFIGURED) {
-      try {
-        const { cloudinary } = require("../config/cloudinary");
-        await cloudinary.uploader.destroy(product.videoPublicId, { resource_type: "video" });
-      } catch (e) {
-        console.error("[VIDEO] Failed to delete video:", e.message);
-      }
+    if (product.videoPublicId) {
+      const result = await mediaService.destroyAsset(product.videoPublicId, { resourceType: "video" });
+      logger.log("[VIDEO] Destroyed video from Cloudinary:", product.videoPublicId, "→", result?.result || "ok");
     }
 
     product.videoUrl = "";
@@ -812,77 +796,98 @@ router.delete("/products/:id/video", requireAuth, requireApprovedVendor, async (
   }
 });
 
-router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handleMulterError, async (req, res) => {
-  try {
-    // 🐛 DEBUG LOGGING (MANDATORY)
-    logger.log("=== VENDOR CREATE PRODUCT DEBUG ===");
-    logger.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
-    logger.log("REQ.BODY:", req.body);
-    logger.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
-    logger.log("FILES DETAIL:", req.files ? req.files.map(f => ({ name: f.originalname, size: f.size, mimetype: f.mimetype })) : []);
-    logger.log("===================================");
+router.post(
+  "/products",
+  requireAuth, requireApprovedVendor,
+  multiUpload,
+  mediaService.handleMulterError,
+  async (req, res) => {
+    try {
+      // 🐛 DEBUG LOGGING (MANDATORY)
+      logger.log("=== VENDOR CREATE PRODUCT DEBUG ===");
+      logger.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+      logger.log("REQ.BODY:", req.body);
+      logger.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
+      logger.log("FILES DETAIL:", req.files ? req.files.map(f => ({ name: f.originalname, size: f.size, mimetype: f.mimetype })) : []);
+      logger.log("===================================");
 
-    // Process uploaded files into images array
-    let images = [];
-    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-      images = req.files.map(file => {
-        // Cloudinary provides file.path (cloud URL) or file.secure_url
-        // Local storage provides file.filename
-        let url;
-        let public_id = "";
-
-        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
-        const isCloudinaryUpload = CLOUDINARY_CONFIGURED && (file.secure_url || (file.path && file.path.startsWith("http")));
-
-        if (isCloudinaryUpload) {
-          // Cloudinary - use the cloud URL
-          url = file.secure_url || file.path;
-          public_id = file.public_id || "";
-          logger.log("[CREATE PRODUCT] Cloudinary image:", url);
-        } else {
-          // Local storage - use relative path
-          url = `/uploads/${file.filename}`;
-          logger.log("[CREATE PRODUCT] Local image:", url);
-        }
-
-        return { url, public_id };
-      });
+      // Process uploaded files into images array. `toImageRecords` produces
+      // the canonical `{ url, public_id }` shape for every file regardless
+      // of Cloudinary vs. local-disk fallback.
+      let images = mediaService.toImageRecords(req.files);
       logger.log("[CREATE PRODUCT] Processed images:", images);
-    } else {
-      logger.log("[CREATE PRODUCT] No files in req.files, req.files =", req.files);
+
+      // Backward compatibility: if no files but legacy image field provided
+      const legacyImage = req.body.image;
+      if (images.length === 0 && legacyImage) {
+        images.push({ url: legacyImage, public_id: "" });
+        logger.log("[CREATE PRODUCT] Using legacy image:", legacyImage);
+      }
+
+      // Validate: require at least one image
+      if (images.length === 0) {
+        logger.log("[CREATE PRODUCT] ERROR: No images provided");
+        return res.status(400).json({ error: "At least one product image is required" });
+      }
+
+    // ✅ NEW: Get vendor info to determine productType
+    const vendor = await User.findById(req.user.userId);
+    const isRestaurant = vendor?.vendorType === "restaurant";
+    const productType = isRestaurant ? "food" : "product";
+    const preparationTime = isRestaurant ? parseInt(req.body.preparationTime, 10) || 15 : 0;
+
+    // ✅ Reject arbitrary category strings; require a value from the live list
+    // (union of distinct Product.category + approved CategoryRequest names).
+    const catCheck = await validateCategory({
+      submitted: req.body.category,
+      op:        "create",
+    });
+    if (!catCheck.ok) {
+      return res.status(400).json({ error: catCheck.message });
     }
 
-    // Backward compatibility: if no files but legacy image field provided
-    const legacyImage = req.body.image;
-    if (images.length === 0 && legacyImage) {
-      images.push({ url: legacyImage, public_id: "" });
-      logger.log("[CREATE PRODUCT] Using legacy image:", legacyImage);
-    }
-
-    // Validate: require at least one image
-    if (images.length === 0) {
-      logger.log("[CREATE PRODUCT] ERROR: No images provided");
-      return res.status(400).json({ error: "At least one product image is required" });
-    }
-
+    // ✅ Multipart forms can't carry JSON `null` natively, so we accept the
+    // string sentinel "null" (and "undefined") as an explicit clear signal.
+    // This lets the client FormData path round-trip a "clear the discount"
+    // intent instead of having the route silently drop the field.
+    const isClearV = (v) => v === null || v === "" || v === "null" || v === "undefined";
     const productData = {
       name:        req.body.name        || "",
       description: req.body.description || "",
       price:       parseFloat(req.body.price)    || 0,
-      category:    req.body.category   || "",
+      category:    catCheck.category,
       stock:       parseInt(req.body.stock, 10)  || 0,
       available:   req.body.available === "true" || req.body.available === true,
       images:      images,
       // Legacy field - keep for backward compatibility
       image:       images.length > 0 ? images[0].url : "",
       vendorId:    req.user.userId,
+      // ✅ NEW: Unified product system - auto-set based on vendor type
+      productType: productType,
+      preparationTime: preparationTime,
+      // Discount fields (optional). Normalized by prepareProductForSave().
+      originalPrice:  isClearV(req.body.originalPrice)
+        ? null
+        : parseFloat(req.body.originalPrice),
+      discountType:   isClearV(req.body.discountType) ? null : req.body.discountType,
+      discountValue:  isClearV(req.body.discountValue)
+        ? null
+        : parseFloat(req.body.discountValue),
     };
 
-    logger.log("[CREATE PRODUCT] Creating product with:", JSON.stringify(productData));
+    console.log(`[CREATE PRODUCT] Vendor type: ${vendor?.vendorType}, Setting productType: ${productType}`);
+
+    // ✅ Normalize & validate discount (auto-derives isOnSale).
+    const prepared = prepareProductForSave(productData);
+    if (prepared.error) {
+      return res.status(400).json({ error: prepared.error });
+    }
+
+    logger.log("[CREATE PRODUCT] Creating product with:", JSON.stringify(prepared.payload));
 
     let product;
     try {
-      product = await Product.create(productData);
+      product = await Product.create(prepared.payload);
     } catch (dbErr) {
       console.error("[CREATE PRODUCT] DB ERROR:", dbErr.message);
       console.error("[CREATE PRODUCT] DB ERRORS:", dbErr.errors);
@@ -899,69 +904,58 @@ router.post("/products", requireAuth, requireApprovedVendor, multiUpload, handle
 });
 
 /* UPDATE PRODUCT — ownership-gated, supports multiple images */
-router.put("/products/:id", requireAuth, requireApprovedVendor, multiUpload, handleMulterError, async (req, res) => {
-  try {
-    // 🐛 DEBUG LOGGING (MANDATORY)
-    logger.log("=== VENDOR UPDATE PRODUCT DEBUG ===");
-    logger.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
-    logger.log("REQ.BODY:", req.body);
-    logger.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
-    logger.log("PRODUCT ID:", req.params.id);
-    logger.log("===================================");
+router.put(
+  "/products/:id",
+  requireAuth, requireApprovedVendor,
+  multiUpload,
+  mediaService.handleMulterError,
+  async (req, res) => {
+    try {
+      // 🐛 DEBUG LOGGING (MANDATORY)
+      logger.log("=== VENDOR UPDATE PRODUCT DEBUG ===");
+      logger.log("REQ.USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+      logger.log("REQ.BODY:", req.body);
+      logger.log("REQ.FILES:", req.files ? `(${req.files.length} files)` : "NO FILES");
+      logger.log("PRODUCT ID:", req.params.id);
+      logger.log("===================================");
 
-    const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
-    if (!product) return res.status(404).json({ error: "Product not found" });
+      const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+      if (!product) return res.status(404).json({ error: "Product not found" });
 
-    // Admin → full access. Vendor → own products only.
-    if (!req.user.isAdmin && String(product.vendorId) !== String(req.user.userId)) {
-      return res.status(403).json({ error: "Not authorized to update this product" });
-    }
-
-    // Get existing images array or initialize
-    let existingImages = product.images || [];
-    if (existingImages.length === 0 && product.image) {
-      existingImages = [{ url: product.image, public_id: "" }];
-    }
-
-    // Parse deleteImages - array of URLs to remove
-    let imagesToDelete = [];
-    if (req.body.deleteImages) {
-      try {
-        imagesToDelete = typeof req.body.deleteImages === "string"
-          ? JSON.parse(req.body.deleteImages)
-          : req.body.deleteImages;
-      } catch (e) {
-        imagesToDelete = req.body.deleteImages ? [req.body.deleteImages] : [];
+      // Admin → full access. Vendor → own products only.
+      if (!req.user.isAdmin && String(product.vendorId) !== String(req.user.userId)) {
+        return res.status(403).json({ error: "Not authorized to update this product" });
       }
-    }
 
-    // Remove deleted images
-    if (imagesToDelete.length > 0) {
-      existingImages = existingImages.filter(img => !imagesToDelete.includes(img.url));
-    }
+      // Get existing images array or initialize
+      let existingImages = product.images || [];
+      if (existingImages.length === 0 && product.image) {
+        existingImages = [{ url: product.image, public_id: "" }];
+      }
 
-    // Add new uploaded images
-    if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => {
-        let url;
-        let public_id = "";
-
-        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
-        const isCloudinaryUpload = CLOUDINARY_CONFIGURED && (file.secure_url || (file.path && file.path.startsWith("http")));
-
-        if (isCloudinaryUpload) {
-          // Cloudinary
-          url = file.secure_url || file.path;
-          public_id = file.public_id || "";
-        } else {
-          // Local storage
-          url = `/uploads/${file.filename}`;
+      // Parse deleteImages - array of URLs to remove
+      let imagesToDelete = [];
+      if (req.body.deleteImages) {
+        try {
+          imagesToDelete = typeof req.body.deleteImages === "string"
+            ? JSON.parse(req.body.deleteImages)
+            : req.body.deleteImages;
+        } catch (e) {
+          imagesToDelete = req.body.deleteImages ? [req.body.deleteImages] : [];
         }
+      }
 
-        return { url, public_id };
-      });
-      existingImages = [...existingImages, ...newImages];
-    }
+      // Remove deleted images
+      if (imagesToDelete.length > 0) {
+        existingImages = existingImages.filter(img => !imagesToDelete.includes(img.url));
+      }
+
+      // Add new uploaded images (Cloudinary or local-disk both flow through
+      // the shared `toImageRecords` normalizer).
+      const newImages = mediaService.toImageRecords(req.files);
+      if (newImages.length > 0) {
+        existingImages = [...existingImages, ...newImages];
+      }
 
     // Limit to 10 images max
     if (existingImages.length > 10) {
@@ -972,8 +966,9 @@ router.put("/products/:id", requireAuth, requireApprovedVendor, multiUpload, han
     product.images = existingImages;
     product.image = existingImages.length > 0 ? existingImages[0].url : "";
 
-    // Handle text fields
-    const fields = ["name","description","category","available"];
+    // Handle text fields. `category` is whitelist-validated (with legacy
+    // preservation); the rest are passthrough.
+    const fields = ["name","description","available"];
     fields.forEach((k) => {
       if (req.body[k] !== undefined) {
         if (k === "available") product[k] = req.body[k] === "true" || req.body[k] === true;
@@ -981,8 +976,47 @@ router.put("/products/:id", requireAuth, requireApprovedVendor, multiUpload, han
       }
     });
 
+    if (req.body.category !== undefined) {
+      const catCheck = await validateCategory({
+        submitted: req.body.category,
+        current:   product.category,
+        op:        "update",
+      });
+      if (!catCheck.ok) {
+        return res.status(400).json({ error: catCheck.message });
+      }
+      product.category = catCheck.category;
+    }
+
     if (req.body.price  !== undefined) product.price  = parseFloat(req.body.price)  || 0;
     if (req.body.stock   !== undefined) product.stock   = Math.max(0, parseInt(req.body.stock, 10) || 0);
+
+    // ✅ Multipart forms can't carry JSON `null` natively, so we accept the
+    // string sentinel "null" (and "undefined") as an explicit clear signal.
+    // This lets the client FormData path round-trip a "clear the discount"
+    // intent instead of having the route silently keep the stale DB value.
+    const isClearVU = (v) => v === null || v === "" || v === "null" || v === "undefined";
+    // Discount fields (optional). Normalized by prepareProductForSave().
+    if (req.body.originalPrice !== undefined) {
+      product.originalPrice = isClearVU(req.body.originalPrice)
+        ? null
+        : parseFloat(req.body.originalPrice);
+    }
+    if (req.body.discountType !== undefined) {
+      product.discountType = isClearVU(req.body.discountType) ? null : req.body.discountType;
+    }
+    if (req.body.discountValue !== undefined) {
+      product.discountValue = isClearVU(req.body.discountValue)
+        ? null
+        : parseFloat(req.body.discountValue);
+    }
+
+    // ✅ Normalize & validate discount (auto-derives isOnSale).
+    const prepared = prepareProductForSave(product.toObject ? product.toObject() : product);
+    if (prepared.error) {
+      return res.status(400).json({ error: prepared.error });
+    }
+    Object.assign(product, prepared.payload);
 
     await product.save();
     res.json(product);

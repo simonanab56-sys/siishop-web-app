@@ -1,0 +1,1 @@
+module.exports = { restaurantBrandingMulter: { single: ()=>(req,res,next)=>next() }, toImageRecord: ()=>({url:"",public_id:""}), destroyAsset: ()=>{} };

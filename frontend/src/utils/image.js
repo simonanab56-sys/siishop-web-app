@@ -41,6 +41,11 @@ function isLegacyUploadPath(url) {
  * Get a production-safe image URL from any path format.
  *
  * @param {string|object|null} path - Image path, URL, or object with url property
+ * @param {object} [options] - Reserved for future use; currently ignored.
+ *   Kept in the signature so existing callers that pass `{ width }` /
+ *   `{ height }` / `{ crop }` don't break — those options are simply
+ *   no-ops now (the helper returns the raw `secure_url` and Cloudinary
+ *   serves whatever variant the upload pipeline pre-baked).
  * @returns {string} - Production-safe URL (relative in dev, full in prod)
  *
  * Examples:
@@ -51,15 +56,15 @@ function isLegacyUploadPath(url) {
  * - "data:image/png;base64,..." -> returned as-is
  * - { url: "/uploads/image.jpg" } -> extracted and processed
  */
-export function getImageUrl(path) {
+export function getImageUrl(path, options = {}) {
   // Handle null/undefined
   if (!path) return PLACEHOLDER_IMAGE;
 
   // Handle object with url property (common MongoDB format)
   if (typeof path === "object") {
-    if (path.url) return getImageUrl(path.url);
-    if (path.src) return getImageUrl(path.src);
-    if (path.image) return getImageUrl(path.image);
+    if (path.url) return getImageUrl(path.url, options);
+    if (path.src) return getImageUrl(path.src, options);
+    if (path.image) return getImageUrl(path.image, options);
     return PLACEHOLDER_IMAGE;
   }
 
@@ -119,6 +124,23 @@ export function getImageUrl(path) {
   const result = `${RENDER_BASE_URL}/uploads/${path}`;
   logger.log("Image URL:", path);
   return result;
+}
+
+/**
+ * Build a `srcSet` string for a Cloudinary URL.
+ *
+ * @param {string} url - Cloudinary image URL.
+ * @param {number[]} widths - Pixel widths to generate variants for
+ *   (e.g. [400, 800, 1200]).
+ * @returns {string} - `srcset` attribute value: `"url 400w, url 800w, ..."`.
+ *   Returns an empty string for non-Cloudinary URLs (no point serving
+ *   variants the CDN doesn't know about).
+ */
+export function getImageSrcSet(url, widths = [400, 800, 1200]) {
+  if (!isCloudinaryUrl(url)) return "";
+  return widths
+    .map((w) => `${getImageUrl(url, { width: w })} ${w}w`)
+    .join(", ");
 }
 
 /**
@@ -229,6 +251,7 @@ export default {
   isValidImageUrl,
   createPreviewUrl,
   revokePreviewUrl,
+  getImageSrcSet,
   PLACEHOLDER_IMAGE,
   IMAGE_BASE,
 };

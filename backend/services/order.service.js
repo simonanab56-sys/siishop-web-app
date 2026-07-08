@@ -3,6 +3,7 @@
 const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
+const MenuItem = require("../models/MenuItem");
 const { validateAndCalculateItems, reduceStockTransactional } = require("./product.service");
 const { verifyPaystackPayment } = require("./paystack.service");
 const { notifyOrderCreated } = require("./notification.service");
@@ -44,26 +45,55 @@ async function verifyPayment(paymentRef, expectedAmount) {
 
 /**
  * ✅ ENHANCED: Attach vendorId AND product images to each item
+ * ✅ SUPPORT FOR FOOD ITEMS: Also looks in MenuItem collection
  * SECURITY: Always fetch from DB, never trust frontend images
  * This ensures admin/vendor/customer can see what was actually ordered
  */
 async function attachVendorAndImageToItems(items) {
   const productIds = items.map((i) => i.productId);
 
+  // ✅ First get marketplace products
   const products = await Product.find({
     _id: { $in: productIds },
-  }).select("_id vendorId image images name description price").lean();
+  }).select("_id vendorId image images name description price originalPrice").lean();
 
   const productMap = {};
   products.forEach((p) => {
     productMap[String(p._id)] = {
-      vendorId: p.vendorId,
-      image: p.image,
-      images: p.images, // Include multiple images array
-      name: p.name,
-      description: p.description,
-      price: p.price, // Get price from database
+      ...p,
+      source: "product",
     };
+  });
+
+  // ✅ Also get menu items for food orders
+  const menuItems = await MenuItem.find({
+    _id: { $in: productIds },
+    isDeleted: false,
+  }).select("_id vendorId image images name description price").lean();
+
+  menuItems.forEach((m) => {
+    if (!productMap[String(m._id)]) {
+      productMap[String(m._id)] = {
+        ...m,
+        source: "menuItem",
+      };
+    }
+  });
+
+  // Also check Product collection for food items (unified system)
+  const foodProducts = await Product.find({
+    _id: { $in: productIds },
+    productType: "food",
+    isDeleted: { $ne: true },
+  }).select("_id vendorId image images name description price").lean();
+
+  foodProducts.forEach((f) => {
+    if (!productMap[String(f._id)]) {
+      productMap[String(f._id)] = {
+        ...f,
+        source: "product-food",
+      };
+    }
   });
 
   return items.map((item) => {
@@ -72,18 +102,28 @@ async function attachVendorAndImageToItems(items) {
     const quantity = item.quantity || 1;
     // Use price from DB product (not frontend) - this ensures accuracy
     const price = product?.price || item.price || 0;
+    // ✅ NEW: snapshot pre-sale price (if product was discounted) so receipts
+    // can show "was X, now Y" even if the discount is later removed from
+    // the catalog.
+    const originalPrice = product?.originalPrice ?? item.originalPrice ?? null;
 
-    console.log(`[Order] Item ${product?.name}: qty=${quantity}, price=${price}`);
+    console.log(`[Order] ${product?.source === "menuItem" ? "Food" : "Product"} Item ${product?.name || item.name}: qty=${quantity}, price=${price}`);
 
     return {
       ...item,
       quantity, // Ensure quantity is set
       price, // Use DB price (more reliable)
-      vendorId: product?.vendorId || null,
+      originalPrice, // ✅ Snapshot for receipts
+      vendorId: product?.vendorId || item.restaurantId || null,
       image: product?.image || null,
       images: product?.images || null,
       name: product?.name || item.name || "Unknown Product",
       description: product?.description || null,
+      // ✅ Preserve food order fields
+      itemType: item.itemType || (product?.source === "menuItem" || product?.source === "product-food" ? "food" : "product"),
+      menuItemId: item.menuItemId || (product?.source === "menuItem" ? item.productId : null),
+      restaurantId: item.restaurantId || null,
+      restaurantName: item.restaurantName || null,
     };
   });
 }
@@ -124,7 +164,12 @@ async function createOrder(data, { paymentMethod, paymentRef = null }) {
     // ✅ FIXED: Create order within transaction
     // ✅ CRITICAL: Extract vendorId from first item for top-level reference
     const vendorId = itemsWithVendor[0]?.vendorId || null;
-    
+
+    // ✅ Determine if this is a food order
+    const isFoodOrder = itemsWithVendor.some(item => item.itemType === "food");
+    const restaurantId = data.restaurantId || (isFoodOrder ? vendorId : null);
+    const restaurantName = data.restaurantName || "";
+
     // ✅ FIX: Build order data - omit paymentRef for COD orders
     const orderData = {
       ...data,
@@ -139,7 +184,13 @@ async function createOrder(data, { paymentMethod, paymentRef = null }) {
       orderStatus: paymentMethod === "paystack" ? "confirmed" : "pending",
       // ✅ ADDED: Track if order used promo code
       fromPromo: data.fromPromo || false,
+      // ✅ Restaurant order support
+      orderType: isFoodOrder ? "food" : "product",
+      restaurantId: restaurantId,
+      restaurantName: restaurantName,
     };
+
+    console.log("[Order] Creating order with orderType:", orderData.orderType, "restaurantId:", orderData.restaurantId);
 
     // Only add paymentRef for online (paystack) orders - not for COD
     if (paymentMethod === "paystack" && paymentRef) {
@@ -148,13 +199,22 @@ async function createOrder(data, { paymentMethod, paymentRef = null }) {
 
     const [order] = await Order.create([orderData], { session });
 
-    // ✅ CRITICAL FIX: Reduce stock within transaction
-    const stockReduced = await reduceStockTransactional(data.items, session);
-    if (!stockReduced) {
+    // ✅ CRITICAL FIX: Use itemsWithVendor (enriched with itemType) instead of raw data.items
+    // This ensures food items are properly identified and skipped
+    console.log("[Order] Items with vendor (for stock reduction):", JSON.stringify(itemsWithVendor, null, 2));
+    const stockReduced = await reduceStockTransactional(itemsWithVendor, session);
+
+    // ✅ FIX: For restaurant/food orders, stock reduction failure is OK
+    // Food items are prepared on-demand, they don't have inventory
+    // Only fail for marketplace orders where stock is critical
+    // Note: isFoodOrder is declared earlier in this function
+    if (!stockReduced && !isFoodOrder) {
       throw Object.assign(new Error("Stock reduction failed"), {
         code: "STOCK_ERROR",
         statusCode: 500,
       });
+    } else if (!stockReduced && isFoodOrder) {
+      console.log("[Order] ⚠️ Stock reduction failed for food order (expected - food has no inventory)");
     }
 
     // ✅ Only commit if BOTH order creation and stock reduction succeed

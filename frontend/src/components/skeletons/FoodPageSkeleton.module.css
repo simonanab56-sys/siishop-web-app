@@ -1,0 +1,46 @@
+/* FoodPageSkeleton.module.css */
+
+.page { padding: 0 0 40px; }
+
+.hero {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  padding: 40px 20px 36px;
+  text-align: center;
+}
+.heroTitle { width: 280px; height: 28px; margin: 0 auto 12px; background: rgba(255,255,255,0.35) !important; }
+.heroSubtitle { width: 380px; height: 16px; margin: 0 auto; background: rgba(255,255,255,0.25) !important; }
+
+.searchBar {
+  display: flex; gap: 10px; max-width: 600px;
+  margin: 0 auto; padding: 16px 20px; background: #fff;
+}
+.searchInput { flex: 1; height: 42px; }
+.searchBtn { width: 90px; height: 42px; }
+
+.filters {
+  display: flex; gap: 10px; padding: 12px 20px;
+  background: #f9fafb; flex-wrap: wrap;
+}
+.chip { width: 130px; height: 36px; }
+
+.section { padding: 24px 20px; }
+.sectionTitle { width: 240px; height: 22px; margin-bottom: 16px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.cardImage { height: 140px; width: 100%; border-radius: 0 !important; }
+.cardBody { padding: 12px; }
+.cardLine1 { height: 16px; width: 80%; margin-bottom: 8px; }
+.cardLine2 { height: 12px; width: 60%; margin-bottom: 8px; }
+.cardLine3 { height: 12px; width: 40%; }

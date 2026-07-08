@@ -1,8 +1,8 @@
 /* pages/admin/AdminDashboard.module.css — fully responsive */
-.page { padding: 36px 0 60px; }
+.page { padding: 36px 0 60px; overflow-x: hidden; max-width: 100%; }
 
 /* Tab scroll wrapper — allows horizontal scroll on narrow screens */
-.tabScroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 28px; }
+.tabScroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 28px; max-width: 100%; min-width: 0; }
 .tabs {
   display: flex; gap: 2px; flex-wrap: nowrap;
   border-bottom: 2px solid var(--brand-border);
@@ -110,6 +110,43 @@
 .formGroup  { margin-bottom: 14px; }
 .label      { display: block; font-size: 0.82rem; font-weight: 600; color: var(--brand-dark); margin-bottom: 5px; }
 .fieldError { display: block; font-size: 0.76rem; color: var(--brand-danger); margin-top: 4px; }
+
+/* ✅ Discount / Pricing section — three fields in a row that collapses on mobile */
+.discountSection {
+  padding: 12px 14px;
+  background: var(--brand-surface, #faf7f2);
+  border: 1px dashed var(--brand-border, #e7e5e4);
+  border-radius: 8px;
+}
+.discountGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+.discountGrid input,
+.discountGrid select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--brand-border, #e7e5e4);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: white;
+  box-sizing: border-box;
+}
+.discountPreview {
+  margin: 8px 0 0 0;
+  font-size: 0.82rem;
+  color: var(--brand-dark, #1c1917);
+}
+.discountPreviewSave {
+  margin-left: 4px;
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+@media (max-width: 520px) {
+  .discountGrid { grid-template-columns: 1fr; }
+}
 .formActions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--brand-border); flex-wrap: wrap; }
 .formActions button { flex-shrink: 0; min-width: 90px; }
 @media (max-width: 480px) { .formActions { flex-direction: column; } .formActions button { width: 100%; } }
@@ -286,3 +323,651 @@
 .dateInputs { display: flex; align-items: center; gap: 8px; }
 .dateInput { padding: 6px 10px; border: 1px solid var(--brand-border); border-radius: 6px; font-size: 0.85rem; }
 .searchInput { padding: 8px 12px; border: 1px solid var(--brand-border); border-radius: 6px; font-size: 0.85rem; min-width: 200px; }
+
+/* ── Sections tab (Task 7) ───────────────────────────────────────────── */
+.sourceRow { display: flex; flex-wrap: wrap; gap: 8px; }
+.sourceChip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: 1px solid var(--brand-border);
+  background: white; border-radius: var(--radius-full);
+  font-size: 0.82rem; cursor: pointer;
+}
+.sourceChip input { margin: 0; }
+.sourceChipActive {
+  background: var(--brand-primary); color: white;
+  border-color: var(--brand-primary);
+}
+.sourceBadge {
+  display: inline-block; padding: 3px 8px;
+  border-radius: var(--radius-full); font-size: 0.72rem;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.sourceBadgeManual    { background: #ede9fe; color: #5b21b6; }
+.sourceBadgeCategory  { background: #dbeafe; color: #1d4ed8; }
+.sourceBadgeVendor    { background: #d1fae5; color: #065f46; }
+.sourceBadgeFeatured  { background: #fef3c7; color: #92400e; }
+.sourceBadgePromo     { background: #fee2e2; color: #991b1b; }
+.sourceBadgeAutomatic { background: #f3e8ff; color: #6b21a8; }
+.reorderBtn {
+  background: white; border: 1px solid var(--brand-border);
+  width: 26px; height: 26px; border-radius: 6px;
+  font-weight: 700; cursor: pointer; line-height: 1;
+}
+.reorderBtn:hover:not(:disabled) {
+  background: var(--brand-primary); color: white;
+  border-color: var(--brand-primary);
+}
+.reorderBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ADMIN COMMISSIONS & PAYOUTS — per-vendor financial control center
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.commissionsContainer { display: flex; flex-direction: column; gap: 20px; }
+
+/* Filter bar above the table */
+.commissionsFilters {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  background: white; padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--brand-border);
+}
+.commissionsFilterLabel {
+  font-size: 0.78rem; color: var(--brand-muted);
+  text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+  margin-right: 4px;
+}
+.commissionsFilterChips { display: flex; gap: 6px; }
+.commissionsFilterChip {
+  padding: 6px 12px;
+  border: 1px solid var(--brand-border);
+  background: white;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-weight: 500;
+}
+.commissionsFilterChip:hover { border-color: var(--brand-primary); }
+.commissionsFilterChipActive {
+  background: var(--brand-primary);
+  color: white;
+  border-color: var(--brand-primary);
+}
+.commissionsFilterSelect,
+.commissionsFilterInput {
+  padding: 7px 10px;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  background: white;
+  outline: none;
+  font-family: var(--font-body);
+  min-width: 0;
+}
+.commissionsFilterSelect:focus,
+.commissionsFilterInput:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+.commissionsFilterDate { width: 150px; }
+.commissionsFilterSearch { width: 220px; }
+
+/* Vendor type badge (Marketplace / Restaurant) */
+.vendorTypeBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.vendorTypeBadge.marketplace { background: #dbeafe; color: #1e40af; }
+.vendorTypeBadge.restaurant  { background: #ffedd5; color: #9a3412; }
+.vendorTypeBadge.none        { background: #f3f4f6; color: #6b7280; }
+
+/* Withdrawal status badges (the 7 names from the spec) */
+.withdrawalStatusBadge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.withdrawalStatusBadge.outstanding     { background: #fee2e2; color: #991b1b; }
+.withdrawalStatusBadge.commissionPaid  { background: #f3f4f6; color: #4b5563; }
+.withdrawalStatusBadge.requested       { background: #ffedd5; color: #9a3412; }
+.withdrawalStatusBadge.awaiting        { background: #fef3c7; color: #92400e; }
+.withdrawalStatusBadge.paidOut         { background: #d1fae5; color: #065f46; }
+.withdrawalStatusBadge.suspended       { background: #fee2e2; color: #991b1b; }
+.withdrawalStatusBadge.blocked         { background: #f3f4f6; color: #4b5563; }
+
+/* Wallet status badges */
+.walletStatusBadge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.walletStatusBadge.active   { background: #d1fae5; color: #065f46; }
+.walletStatusBadge.inactive { background: #f3f4f6; color: #4b5563; }
+.walletStatusBadge.none     { background: #f3f4f6; color: #6b7280; }
+
+/* Numeric cell colors (red = owed, green = settled) */
+.commissionsAmount { font-variant-numeric: tabular-nums; }
+.commissionsAmountOwed { color: #dc2626; font-weight: 600; }
+.commissionsAmountSettled { color: #16a34a; font-weight: 600; }
+
+/* Detail drawer (slide-in from right) */
+.commissionsDrawerBackdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 998;
+  animation: commissionsFadeIn 0.18s ease;
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DRAWER
+ *
+ * The drawer must be wide enough on desktop to fit all 8 navigation
+ * tabs (Business, Wallet Balance, Commission, Withdrawals, Commission
+ * Pmts, Recent Orders, Transactions, Paystack Refs) on a single row
+ * without scrolling. At 8 tabs × ~80px = ~640px of tab content, plus
+ * 40px of horizontal padding, the drawer needs to be at least 720px
+ * wide on desktop.
+ *
+ * Width strategy:
+ *   • Desktop (≥900px):  720px  — all 8 tabs fit on one row
+ *   • Tablet (640-900px): 95vw with 600px floor — most tabs fit, the
+ *     last 1-2 scroll horizontally inside the strip
+ *   • Mobile (<640px):   95vw — tabs always scroll horizontally
+ *                         inside the strip
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.commissionsDrawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(720px, 95vw);
+  background: white;
+  z-index: 999;
+  display: flex; flex-direction: column;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+  animation: commissionsSlideIn 0.22s ease;
+  /* ✅ FIX: keep the drawer from pushing the page wider than the
+     viewport. The drawer is `position: fixed`, so it lives outside
+     the page's flow — but on very narrow screens (e.g. 360px) the
+     95vw rule already caps it. */
+  max-width: 100vw;
+  overflow: hidden;
+}
+@keyframes commissionsSlideIn {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes commissionsFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* ✅ REMOVED: old duplicate `.commissionsDrawerHeader`,
+   `.commissionsDrawerTitle`, `.commissionsDrawerBody`,
+   `.commissionsDrawerField`, `.commissionsDrawerFieldLabel`,
+   `.commissionsDrawerFieldValue`, `.commissionsDrawerField:last-child`
+   rules (lines ~491-531 in the original file). They were identical
+   to the better versions below (which add `gap: 12px`, `flex-wrap`,
+   `min-width: 0`, `word-break: break-word`, etc.) and just bloated
+   the file. The later, more complete rules win at the same
+   specificity anyway. */
+
+.commissionsDrawerClose {
+  background: transparent; border: none; font-size: 1.4rem;
+  cursor: pointer; color: var(--brand-muted); padding: 4px 10px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.commissionsDrawerClose:hover { background: #f3f4f6; color: var(--brand-dark); }
+
+.commissionsDrawerSection h4 {
+  font-size: 0.78rem; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--brand-muted);
+  margin-bottom: 8px; margin-top: 0; font-weight: 700;
+}
+
+/* The "Vendor owes SiiShop" callout — the headline business rule */
+.commissionsCallout {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem; font-weight: 500;
+  margin: 8px 0;
+}
+.commissionsCallout.danger {
+  background: #fee2e2; color: #991b1b;
+  border: 1px solid #fecaca;
+}
+.commissionsCallout.success {
+  background: #d1fae5; color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.commissionsCallout.info {
+  background: #dbeafe; color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+.commissionsCalloutIcon { font-size: 1.2rem; }
+
+/* Inline approve / reject buttons in the drawer */
+.commissionsActionRow {
+  display: flex; gap: 8px; margin-top: 8px;
+}
+.commissionsRejectForm {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 8px;
+}
+.commissionsRejectForm textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 10px;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  resize: vertical;
+}
+.commissionsRejectForm textarea:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+/* Ref / code chip (Paystack reference) */
+.commissionsRefChip {
+  display: inline-block;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  background: #f3f4f6;
+  color: #1f2937;
+  padding: 2px 8px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+/* Compact table used inside the drawer */
+.commissionsMiniTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+.commissionsMiniTable th,
+.commissionsMiniTable td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #f3f4f6;
+  /* ✅ FIX: keep each cell on a single line inside the scroll
+     wrapper. Combined with `display: table` on the table itself,
+     the header cells and body cells stay vertically aligned in
+     their columns at every screen size, and the wrapper handles
+     horizontal scrolling for content that's wider than the drawer
+     body. */
+  white-space: nowrap;
+}
+.commissionsMiniTable th {
+  font-weight: 600; color: var(--brand-muted);
+  font-size: 0.74rem; text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #fafaf9;
+}
+.commissionsMiniTable tr:last-child td { border-bottom: none; }
+.commissionsEmpty {
+  text-align: center; padding: 32px 20px;
+  color: var(--brand-muted); font-size: 0.92rem;
+}
+
+/* ✅ FIX: the new horizontal-scroll wrapper for the drawer mini-
+   tables. The previous approach set `display: block` on the table
+   element itself, which broke <thead>/<th> layout on mobile and
+   made the column headers invisible. The fix: keep the table as
+   `display: table` (so headers stay aligned to their columns at
+   every screen size) and put the horizontal scroll on a wrapper
+   div. On wide screens the wrapper collapses to its content's
+   natural width; on narrow screens it shows a scrollbar so the
+   table never overflows the drawer body. */
+.commissionsTableScroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #f3f4f6;
+  border-radius: var(--radius-sm);
+  background: white;
+}
+/* When the table is wider than the wrapper (mobile drawer is
+   95vw ≈ 300–500px), give it a sensible min-width so each column
+   has room to render. Headers then stay aligned to the column
+   data because the table layout is `display: table` (not block). */
+.commissionsTableScroll .commissionsMiniTable {
+  min-width: 480px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE — Admin Commissions drawer + tabs
+ *
+ * Spec:
+ *   • Desktop:    max-width ~1200px, plenty of spacing, no overlap
+ *   • Tablet:     tabs wrap into multiple rows if needed
+ *   • Mobile:     tabs become horizontally scrollable (no overlap,
+ *                 no text overlap, buttons remain clickable)
+ *   • Never require zoom — content fits the viewport at every size
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Outer container — keeps the 16-column table readable on wide screens
+   by letting the content breathe, but never wider than 1200px. */
+.commissionsContainer {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  /* ✅ FIX: prevent this container itself from exceeding the viewport
+     when the table inside it is wider than the container. The inner
+     .tableWrap is the only place allowed to scroll horizontally. */
+  overflow-x: hidden;
+  min-width: 0;
+}
+
+/* ✅ REMOVED: duplicate `.commissionsDrawer` rule (was identical to
+   the one at line 474). Keeping only the original. */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DRAWER TAB STRIP — ALL 8 TABS ALWAYS VISIBLE (Bootstrap Nav pattern)
+ *
+ * The spec requires ALL 8 navigation tabs (Business, Wallet Balance,
+ * Commission, Withdrawals, Commission Pmts, Recent Orders,
+ * Transactions, Paystack Refs) to be reachable at every screen size.
+ *
+ * The chosen pattern is a single-row, horizontally-scrollable strip —
+ * the same pattern used by Bootstrap's `.nav`, Stripe's side panels,
+ * and the Shopify admin. This guarantees:
+ *
+ *   1. **No hidden tabs.** The previous `flex-wrap: wrap` approach
+ *      looked good on a 720px-wide drawer, but on a 560px-wide
+ *      drawer the strip was still over-clipped. Horizontal scroll
+ *      is the only way to guarantee 8 tabs × ~140px (~1120px) are
+ *      all reachable regardless of drawer width.
+ *
+ *   2. **Predictable layout.** The strip is always exactly one
+ *      row tall (~48px). The body fills the remaining height. No
+ *      surprise half-rows getting cut off by the drawer's flex
+ *      layout.
+ *
+ *   3. **Familiar pattern.** A thin scrollbar at the bottom of the
+ *      strip is the standard affordance for horizontal-scrollable
+ *      nav (vs. wrapping which is disorienting when the wrap point
+ *      changes with viewport width).
+ *
+ * Implementation: the user-supplied recommended CSS pattern
+ * (`flex-wrap: nowrap; overflow-x: auto; flex: 0 0 auto;
+ *  white-space: nowrap; scrollbar-width: thin`).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.commissionsDrawerTabs {
+  /* ✅ Bootstrap Nav pattern: nowrap + overflow-x auto. */
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--brand-border);
+  background: white;
+  flex-shrink: 0;
+  /* Thin, subtle scrollbar so users can SEE that the strip scrolls
+     (vs. `display: none` scrollbars which hide the affordance). */
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+  -webkit-overflow-scrolling: touch;
+  /* ✅ Small right padding so the last tab doesn't sit flush against
+     the drawer's right edge — looks more polished. */
+  padding-right: 4px;
+}
+.commissionsDrawerTabs::-webkit-scrollbar { height: 6px; }
+.commissionsDrawerTabs::-webkit-scrollbar-track { background: transparent; }
+.commissionsDrawerTabs::-webkit-scrollbar-thumb {
+  background: #d1d5db; border-radius: 3px;
+}
+.commissionsDrawerTabs::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+.commissionsDrawerTab {
+  /* ✅ `flex: 0 0 auto` + `white-space: nowrap` — every tab keeps
+     its natural width and never breaks to a new line. The parent
+     `.commissionsDrawerTabs` is `overflow-x: auto`, so the strip
+     scrolls horizontally if the 8 tabs combined are wider than the
+     drawer's inner width. */
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 12px 14px;
+  border: none; background: transparent;
+  font-size: 0.84rem; font-weight: 500;
+  color: var(--brand-muted);
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition);
+  font-family: var(--font-body);
+}
+.commissionsDrawerTab:hover { color: var(--brand-dark); }
+.commissionsDrawerTab.active {
+  color: var(--brand-primary);
+  border-bottom-color: var(--brand-primary);
+  font-weight: 600;
+}
+
+/* On wide drawers (≥900px) give tabs a bit more breathing room. */
+@media (min-width: 900px) {
+  .commissionsDrawerTab {
+    padding: 12px 16px;
+    font-size: 0.88rem;
+  }
+}
+
+/* Header — long email/phone values must not push the title offscreen */
+.commissionsDrawerHeader {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--brand-border);
+  background: white;
+  position: sticky; top: 0; z-index: 1;
+}
+.commissionsDrawerTitle {
+  font-size: 1.1rem; font-weight: 700; color: var(--brand-dark);
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  min-width: 0;
+}
+
+/* Body padding shrinks on small screens so the field rows aren't
+   hugging the edge of the viewport. */
+.commissionsDrawerBody {
+  flex: 1; overflow-y: auto;
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+@media (max-width: 480px) {
+  .commissionsDrawerBody { padding: 14px 12px; }
+  .commissionsDrawerHeader { padding: 12px 14px; }
+}
+
+/* Field row — long values should wrap, label and value stack on
+   phones so they never collide. */
+.commissionsDrawerField {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.88rem;
+  flex-wrap: wrap;
+}
+.commissionsDrawerFieldLabel {
+  color: var(--brand-muted);
+  flex-shrink: 0;
+}
+.commissionsDrawerFieldValue {
+  font-weight: 600; color: var(--brand-dark);
+  text-align: right;
+  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
+}
+.commissionsDrawerField:last-child { border-bottom: none; }
+
+/* Mini-tables — on phones, force them to scroll horizontally INSIDE
+   the drawer body (not the page) so columns never collapse or
+   overlap. */
+.commissionsMiniTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  /* ✅ FIX: the table itself stays as `display: table` on every
+     screen size. The previous override set `display: block` on the
+     table element to "make it scroll horizontally", but that broke
+     <thead>/<tbody>/<tr>/<th>/<td> layout — the <th> cells lost
+     their table-cell display and the column headers (Date, Amount,
+     Reference, etc.) were either invisible or collapsed. Scrolling
+     is now handled by the OUTER wrapper (`.commissionsTableScroll`)
+     which has `overflow-x: auto` and never the table itself. */
+  display: table;
+  table-layout: auto;
+}
+
+/* Filter bar — wraps naturally on tablet, stacks on phones so the
+   search input + status select + date pickers never get squished. */
+.commissionsFilters {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  background: white; padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--brand-border);
+  /* ✅ FIX: prevent the filter bar itself from exceeding the page
+     width on narrow viewports. flex-wrap + min-width: 0 lets each
+     item shrink to fit, so no individual input ever pushes the page
+     wider. */
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+.commissionsFilterSearch { width: 220px; flex: 1 1 200px; min-width: 0; }
+.commissionsFilterDate  { width: 150px; flex-shrink: 1; min-width: 0; }
+.commissionsFilterSelect { min-width: 0; max-width: 100%; }
+.commissionsFilterInput {
+  padding: 7px 10px;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  background: white;
+  outline: none;
+  font-family: var(--font-body);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Stats grid — 3 columns on desktop, 2 on tablet, 1 on phone so
+   each card has room to show its number without truncation. */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+@media (max-width: 900px) {
+  .statsGrid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 540px) {
+  .statsGrid { grid-template-columns: 1fr; }
+}
+
+/* The main 16-column table — on tablet/mobile it gets a horizontal
+   scroll wrapper so columns never overlap. .tableWrap is the class
+   that gives us this containment, matching the rest of the admin
+   dashboard. */
+/* ✅ FIX: this is the ONLY element on the page allowed to scroll
+   horizontally. The JSX uses className="tableWrap" (camelCase); the
+   global CSS defines `.table-wrap` (kebab-case) but the className
+   on the JSX is camelCase, so the global rule never matched. The
+   module's `.tableWrap` rule below is the one that actually
+   applies, and it MUST have overflow-x: auto — otherwise the inner
+   .data-table (min-width: 1400px) would push the entire page
+   wider than the viewport.
+
+   - overflow-x: auto        → shows a horizontal scrollbar ONLY
+                                inside this wrapper, never on the
+                                page
+   - max-width: 100%         → the wrapper itself can never exceed
+                                its parent (.container = 1280px)
+   - min-width: 0            → allows the wrapper to shrink inside
+                                a flex/grid parent so it doesn't
+                                force the parent to grow
+   - position: relative      → anchors the sticky table header
+   - border-radius + border  → visual rounded corners on the scroll
+                                container so the table edges look
+                                like cards (matches the rest of the
+                                admin dashboard)
+*/
+.tableWrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  min-width: 0;
+  position: relative;
+  border-radius: var(--radius-md);
+  border: 1px solid #e5e7eb;
+  background: white;
+}
+.data-table {
+  /* ✅ FIX: 16 columns means the table MUST be at least 1400px wide to
+     stay readable. Without this, columns would crush to 80px each and
+     numbers like "GHS 12,345.67" would wrap to 2 lines. The
+     .tableWrap parent (overflow-x: auto) is what scrolls horizontally
+     — this rule is intentionally NOT setting width: 100% so the
+     browser respects the min-width and lets the parent wrap scroll.
+
+     The global `.data-table` rule has `overflow: hidden` (for visual
+     rounded corners); we explicitly set `overflow: visible` here so
+     very long cell content (vendor names, emails) can extend
+     horizontally and trigger the parent's scroll, instead of being
+     clipped mid-letter. */
+  min-width: 1400px;
+  width: auto;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  overflow: visible;
+  display: table;
+}
+.data-table th,
+.data-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f3f4f6;
+  white-space: nowrap;
+}
+.data-table th {
+  font-weight: 600; color: var(--brand-muted);
+  font-size: 0.74rem; text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #fafaf9;
+  position: sticky; top: 0; z-index: 1;
+}
+
+/* Filter chip on phone — slightly smaller so 3 chips fit on one line. */
+@media (max-width: 480px) {
+  .commissionsFilterChip { padding: 5px 10px; font-size: 0.78rem; }
+  .commissionsFilterLabel { font-size: 0.72rem; }
+}
+
+/* The paystack reference chip needs to be allowed to wrap if the
+   string is unusually long (a real Paystack ref is 16+ chars). */
+.commissionsRefChip {
+  display: inline-block;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  background: #f3f4f6;
+  color: #1f2937;
+  padding: 2px 8px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+

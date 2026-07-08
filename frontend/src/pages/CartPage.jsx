@@ -38,9 +38,18 @@ export default function CartPage({ cart: cartProp, onIncrease, onDecrease, onRem
     }));
   }, [user?.name, user?.email]);
 
-  const subtotal    = cart.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||0), 0);
+  // Separate food items from marketplace items
+  const marketplaceItems = cart.filter(item => item.itemType !== "food");
+  const foodItems = cart.filter(item => item.itemType === "food");
+
+  const marketplaceSubtotal = marketplaceItems.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||0), 0);
+  const foodSubtotal = foodItems.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||0), 0);
+  const subtotal = marketplaceSubtotal + foodSubtotal;
   const deliveryFee = cart.length > 0 ? 0 : 0;
-  const total       = subtotal + deliveryFee;
+  const total = subtotal + deliveryFee;
+
+  // Determine order type
+  const orderType = foodItems.length > 0 ? "food" : "product";
 
   function validate() {
     const e = {};
@@ -81,6 +90,12 @@ export default function CartPage({ cart: cartProp, onIncrease, onDecrease, onRem
       customerEmail:   form.customerEmail.trim(),
       customerPhone:   form.customerPhone.trim(),
       deliveryAddress: form.deliveryAddress.trim(),
+      // ✅ Unified cart: include orderType and restaurant info for food orders
+      orderType: orderType,
+      ...(orderType === "food" && {
+        restaurantId: foodItems[0]?.restaurantId,
+        restaurantName: foodItems[0]?.restaurantName,
+      }),
       // ✅ FIXED: Send name, image, and fromPromo flag
       // Backend will validate promo is still active if fromPromo: true
       items: cart.filter(i => i?._id && i?.quantity).map(i => ({
@@ -89,6 +104,11 @@ export default function CartPage({ cart: cartProp, onIncrease, onDecrease, onRem
         image: i.image || "",  // ✅ Backend requires image
         quantity: Number(i.quantity)||1,
         fromPromo: i.fromPromo === true,  // ✅ Tell backend if this came from promo section
+        ...(i.itemType === "food" && {
+          itemType: "food",
+          restaurantId: i.restaurantId,
+          restaurantName: i.restaurantName,
+        }),
       })),
       // ✅ Frontend calculates total for display only - backend will recalculate and verify
       totalAmount: parseFloat(total.toFixed(2)),
@@ -223,8 +243,7 @@ export default function CartPage({ cart: cartProp, onIncrease, onDecrease, onRem
     );
   }
 
-  const isPaying   = stage === STAGE.PAYING || stage === STAGE.SAVING;
-  const totalItems = cart.reduce((s, i) => s + (Number(i.quantity)||0), 0);
+  const isPaying = stage === STAGE.PAYING || stage === STAGE.SAVING;
 
   return (
     <div className={`container page-enter ${styles.page}`}>
@@ -248,15 +267,40 @@ export default function CartPage({ cart: cartProp, onIncrease, onDecrease, onRem
         <div>
           <div className={styles.cartCard}>
             <div className={styles.cartHeader}>
-              <h2>Items ({totalItems})</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => onClearCart?.()} disabled={isPaying}>Clear all</button>
+              <h2>Items ({cart.length})</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => onClearCart?.()} disabled={stage === STAGE.PAYING || stage === STAGE.SAVING}>Clear all</button>
             </div>
-            {cart.map(item => item?._id && (
-              <CartItem key={item._id} item={item} onIncrease={onIncrease} onDecrease={onDecrease} onRemove={onRemove} />
-            ))}
+
+            {/* Marketplace Items */}
+            {marketplaceItems.length > 0 && (
+              <>
+                <h3 style={{ margin: "16px 0 8px", fontSize: "1rem", color: "#374151" }}>🛒 Marketplace Items</h3>
+                {marketplaceItems.map(item => item?._id && (
+                  <CartItem key={item._id} item={item} onIncrease={onIncrease} onDecrease={onDecrease} onRemove={onRemove} />
+                ))}
+              </>
+            )}
+
+            {/* Food Items */}
+            {foodItems.length > 0 && (
+              <>
+                <h3 style={{ margin: "16px 0 8px", fontSize: "1rem", color: "#374151" }}>🍔 Food Items</h3>
+                {foodItems.map(item => item?._id && (
+                  <CartItem
+                    key={item._id}
+                    item={item}
+                    onIncrease={onIncrease}
+                    onDecrease={onDecrease}
+                    onRemove={onRemove}
+                    showRestaurant={true}
+                  />
+                ))}
+              </>
+            )}
+
             <div className={styles.summary}>
               <div className={styles.summaryRow}><span>Subtotal</span><span>{fmt(subtotal)}</span></div>
-              <div className={styles.summaryRow}><span>Delivery fee</span><span></span></div>
+              <div className={styles.summaryRow}><span>Delivery fee</span><span>{deliveryFee === 0 ? "Free" : fmt(deliveryFee)}</span></div>
               <div className={`${styles.summaryRow} ${styles.totalRow}`}><span>Total</span><span>{fmt(total)}</span></div>
             </div>
           </div>

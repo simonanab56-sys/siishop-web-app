@@ -4,6 +4,7 @@ const express = require("express");
 const router = express.Router();
 
 const Order = require("../models/Order");
+const Product = require("../models/Product");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
 const asyncHandler = require("../utils/asyncHandler");
 const { validate, createOrderSchema, initializePaymentSchema, verifyPaymentSchema, updateOrderStatusSchema } = require("../utils/joiSchemas");
@@ -208,6 +209,28 @@ router.patch(
     }
 
     await order.save();
+
+    // ✅ NEW (Task 7): When an order transitions to "delivered", increment salesCount
+    // on each affected marketplace product. This powers the "Best Sellers" and
+    // "Most Purchased" automatic homepage sections. Fire-and-forget — if it fails,
+    // the section will just be slightly stale until the next order is delivered.
+    if (orderStatus === "delivered" && oldStatus !== "delivered") {
+      try {
+        const incOps = (order.items || [])
+          .filter((it) => it && it.productId && it.itemType !== "food")
+          .map((it) => ({
+            updateOne: {
+              filter: { _id: it.productId, productType: { $ne: "food" } },
+              update: { $inc: { salesCount: Number(it.quantity) || 1 } },
+            },
+          }));
+        if (incOps.length > 0) {
+          await Product.bulkWrite(incOps, { ordered: false });
+        }
+      } catch (err) {
+        console.error("[Order] Failed to increment salesCount:", err.message);
+      }
+    }
 
     // Send status update notification to customer (async, don't block response)
     notifyOrderStatusUpdate(order._id, oldStatus, orderStatus).catch((err) => {

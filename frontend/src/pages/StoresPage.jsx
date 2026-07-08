@@ -1,10 +1,10 @@
 // pages/StoresPage.jsx — v3: currency-aware, fully responsive
 import { useState, useEffect, useRef, useCallback } from "react";
 import { vendorAPI, productAPI } from "../services/api";
-import { useCurrency } from "../context/CurrencyContext";
 import { getImageUrl } from "../utils/image";
 import { regions, getCitiesByRegion, formatLocation } from "../config/ghanaLocations";
 import SEO from "../components/SEO";
+import ProductCard from "../components/ProductCard";
 import styles from "./StoresPage.module.css";
 
 function safeInitials(name) {
@@ -14,7 +14,6 @@ function safeInitials(name) {
 }
 
 export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, vendorContext, onClearVendorContext }) {
-  const { fmt }       = useCurrency();
   const [vendors,     setVendors]     = useState([]);
   const [allVendors, setAllVendors]  = useState([]); // Keep original list for filtering
   const [loading,     setLoading]     = useState(false);
@@ -366,32 +365,24 @@ export default function StoresPage({ onNavigate, onAddToCart, onRequireAuth, ven
                     <h3>No products listed yet</h3>
                   </div>
                 ) : (
+                  // ✅ Reuse the shared <ProductCard> so discounts render here
+                  // too (strikethrough, -N% badge, "Save GH₵X"). The previous
+                  // inline mini-card only rendered `p.price` and ignored
+                  // `originalPrice`/`discountType`/`discountValue`/`isOnSale`,
+                  // so even with discount data flowing from the API, the
+                  // store-product grid showed no badges and never moved the
+                  // selling price visually.
                   <div className={styles.productGrid}>
                     {safeProducts.map(p => {
                       if (!p?._id) return null;
-                      const price = typeof p.price==="number" ? p.price : 0;
-                      const stock = typeof p.stock==="number" ? p.stock : 999;
-                      const primaryImage = p.images && p.images.length > 0
-                        ? getImageUrl(p.images[0]?.url)
-                        : getImageUrl(p.image);
                       return (
-                        <div key={p._id} className={`card ${styles.miniCard}`} onClick={() => onNavigate?.("product", p)} style={{cursor:"pointer"}}>
-                          {primaryImage && primaryImage !== "/no-image.svg"
-                            ? <img src={primaryImage} alt={p.name||"Product"} className={styles.miniImg}/>
-                            : <div className={styles.miniImgPlaceholder}>🛍️</div>
-                          }
-                          <div className={styles.miniBody}>
-                            <p className={styles.miniName}>{p.name||"Product"}</p>
-                            <p className={styles.miniPrice}>{fmt(price)}</p>
-                            <button
-                              className="btn btn-primary btn-sm"
-                              style={{width:"100%",borderRadius:"var(--radius-full)"}}
-                              onClick={(e) => { e.stopPropagation(); onAddToCart?.(p); }}
-                              disabled={stock===0}>
-                              {stock===0 ? "Sold Out" : "+ Add"}
-                            </button>
-                          </div>
-                        </div>
+                        <ProductCard
+                          key={p._id}
+                          product={p}
+                          onClick={onNavigate ? (prod) => onNavigate("product", prod) : undefined}
+                          onAddToCart={onAddToCart}
+                          onAuthRequired={onRequireAuth}
+                        />
                       );
                     })}
                   </div>

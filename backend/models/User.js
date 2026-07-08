@@ -17,6 +17,11 @@ const userSchema = new mongoose.Schema(
     storeName: String,
     storeDescription: String,
     storeLogo: String,
+    // ✅ NEW: Cloudinary public_id for storeLogo — used to delete the old asset
+    // on branding re-upload. Optional with default "" so legacy docs (no
+    // public_id stored) still work — the upload endpoint simply skips the
+    // destroy step when this is empty.
+    storeLogoPublicId: { type: String, default: "" },
     vendorSlug: {
       type: String,
       unique: true,
@@ -27,6 +32,32 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "approved", "rejected", "suspended"],
       default: "pending",
+    },
+    // ✅ NEW: Vendor Type for dual marketplace (marketplace vs restaurant)
+    vendorType: {
+      type: String,
+      enum: ["marketplace", "restaurant"],
+      default: "marketplace",
+    },
+    // ✅ NEW: Restaurant-specific fields (only for restaurant vendors)
+    restaurantDetails: {
+      restaurantName: String,
+      restaurantLogo: String,
+      restaurantCoverImage: String,
+      // ✅ NEW: Cloudinary public_id for the cover image. Same skip-deletion-
+      // when-empty contract as storeLogoPublicId.
+      coverImagePublicId: { type: String, default: "" },
+      restaurantDescription: String,
+      address: String,
+      area: String,
+      whatsapp: String,
+      deliveryRadius: { type: Number, default: 5 }, // in km
+      deliveryFee: { type: Number, default: 0 },
+      estimatedDeliveryTime: { type: Number, default: 30 }, // minutes
+      openingHours: String, // e.g., "08:00"
+      closingHours: String, // e.g., "22:00"
+      cuisineType: String,
+      isOpen: { type: Boolean, default: false },
     },
     /* ── Vendor Approval Fields ── */
     vendorRejectedReason: {
@@ -96,6 +127,13 @@ userSchema.index({ isVendor: 1, revenue: -1 });
 userSchema.index({ "location.region": 1 });
 userSchema.index({ "location.city": 1 });
 userSchema.index({ "location.region": 1, "location.city": 1 });
+// ✅ NEW: Vendor type indexes for dual marketplace filtering
+userSchema.index({ isVendor: 1, vendorType: 1, vendorStatus: 1 });
+userSchema.index({ vendorType: 1, "location.region": 1 });
+userSchema.index({ vendorType: 1, "location.city": 1 });
+// ✅ NEW: Restaurant-specific indexes
+userSchema.index({ vendorType: 1, "restaurantDetails.cuisineType": 1 });
+userSchema.index({ vendorType: 1, "restaurantDetails.isOpen": 1 });
 
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) return;

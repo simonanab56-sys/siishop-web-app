@@ -1,0 +1,87 @@
+/* pages/DealsPage.module.css */
+
+.page { padding: 28px 0 60px; }
+
+.header { margin-bottom: 22px; }
+.crumbs { margin-bottom: 10px; }
+.crumbLink {
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  color: var(--brand-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.crumbLink:hover { color: var(--brand-primary); text-decoration: underline; }
+
+.title {
+  font-family: var(--font-display);
+  font-size: 1.85rem;
+  color: var(--brand-dark);
+  margin: 0 0 6px;
+}
+.subtitle {
+  color: var(--brand-muted);
+  font-size: 0.95rem;
+  margin: 0;
+  max-width: 640px;
+}
+
+/* Sort tabs — reuse the analyticsBtn palette */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 24px;
+  padding: 6px;
+  background: var(--brand-surface, #faf7f2);
+  border-radius: var(--radius-full, 999px);
+  width: max-content;
+  max-width: 100%;
+}
+.tabBtn {
+  padding: 7px 18px;
+  border-radius: var(--radius-full, 999px);
+  background: transparent;
+  border: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-muted);
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+  white-space: nowrap;
+}
+.tabBtn:hover { color: var(--brand-dark); }
+.tabBtnActive {
+  background: white;
+  color: var(--brand-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.errorBox {
+  background: #fff4f0;
+  border: 1px solid var(--brand-danger, #dc2626);
+  border-radius: 10px;
+  padding: 16px 18px;
+  color: var(--brand-dark, #1c1917);
+}
+
+.count {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  color: var(--brand-muted);
+}
+
+.productGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  /* ✅ Equalize row heights across shared <ProductCard> instances so
+     the Add-to-cart button aligns across every row. */
+  grid-auto-rows: 1fr;
+}
+
+@media (max-width: 520px) {
+  .title { font-size: 1.4rem; }
+  .tabBtn { padding: 6px 12px; font-size: 0.78rem; }
+}

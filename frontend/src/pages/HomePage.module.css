@@ -59,6 +59,19 @@
 .filterPill:hover  { border-color: var(--brand-primary); color: var(--brand-primary); }
 .filterActive { background: var(--brand-primary) !important; border-color: var(--brand-primary) !important; color: white !important; }
 
+/* ✅ Discounted pill — visually distinct so it reads as a special action, not a category. */
+.discountPill {
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  font-weight: 700;
+}
+.discountPill:hover {
+  background: linear-gradient(135deg, #ffedd5, #fed7aa);
+  color: var(--brand-secondary);
+  border-color: var(--brand-secondary);
+}
+
 /* Result count */
 .resultCount { font-size: 0.83rem; color: var(--brand-muted); margin-bottom: 18px; }
 
@@ -87,4 +100,18 @@
   .filterBar {
     display: none;
   }
+}
+
+/* ── Task 7: dynamic homepage sections ───────────────────────────────── */
+.sectionsWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.emptySections {
+  margin: 32px 0;
+  padding: 32px 16px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--brand-border, #e7e5e4);
+  background: var(--brand-bg, #fafaf9);
 }

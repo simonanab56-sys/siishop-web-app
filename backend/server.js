@@ -68,6 +68,7 @@ const corsOriginsFromEnv = process.env.CORS_ORIGIN
 
 const allowedOrigins = [
   "http://localhost:3001",
+  "http://localhost:3002",
   "http://localhost:5173",
    "https://www.siishops.com",
    "https://siishops.com",
@@ -276,6 +277,37 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ─────────────────────────────────────────────────────────
+  // ADMIN LIVE-NOTIFY ROOM
+  // ─────────────────────────────────────────────────────────
+
+  // Admin joins the global admin-notify room. The admin frontend
+  // emits this on dashboard mount (see AdminDashboard.jsx). All
+  // admins share ONE room, not per-admin rooms — this means
+  // commission-notification.service.js does a single io.to(...)
+  // emit per event without needing to know who is online. The
+  // frontend bell refresh is gated by user.isAdmin, so non-admin
+  // sockets that happen to be in the room (none expected, but
+  // defensive) won't see admin-only payloads they can't render.
+  //
+  // We do not enforce admin auth at the socket layer here: the
+  // route mount (AdminDashboard.jsx) is the only place that
+  // emits this event, and it is rendered only for isAdmin users
+  // (see App.jsx#render for "admin" case). Adding a server-side
+  // admin check would require either a JWT verify on every
+  // emit (expensive) or a join-time user lookup. Keeping the
+  // check on the client preserves the same trust model as
+  // chat-join (which also does no server-side auth check).
+  socket.on("admin-notify-join", () => {
+    socket.join("admin-notify-room");
+    logger.log(`[Socket] Socket ${socket.id} joined admin-notify-room`);
+  });
+
+  socket.on("admin-notify-leave", () => {
+    socket.leave("admin-notify-room");
+    logger.log(`[Socket] Socket ${socket.id} left admin-notify-room`);
+  });
+
   // Send chat message
   socket.on("chat-message", async (data) => {
     const { conversationId, senderId, text, messageType, metadata } = data;
@@ -435,6 +467,11 @@ io.on("connection", (socket) => {
 
 app.set("io", io);
 app.set("activeRiders", activeRiders);
+// Expose io to service code (e.g. commission-notification.service.js
+// emits a live push after a successful Paystack verification).
+// Routes continue to use req.app.get("io") — this is additive.
+const socketHelper = require("./services/socket-helper");
+socketHelper.setIO(io);
 logger.log("✅ Socket.IO initialized");
 
 // Middleware to attach io to requests
@@ -490,6 +527,15 @@ app.use("/api/promos",   require("./routes/promos"));
 app.use("/api/contact",  require("./routes/contact"));
 app.use("/api/delivery", require("./routes/delivery"));
 app.use("/api/chat",     require("./routes/chat"));
+// ✅ NEW: Restaurant/Food Marketplace routes
+app.use("/api/restaurants", require("./routes/restaurants"));
+app.use("/api/menu", require("./routes/menu"));
+app.use("/api/food-orders", require("./routes/food-orders"));
+app.use("/api/restaurant-reviews", require("./routes/restaurant-reviews"));
+// ✅ Category requests (vendors ask to add a new marketplace category, admin approves)
+app.use("/api/category-requests", require("./routes/categoryRequests"));
+// ✅ Homepage sections (admin-managed dynamic blocks on the homepage, like Jumia)
+app.use("/api/homepage-sections", require("./routes/homepageSections"));
 
 // SEO routes - at root level
 app.use("/",            require("./routes/sitemap"));

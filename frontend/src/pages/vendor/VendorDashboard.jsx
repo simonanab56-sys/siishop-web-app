@@ -1,15 +1,20 @@
 // pages/vendor/VendorDashboard.jsx — v11: Wallet tab
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { vendorAPI, walletAPI } from "../../services/api";
+import { vendorAPI, productAPI, categoryAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrency } from "../../context/CurrencyContext";
 import { getImageUrl, PLACEHOLDER_IMAGE } from "../../utils/image";
 import ImageUpload from "../../components/ImageUpload";
 import MultiImageUpload from "../../components/MultiImageUpload";
+import SearchableSelect from "../../components/SearchableSelect";
+import { useDebounce } from "../../hooks/useDebounce";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
+import VendorDeliveredOrders from "../../components/vendor/VendorDeliveredOrders";
+import VendorWallet from "../../components/vendor/VendorWallet";
 import { AnalyticsCalendar, DateFilter, StatsCard } from "../../components/analytics";
 import logger from "../../utils/logger";
+import { DISCOUNT_TYPES, deriveSellingPrice } from "../../utils/pricing";
 import styles from "./VendorDashboard.module.css";
 import VendorStatusBanner from "../../components/VendorStatusBanner";
 
@@ -25,6 +30,9 @@ const EMPTY_PRODUCT = {
   name: "",
   description: "",
   price: "",
+  originalPrice: "",
+  discountType: "",
+  discountValue: "",
   category: "",
   image: "",
   images: [], // Array of { file, preview, name } or { url }
@@ -119,6 +127,9 @@ export default function VendorDashboard({ addToast, onRequireAuth }) {
       </div>
     );
   }
+
+  // ✅ REMOVED: Restaurant vendor redirect - App.jsx now handles routing correctly
+  // This check is now handled at login time in App.jsx
 
   return (
     <div className={`container ${styles.page}`}>
@@ -399,155 +410,8 @@ function VendorOverview({ addToast }) {
 
 /* ───────────────────────────────────────── */
 /* ORDERS TAB — FIXED WITH EXPAND/COLLAPSE  */
-/* ───────────────────────────────────────── */
-/* ───────────────────────────────────────── */
-/* DELIVERED ORDERS TAB (VENDOR)             */
-/* ───────────────────────────────────────── */
-function VendorDeliveredOrders({ addToast }) {
-  const { fmt } = useCurrency();
-  const [orders, setOrders] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
-  const [search, setSearch] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const mountedRef = useRef(true);
-
-  const fetchStats = useCallback(async () => {
-    try {
-      const data = await vendorAPI.getDeliveredOrdersStats();
-      if (mountedRef.current) setStats(data);
-    } catch (err) {
-      logger.error("Failed to load stats:", err);
-    }
-  }, []);
-
-  const fetchOrders = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = { filter };
-      if (filter === "custom") {
-        params.startDate = startDate;
-        params.endDate = endDate;
-      }
-      if (search) params.search = search;
-      const data = await vendorAPI.getDeliveredOrders(params);
-      if (mountedRef.current) setOrders(data || []);
-    } catch (err) {
-      logger.error("Failed to load delivered orders:", err);
-      addToast?.("Failed to load delivered orders", "error");
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [filter, startDate, endDate, search, addToast]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    fetchStats();
-    fetchOrders();
-    return () => { mountedRef.current = false; };
-  }, [fetchStats, fetchOrders]);
-
-  const handleFilterChange = (newFilter) => {
-    setFilter(newFilter);
-    if (newFilter !== "custom") {
-      setStartDate("");
-      setEndDate("");
-    }
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "-";
-    return new Date(date).toLocaleDateString("en-GB", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit"
-    });
-  };
-
-  return (
-    <div className={styles.deliveredTab}>
-      {/* Stats Cards */}
-      <div className={styles.statsGrid}>
-        <div className="stat-card">
-          <span className="stat-icon">✅</span>
-          <span className="stat-label">Delivered Orders</span>
-          <span className="stat-value">{stats?.totalDelivered || 0}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-icon">💰</span>
-          <span className="stat-label">Revenue Generated</span>
-          <span className="stat-value">{fmt(stats?.totalRevenue || 0)}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-icon">📅</span>
-          <span className="stat-label">Monthly Revenue</span>
-          <span className="stat-value">{fmt(stats?.monthlyRevenue || 0)}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-icon">📊</span>
-          <span className="stat-label">Avg Order Value</span>
-          <span className="stat-value">{fmt(stats?.avgOrderValue || 0)}</span>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className={styles.filtersRow}>
-        <div className={styles.filterBtns}>
-          {["all", "today", "last7days", "last30days", "custom"].map((f) => (
-            <button key={f} className={`${styles.filterBtn} ${filter === f ? styles.filterBtnActive : ""}`} onClick={() => handleFilterChange(f)}>
-              {f === "all" ? "All" : f === "today" ? "Today" : f === "last7days" ? "7 Days" : f === "last30days" ? "30 Days" : "Custom"}
-            </button>
-          ))}
-        </div>
-        {filter === "custom" && (
-          <div className={styles.dateInputs}>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={styles.dateInput} />
-            <span>to</span>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={styles.dateInput} />
-          </div>
-        )}
-        <input type="text" placeholder="Search order ID..." value={search} onChange={(e) => setSearch(e.target.value)} className={styles.searchInput} />
-      </div>
-
-      {/* Orders Table */}
-      {loading ? (
-        <div className="loading-center"><div className="spinner" /></div>
-      ) : orders.length === 0 ? (
-        <div className="empty-state"><div className="empty-icon">📦</div><h3>No delivered orders found</h3></div>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Order ID</th>
-                <th>Customer</th>
-                <th>Product</th>
-                <th>Qty</th>
-                <th>Amount</th>
-                <th>Delivered</th>
-                <th>Payment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order._id}>
-                  <td>{safeId(order._id)}</td>
-                  <td>{order.userId?.name || "Unknown"}</td>
-                  <td>{(order.items || []).map((i) => i.name || i.productId?.name).filter(Boolean).slice(0, 2).join(", ") || "-"}</td>
-                  <td>{(order.items || []).reduce((sum, i) => sum + (i.quantity || 0), 0)}</td>
-                  <td>{fmt(order.totalAmount)}</td>
-                  <td>{formatDate(order.deliveredAt)}</td>
-                  <td>{order.paymentMethod === "paystack" ? "Online" : "COD"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
+/* DELIVERED ORDERS TAB — uses the shared VendorDeliveredOrders component
+   (single source of truth, also rendered by RestaurantDashboard). */
 
 function VendorOrders({ addToast, setImageModal }) {
   const { fmt } = useCurrency();
@@ -710,6 +574,12 @@ function VendorProducts({ addToast, isOwnProduct }) {
   const [videoFile, setVideoFile] = useState(null);
   const [videoPreview, setVideoPreview] = useState(null);
   const [videoUploading, setVideoUploading] = useState(false);
+  // ✅ Category dropdown state — fetched on demand, refetched on form open so
+  // newly approved names show up without a full page refresh.
+  const [categories,        setCategories]        = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError,   setCategoriesError]   = useState(null);
+  const [requestingCategory, setRequestingCategory] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -732,6 +602,58 @@ function VendorProducts({ addToast, isOwnProduct }) {
       .then((data) => { if (mountedRef.current) setStoreSlug(data.slug); })
       .catch(() => {});
   }, []);
+
+  // ✅ Fetch the live categories list whenever the form opens so any
+  // newly approved CategoryRequest names are immediately available.
+  const loadCategories = useCallback(async (search = "") => {
+    if (!mountedRef.current) return;
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    try {
+      const data = await productAPI.getCategories(search ? { search } : {});
+      if (!mountedRef.current) return;
+      setCategories(Array.isArray(data) ? data : []);
+    } catch (err) {
+      if (mountedRef.current) {
+        setCategoriesError(err?.message || "Failed to load categories");
+        setCategories([]);
+      }
+    } finally {
+      if (mountedRef.current) setCategoriesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showForm) loadCategories("");
+  }, [showForm, loadCategories]);
+
+  // ✅ Debounced search-as-you-type for the dropdown.
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const debouncedQuery = useDebounce(categoryQuery, 200);
+  useEffect(() => {
+    if (!showForm) return;
+    if (debouncedQuery !== undefined) loadCategories(debouncedQuery);
+  }, [debouncedQuery, showForm, loadCategories]);
+
+  // ✅ Vendor requests a brand-new category name. Submits to admin queue and
+  // shows a toast; the new name is not auto-selected (admin must approve).
+  const handleRequestNewCategory = useCallback(async (rawName) => {
+    const name = (rawName || "").trim();
+    if (!name || requestingCategory) return;
+    setRequestingCategory(true);
+    try {
+      await categoryAPI.requestNew(name);
+      addToast?.(
+        `Requested "${name}". Admin will review and add it to the list.`,
+        "success"
+      );
+      setCategoryQuery("");
+    } catch (err) {
+      addToast?.(err?.message || "Failed to submit request", "error");
+    } finally {
+      if (mountedRef.current) setRequestingCategory(false);
+    }
+  }, [addToast, requestingCategory]);
 
   // Generate store slug
   const handleGenerateSlug = async () => {
@@ -761,11 +683,24 @@ function VendorProducts({ addToast, isOwnProduct }) {
     if (!form.description?.trim())         e.description = "Required";
     if (!form.price || isNaN(form.price) || Number(form.price) <= 0)
                                                 e.price = "Enter a valid price";
-    if (!form.category?.trim())            e.category = "Required";
+    // ✅ The category dropdown only emits known values; the only failure
+    // mode here is the user closing the form without picking anything.
+    if (!form.category?.trim())            e.category = "Please select a category";
 
     // Check for at least one image (either legacy image or new images array)
     const hasImages = form.images?.length > 0 || form.image;
     if (!hasImages)                       e.image = "Upload at least one product image";
+
+    // ✅ Discount validation — mirrors backend prepareProductForSave so we
+    // fail fast in the form before submitting.
+    const op = form.originalPrice === "" ? null : Number(form.originalPrice);
+    const dv = form.discountValue === "" ? null : Number(form.discountValue);
+    if (op != null && (isNaN(op) || op < 0)) e.originalPrice = "Must be ≥ 0";
+    if (dv != null && (isNaN(dv) || dv < 0)) e.discountValue = "Must be ≥ 0";
+    if (form.discountType === "percentage" && dv != null && dv > 100)
+      e.discountValue = "Cannot exceed 100%";
+    if (form.discountType === "fixed" && op != null && dv != null && dv > op)
+      e.discountValue = "Cannot exceed original price";
 
     return e;
   }
@@ -792,14 +727,17 @@ function VendorProducts({ addToast, isOwnProduct }) {
 
     setEditingId(product._id);
     setForm({
-      name:        product.name        || "",
-      description: product.description || "",
-      price:       String(product.price ?? ""),
-      category:    product.category    || "",
-      image:       product.image       || "",
-      images:      existingImages,
-      available:   product.available === true,
-      stock:       String(product.stock ?? ""),
+      name:           product.name           || "",
+      description:    product.description    || "",
+      price:          String(product.price   ?? ""),
+      originalPrice:  product.originalPrice != null ? String(product.originalPrice) : "",
+      discountType:   product.discountType   || "",
+      discountValue:  product.discountValue != null ? String(product.discountValue) : "",
+      category:       product.category       || "",
+      image:          product.image          || "",
+      images:         existingImages,
+      available:      product.available === true,
+      stock:          String(product.stock  ?? ""),
     });
     setFormErrors({});
     setVideoFile(null);
@@ -884,6 +822,11 @@ function VendorProducts({ addToast, isOwnProduct }) {
         category: form.category,
         stock: form.stock ? parseInt(form.stock, 10) : 0,
         available: form.available,
+        // ✅ Discount fields (optional). Empty strings are normalized to null
+        // server-side via prepareProductForSave().
+        originalPrice: form.originalPrice === "" ? null : parseFloat(form.originalPrice),
+        discountType:  form.discountType  || null,
+        discountValue: form.discountValue === "" ? null : parseFloat(form.discountValue),
       };
 
       // Separate new files from existing URLs
@@ -985,9 +928,10 @@ function VendorProducts({ addToast, isOwnProduct }) {
               <div className={styles.formFields}>
                 {[
                   ["name",        "Product Name",       "text",     "e.g. Jollof Rice"],
-                  ["description",  "Description",        "textarea",  "Describe your product"],
+                  ["description", "Description",        "textarea", "Describe your product"],
                   ["price",       "Price (GHS)",        "number",   "9.99"],
-                  ["category",    "Category",           "text",     "e.g. electricals"],
+                  // ✅ Category is rendered separately below — replaced with a
+                  // searchable dropdown so vendors can't type free-text typos.
                   ["stock",       "Stock Qty",          "number",   "0"],
                 ].map(([key, label, type, placeholder]) => (
                   <div key={key} className={styles.formGroup}>
@@ -1013,6 +957,166 @@ function VendorProducts({ addToast, isOwnProduct }) {
                     )}
                   </div>
                 ))}
+
+                {/* ✅ Discount / Pricing section — OPTIONAL.
+                    - Original Price + Discount Type + Discount Value produce a
+                      live-derived Selling Price preview.
+                    - Leaving Original Price blank disables discounts (server
+                      normalizes all three discount fields to null in
+                      prepareProductForSave). */}
+                <div className={`${styles.formGroup} ${styles.discountSection}`}>
+                  <label className={styles.discountHeader}>
+                    <span className={styles.discountHeaderIcon}>🔥</span>
+                    Discount (optional)
+                  </label>
+                  <p className={styles.discountHint}>
+                    Add a discount to attract buyers — leave blank to sell at the regular price above.
+                  </p>
+                  <div className={styles.discountGrid}>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Original Price"
+                      value={form.originalPrice}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((prev) => {
+                          const next = { ...prev, originalPrice: v };
+                          // ✅ Auto-derive selling price whenever the discount
+                          // trio is well-defined. Mirrors backend semantics
+                          // (deriveSellingPrice + prepareProductForSave).
+                          const op = v === "" ? null : Number(v);
+                          const dv = prev.discountValue === "" ? null : Number(prev.discountValue);
+                          const derived = deriveSellingPrice({
+                            originalPrice: op,
+                            discountType: prev.discountType,
+                            discountValue: dv,
+                          });
+                          if (derived != null) next.price = String(derived);
+                          return next;
+                        });
+                        setFormErrors((prev) => ({ ...prev, originalPrice: "" }));
+                      }}
+                    />
+                    <select
+                      value={form.discountType}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((prev) => {
+                          const next = { ...prev, discountType: v };
+                          const op = prev.originalPrice === "" ? null : Number(prev.originalPrice);
+                          const dv = prev.discountValue === "" ? null : Number(prev.discountValue);
+                          const derived = deriveSellingPrice({
+                            originalPrice: op,
+                            discountType: v,
+                            discountValue: dv,
+                          });
+                          if (derived != null) next.price = String(derived);
+                          return next;
+                        });
+                        setFormErrors((prev) => ({ ...prev, discountValue: "" }));
+                      }}
+                    >
+                      {DISCOUNT_TYPES.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder={
+                        form.discountType === "percentage"
+                          ? "Discount %"
+                          : form.discountType === "fixed"
+                          ? "Discount GHS"
+                          : "Discount value"
+                      }
+                      value={form.discountValue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((prev) => {
+                          const next = { ...prev, discountValue: v };
+                          const op = prev.originalPrice === "" ? null : Number(prev.originalPrice);
+                          const dv = v === "" ? null : Number(v);
+                          const derived = deriveSellingPrice({
+                            originalPrice: op,
+                            discountType: prev.discountType,
+                            discountValue: dv,
+                          });
+                          if (derived != null) next.price = String(derived);
+                          return next;
+                        });
+                        setFormErrors((prev) => ({ ...prev, discountValue: "" }));
+                      }}
+                    />
+                  </div>
+                  {/* Live preview line */}
+                  {(() => {
+                    const op = form.originalPrice === "" ? null : Number(form.originalPrice);
+                    const dv = form.discountValue === "" ? null : Number(form.discountValue);
+                    const selling = form.price === "" ? null : Number(form.price);
+                    const derived = deriveSellingPrice({
+                      originalPrice: op,
+                      discountType: form.discountType,
+                      discountValue: dv,
+                    });
+                    const previewPrice = derived != null ? derived : selling;
+                    const savings = op != null && derived != null ? op - derived : 0;
+                    const pct = op != null && op > 0 && derived != null
+                      ? Math.round((savings / op) * 100)
+                      : 0;
+                    if (previewPrice == null || form.originalPrice === "") return null;
+                    return (
+                      <p className={styles.discountPreview}>
+                        Final selling price: <strong>{fmt(previewPrice)}</strong>
+                        {savings > 0 && pct > 0 && (
+                          <span className={styles.discountPreviewSave}>
+                            {" — Save "}{fmt(savings)} (-{pct}%)
+                          </span>
+                        )}
+                      </p>
+                    );
+                  })()}
+                  {(formErrors.originalPrice || formErrors.discountValue) && (
+                    <span className={styles.fieldError}>
+                      {formErrors.originalPrice || formErrors.discountValue}
+                    </span>
+                  )}
+                </div>
+
+                {/* ✅ Category — searchable dropdown. Free text is no longer
+                    accepted. The input also surfaces a "Request new" affordance
+                    when the typed name doesn't match any known category. */}
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>
+                    Category
+                    <span style={{ color: "var(--brand-danger)", marginLeft: 4 }}>*</span>
+                  </label>
+                  <SearchableSelect
+                    options={categories}
+                    value={form.category}
+                    onChange={(v) => {
+                      setForm((prev) => ({ ...prev, category: v }));
+                      setFormErrors((prev) => ({ ...prev, category: "" }));
+                    }}
+                    onQueryChange={setCategoryQuery}
+                    loading={categoriesLoading}
+                    error={categoriesError}
+                    placeholder="Select a category…"
+                    emptyMessage="No matching categories"
+                    onRequestNew={handleRequestNewCategory}
+                    requestNewLabel="Request new category"
+                    required
+                    disabled={requestingCategory}
+                  />
+                  {formErrors.category && (
+                    <span className={styles.fieldError}>{formErrors.category}</span>
+                  )}
+                </div>
 
                 {/* Availability */}
                 <div className={styles.formGroup}>
@@ -1392,438 +1496,7 @@ function VendorAnalytics({ addToast }) {
 /* ───────────────────────────────────────── */
 /* WALLET TAB                                */
 /* ───────────────────────────────────────── */
-function VendorWallet({ addToast }) {
-  const { fmt } = useCurrency();
-  const [wallet, setWallet] = useState(null);
-  const [transactions, setTransactions] = useState([]);
-  const [withdrawals, setWithdrawals] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState("summary");
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [showCommissionModal, setShowCommissionModal] = useState(false);
-  const [withdrawForm, setWithdrawForm] = useState({ amount: "", method: "mobile_money", provider: "mtn", phoneNumber: "", accountName: "", bankName: "", accountNumber: "" });
-  const [submitting, setSubmitting] = useState(false);
-
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  const fetchWallet = useCallback(() => {
-    walletAPI.getSummary()
-      .then((data) => { if (mountedRef.current) setWallet(data); })
-      .catch((err) => { if (mountedRef.current) addToast?.(err.message, "error"); })
-      .finally(() => { if (mountedRef.current) setLoading(false); });
-  }, [addToast]);
-
-  const fetchTransactions = useCallback(() => {
-    walletAPI.getTransactions({ limit: 20 })
-      .then((data) => { if (mountedRef.current) setTransactions(data.transactions || []); })
-      .catch((err) => { if (mountedRef.current) addToast?.(err.message, "error"); });
-  }, [addToast]);
-
-  const fetchWithdrawals = useCallback(() => {
-    walletAPI.getWithdrawals({ limit: 10 })
-      .then((data) => { if (mountedRef.current) setWithdrawals(data.withdrawals || []); })
-      .catch((err) => { if (mountedRef.current) addToast?.(err.message, "error"); });
-  }, [addToast]);
-
-  useEffect(() => {
-    if (activeSection === "summary") fetchWallet();
-    if (activeSection === "transactions") fetchTransactions();
-    if (activeSection === "withdrawals") fetchWithdrawals();
-  }, [activeSection, fetchWallet, fetchTransactions, fetchWithdrawals]);
-
-  const handleWithdraw = async (e) => {
-    e.preventDefault();
-    if (!withdrawForm.amount || parseFloat(withdrawForm.amount) <= 0) {
-      addToast?.("Please enter a valid amount", "error");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const data = {
-        amount: parseFloat(withdrawForm.amount),
-        method: withdrawForm.method,
-        mobileMoneyDetails: withdrawForm.method === "mobile_money" ? {
-          provider: withdrawForm.provider,
-          phoneNumber: withdrawForm.phoneNumber,
-          accountName: withdrawForm.accountName,
-        } : undefined,
-        bankDetails: withdrawForm.method === "bank_transfer" ? {
-          bankName: withdrawForm.bankName,
-          accountNumber: withdrawForm.accountNumber,
-          accountName: withdrawForm.accountName,
-        } : undefined,
-      };
-      await walletAPI.withdraw(data);
-      addToast?.("Withdrawal request submitted successfully!", "success");
-      setShowWithdrawModal(false);
-      setWithdrawForm({ amount: "", method: "mobile_money", provider: "mtn", phoneNumber: "", accountName: "", bankName: "", accountNumber: "" });
-      fetchWallet();
-      fetchWithdrawals();
-    } catch (err) {
-      addToast?.(err.message, "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handlePayCommission = async (e) => {
-    e.preventDefault();
-    if (!withdrawForm.amount || parseFloat(withdrawForm.amount) <= 0) {
-      addToast?.("Please enter a valid amount", "error");
-      return;
-    }
-    if (parseFloat(withdrawForm.amount) > (wallet?.outstandingCommission || 0)) {
-      addToast?.("Amount exceeds commission owed", "error");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await walletAPI.payCommission(parseFloat(withdrawForm.amount), withdrawForm.method, {
-        provider: withdrawForm.provider,
-        phoneNumber: withdrawForm.phoneNumber,
-        accountName: withdrawForm.accountName,
-        bankName: withdrawForm.bankName,
-        accountNumber: withdrawForm.accountNumber,
-      });
-      addToast?.("Commission payment successful!", "success");
-      setShowCommissionModal(false);
-      setWithdrawForm({ amount: "", method: "mobile_money", provider: "mtn", phoneNumber: "", accountName: "", bankName: "", accountNumber: "" });
-      fetchWallet();
-    } catch (err) {
-      addToast?.(err.message, "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleUpdateDetails = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      if (withdrawForm.method === "mobile_money") {
-        await walletAPI.updateMobileMoney({
-          provider: withdrawForm.provider,
-          phoneNumber: withdrawForm.phoneNumber,
-          accountName: withdrawForm.accountName,
-        });
-      } else {
-        await walletAPI.updateBankDetails({
-          bankName: withdrawForm.bankName,
-          accountNumber: withdrawForm.accountNumber,
-          accountName: withdrawForm.accountName,
-        });
-      }
-      addToast?.("Payment details updated successfully!", "success");
-      setShowDetailsModal(false);
-      fetchWallet();
-    } catch (err) {
-      addToast?.(err.message, "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (loading) {
-    return <div className="loading-center"><div className="spinner" /></div>;
-  }
-
-  const settings = wallet?.settings || {};
-
-  return (
-    <div className={styles.walletContainer}>
-      {/* WALLET BALANCE SECTION - Online Payments */}
-      <h3 className={styles.walletSectionTitle}>Wallet Balance (Online Payments)</h3>
-      <div className={styles.walletCards}>
-        <div className={styles.walletCard}>
-          <span className={styles.walletCardLabel}>Available (Withdrawable)</span>
-          <span className={styles.walletCardValue}>{fmt(wallet?.availableBalance || 0)}</span>
-        </div>
-        <div className={styles.walletCard}>
-          <span className={styles.walletCardLabel}>Pending (Held)</span>
-          <span className={styles.walletCardValuePending}>{fmt(wallet?.pendingBalance || 0)}</span>
-        </div>
-        <div className={styles.walletCard}>
-          <span className={styles.walletCardLabel}>Online Earnings</span>
-          <span className={styles.walletCardValue}>{fmt(wallet?.totalOnlineEarnings || 0)}</span>
-        </div>
-        <div className={styles.walletCard}>
-          <span className={styles.walletCardLabel}>Total Withdrawn</span>
-          <span className={styles.walletCardValue}>{fmt(wallet?.totalWithdrawn || 0)}</span>
-        </div>
-      </div>
-
-      {/* COD SALES SECTION */}
-      <h3 className={styles.walletSectionTitle}>COD Sales (Cash Collected)</h3>
-      <div className={styles.walletCards}>
-        <div className={styles.walletCard}>
-          <span className={styles.walletCardLabel}>Total COD Sales</span>
-          <span className={styles.walletCardValueCOD}>{fmt(wallet?.totalCODSales || 0)}</span>
-        </div>
-        <div className={styles.walletCard}>
-          <span className={styles.walletCardLabel}>Commission Owed</span>
-          <span className={`${styles.walletCardValue} ${(wallet?.commissionOwed || 0) > 0 ? styles.walletCardValueNegative : ""}`}>{fmt(wallet?.commissionOwed || 0)}</span>
-        </div>
-        <div className={styles.walletCard}>
-          <span className={styles.walletCardLabel}>Commission Paid</span>
-          <span className={styles.walletCardValue}>{fmt(wallet?.commissionPaid || 0)}</span>
-        </div>
-        <div className={styles.walletCard}>
-          <span className={styles.walletCardLabel}>Outstanding</span>
-          <span className={`${styles.walletCardValue} ${(wallet?.outstandingCommission || 0) > 0 ? styles.walletCardValueNegative : ""}`}>{fmt(wallet?.outstandingCommission || 0)}</span>
-        </div>
-      </div>
-
-      {/* Wallet Actions */}
-      <div className={styles.walletActions}>
-        <button className="btn btn-primary" onClick={() => setShowWithdrawModal(true)} disabled={!wallet?.availableBalance || wallet?.availableBalance < settings.minWithdrawal}>
-          Withdraw Funds
-        </button>
-        <button className="btn btn-secondary" onClick={() => setShowDetailsModal(true)}>
-          Payment Details
-        </button>
-        {(wallet?.commissionOwed || 0) > 0 && (
-          <button className="btn btn-warning" onClick={() => setShowCommissionModal(true)}>
-            Pay Commission ({fmt(wallet?.commissionOwed || 0)})
-          </button>
-        )}
-      </div>
-
-      {/* Settings Info */}
-      <div className={styles.walletInfo}>
-        <p>Min withdrawal: <strong>{fmt(settings.minWithdrawal)}</strong> | Commission: <strong>{settings.commissionRate}%</strong> | Holding period: <strong>{settings.holdingPeriod} days</strong></p>
-        <p style={{marginTop:"8px",color:"#92400e"}}>Note: COD earnings are collected directly from customers. Only online payment earnings can be withdrawn through the wallet.</p>
-      </div>
-
-      {/* Section Tabs */}
-      <div className={styles.walletSections}>
-        <button className={`${styles.walletSectionTab} ${activeSection === "transactions" ? styles.walletSectionTabActive : ""}`} onClick={() => setActiveSection("transactions")}>Transactions</button>
-        <button className={`${styles.walletSectionTab} ${activeSection === "withdrawals" ? styles.walletSectionTabActive : ""}`} onClick={() => setActiveSection("withdrawals")}>Withdrawal History</button>
-      </div>
-
-      {/* Transactions List */}
-      {activeSection === "transactions" && (
-        <div className={styles.transactionList}>
-          {transactions.length === 0 ? (
-            <div className="empty-state"><p>No transactions yet</p></div>
-          ) : (
-            transactions.map((txn, idx) => (
-              <div key={idx} className={styles.transactionItem}>
-                <div className={styles.transactionInfo}>
-                  <span className={styles.transactionType}>{txn.type.replace(/_/g, " ")}</span>
-                  <span className={styles.transactionDesc}>{txn.description}</span>
-                  <span className={styles.transactionDate}>{new Date(txn.createdAt).toLocaleDateString()}</span>
-                </div>
-                <span className={`${styles.transactionAmount} ${["withdrawal", "commission", "commission_due", "commission_payment"].includes(txn.type) ? styles.transactionNegative : styles.transactionPositive}`}>
-                  {["withdrawal", "commission", "commission_due", "commission_payment"].includes(txn.type) ? "-" : "+"}{fmt(txn.amount)}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* Withdrawals List */}
-      {activeSection === "withdrawals" && (
-        <div className={styles.transactionList}>
-          {withdrawals.length === 0 ? (
-            <div className="empty-state"><p>No withdrawal requests yet</p></div>
-          ) : (
-            withdrawals.map((wd, idx) => (
-              <div key={idx} className={styles.transactionItem}>
-                <div className={styles.transactionInfo}>
-                  <span className={styles.transactionType}>{wd.method.replace("_", " ")}</span>
-                  <span className={styles.transactionDesc}>Ref: {wd._id?.slice(-8)}</span>
-                  <span className={styles.transactionDate}>{new Date(wd.createdAt).toLocaleDateString()}</span>
-                </div>
-                <div className={styles.transactionRight}>
-                  <span className={styles.transactionAmountNegative}>-{fmt(wd.amount)}</span>
-                  <span className={`${styles.transactionStatus} ${styles[`status${wd.status}`]}`}>{wd.status}</span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* Withdraw Modal */}
-      {showWithdrawModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowWithdrawModal(false)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <h3>Request Withdrawal</h3>
-            <form onSubmit={handleWithdraw}>
-              <div className={styles.formGroup}>
-                <label>Amount (GHS)</label>
-                <input type="number" min={settings.minWithdrawal} max={wallet?.availableBalance} value={withdrawForm.amount} onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })} placeholder={`Min: ${settings.minWithdrawal}`} required />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Method</label>
-                <select value={withdrawForm.method} onChange={(e) => setWithdrawForm({ ...withdrawForm, method: e.target.value })}>
-                  <option value="mobile_money">Mobile Money</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                </select>
-              </div>
-              {withdrawForm.method === "mobile_money" ? (
-                <>
-                  <div className={styles.formGroup}>
-                    <label>Provider</label>
-                    <select value={withdrawForm.provider} onChange={(e) => setWithdrawForm({ ...withdrawForm, provider: e.target.value })}>
-                      <option value="mtn">MTN</option>
-                      <option value="telecel">Telecel</option>
-                      <option value="airteltigo">AirtelTigo</option>
-                    </select>
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Phone Number</label>
-                    <input type="tel" value={withdrawForm.phoneNumber} onChange={(e) => setWithdrawForm({ ...withdrawForm, phoneNumber: e.target.value })} placeholder="e.g. 0201234567" required />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className={styles.formGroup}>
-                    <label>Bank Name</label>
-                    <input type="text" value={withdrawForm.bankName} onChange={(e) => setWithdrawForm({ ...withdrawForm, bankName: e.target.value })} placeholder="e.g. Ghana Commercial Bank" required />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Account Number</label>
-                    <input type="text" value={withdrawForm.accountNumber} onChange={(e) => setWithdrawForm({ ...withdrawForm, accountNumber: e.target.value })} placeholder="e.g. 1234567890" required />
-                  </div>
-                </>
-              )}
-              <div className={styles.formGroup}>
-                <label>Account Name</label>
-                <input type="text" value={withdrawForm.accountName} onChange={(e) => setWithdrawForm({ ...withdrawForm, accountName: e.target.value })} placeholder="Full name on account" required />
-              </div>
-              <div className={styles.modalActions}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowWithdrawModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Processing..." : "Submit Request"}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Payment Details Modal */}
-      {showDetailsModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowDetailsModal(false)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <h3>Update Payment Details</h3>
-            <form onSubmit={handleUpdateDetails}>
-              <div className={styles.formGroup}>
-                <label>Method</label>
-                <select value={withdrawForm.method} onChange={(e) => setWithdrawForm({ ...withdrawForm, method: e.target.value })}>
-                  <option value="mobile_money">Mobile Money</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                </select>
-              </div>
-              {withdrawForm.method === "mobile_money" ? (
-                <>
-                  <div className={styles.formGroup}>
-                    <label>Provider</label>
-                    <select value={withdrawForm.provider} onChange={(e) => setWithdrawForm({ ...withdrawForm, provider: e.target.value })}>
-                      <option value="mtn">MTN</option>
-                      <option value="telecel">Telecel</option>
-                      <option value="airteltigo">AirtelTigo</option>
-                    </select>
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Phone Number</label>
-                    <input type="tel" value={withdrawForm.phoneNumber} onChange={(e) => setWithdrawForm({ ...withdrawForm, phoneNumber: e.target.value })} required />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className={styles.formGroup}>
-                    <label>Bank Name</label>
-                    <input type="text" value={withdrawForm.bankName} onChange={(e) => setWithdrawForm({ ...withdrawForm, bankName: e.target.value })} required />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Account Number</label>
-                    <input type="text" value={withdrawForm.accountNumber} onChange={(e) => setWithdrawForm({ ...withdrawForm, accountNumber: e.target.value })} required />
-                  </div>
-                </>
-              )}
-              <div className={styles.formGroup}>
-                <label>Account Name</label>
-                <input type="text" value={withdrawForm.accountName} onChange={(e) => setWithdrawForm({ ...withdrawForm, accountName: e.target.value })} required />
-              </div>
-              <div className={styles.modalActions}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowDetailsModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? "Saving..." : "Save"}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Pay Commission Modal */}
-      {showCommissionModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowCommissionModal(false)}>
-          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <h3>Pay Commission Owed</h3>
-            <div className={styles.commissionInfo}>
-              <p>Outstanding Commission: <strong>{fmt(wallet?.commissionOwed || 0)}</strong></p>
-            </div>
-            <form onSubmit={handlePayCommission}>
-              <div className={styles.formGroup}>
-                <label>Amount (GHS)</label>
-                <input type="number" min={1} max={wallet?.commissionOwed} value={withdrawForm.amount} onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })} placeholder={`Max: ${wallet?.commissionOwed}`} required />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Payment Method</label>
-                <select value={withdrawForm.method} onChange={(e) => setWithdrawForm({ ...withdrawForm, method: e.target.value })}>
-                  <option value="paystack">Paystack Card</option>
-                  <option value="mobile_money">Mobile Money</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                </select>
-              </div>
-              {withdrawForm.method === "mobile_money" && (
-                <>
-                  <div className={styles.formGroup}>
-                    <label>Provider</label>
-                    <select value={withdrawForm.provider} onChange={(e) => setWithdrawForm({ ...withdrawForm, provider: e.target.value })}>
-                      <option value="mtn">MTN</option>
-                      <option value="telecel">Telecel</option>
-                      <option value="airteltigo">AirtelTigo</option>
-                    </select>
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Phone Number</label>
-                    <input type="tel" value={withdrawForm.phoneNumber} onChange={(e) => setWithdrawForm({ ...withdrawForm, phoneNumber: e.target.value })} required />
-                  </div>
-                </>
-              )}
-              {withdrawForm.method === "bank_transfer" && (
-                <>
-                  <div className={styles.formGroup}>
-                    <label>Bank Name</label>
-                    <input type="text" value={withdrawForm.bankName} onChange={(e) => setWithdrawForm({ ...withdrawForm, bankName: e.target.value })} required />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Account Number</label>
-                    <input type="text" value={withdrawForm.accountNumber} onChange={(e) => setWithdrawForm({ ...withdrawForm, accountNumber: e.target.value })} required />
-                  </div>
-                </>
-              )}
-              <div className={styles.formGroup}>
-                <label>Account Name</label>
-                <input type="text" value={withdrawForm.accountName} onChange={(e) => setWithdrawForm({ ...withdrawForm, accountName: e.target.value })} required />
-              </div>
-              <div className={styles.modalActions}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowCommissionModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-warning" disabled={submitting}>{submitting ? "Processing..." : "Pay Now"}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// VendorWallet has been extracted to components/vendor/VendorWallet.jsx and
+// is imported at the top of this file. It is shared with the Restaurant
+// Dashboard; both render the same component and the wallet API scopes by
+// req.user.userId, so each vendor sees only their own wallet.

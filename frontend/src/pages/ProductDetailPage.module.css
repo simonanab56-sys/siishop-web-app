@@ -108,6 +108,17 @@
   border-radius: var(--radius-full);
 }
 
+.savingBadge {
+  display: inline-block;
+  background: rgba(234, 88, 12, 0.1);
+  color: var(--brand-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.02em;
+}
+
 .stock {
   display: inline-flex;
   align-items: center;
@@ -307,7 +318,12 @@
 .recommendationsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  /* ✅ Equalize row heights across shared <ProductCard> instances so the
+     Add-to-cart button aligns across every row. Without this, the grid
+     auto-rows collapse to the natural height of each cell, and cards
+     with short titles/descriptions end up shorter than their siblings. */
+  grid-auto-rows: 1fr;
+  gap: 14px;
 }
 
 @media (max-width: 480px) {

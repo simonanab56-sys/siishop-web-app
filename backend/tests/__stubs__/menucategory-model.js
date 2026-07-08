@@ -1,0 +1,1 @@
+module.exports = function(){}; module.exports.find = ()=>({sort:()=>({lean:()=>Promise.resolve([])})});

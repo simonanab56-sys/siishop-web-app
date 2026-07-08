@@ -10,6 +10,7 @@ import ProductCard from "../components/ProductCard";
 import SEO from "../components/SEO";
 import { getImageUrl, PLACEHOLDER_IMAGE } from "../utils/image";
 import { addRecentlyViewed } from "../utils/recentlyViewed";
+import { discountInfo } from "../utils/pricing";
 import styles from "./ProductDetailPage.module.css";
 
 export default function ProductDetailPage({ product: initialProduct, productId, onBack, onAddToCart, onNavigate, onRequireAuth }) {
@@ -106,6 +107,9 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
 
   // Get vendor name
   const vendorName = product?.vendorId?.storeName || product?.vendorId?.name || null;
+
+  // Discount view (handles BOTH schema originalPrice AND legacy _originalPrice)
+  const d = discountInfo(product);
 
   // Check for video
   const hasVideo = product?.videoUrl && product.videoUrl.length > 0;
@@ -266,17 +270,17 @@ export default function ProductDetailPage({ product: initialProduct, productId, 
           </div>
 
           <div className={styles.priceRow}>
-            {/* Show promo price if product is from a promo */}
-            {product._originalPrice ? (
+            <span className={styles.price}>{fmt(product.price)}</span>
+            {d.hasDiscount && (
               <>
-                <span className={styles.price}>{fmt(product.price)}</span>
-                <span className={styles.originalPrice}>{fmt(product._originalPrice)}</span>
-                <span className={styles.discountBadge}>
-                  -{Math.round(((product._originalPrice - product.price) / product._originalPrice) * 100)}%
+                <span className={styles.originalPrice}>{fmt(d.originalPrice)}</span>
+                <span className={styles.discountBadge} title={`Save ${fmt(d.saved)}`}>
+                  -{d.percent}%
+                </span>
+                <span className={styles.savingBadge} title={`Save ${fmt(d.saved)}`}>
+                  Save {fmt(d.saved)}
                 </span>
               </>
-            ) : (
-              <span className={styles.price}>{fmt(product.price)}</span>
             )}
           </div>
 

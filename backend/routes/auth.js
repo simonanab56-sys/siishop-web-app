@@ -5,6 +5,23 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { OAuth2Client } = require("google-auth-library"); // ✅ ADDED: For secure Google token verification
+
+// ✅ FIX: Widen google-auth-library's clock-skew tolerance so a host with even
+//   a few minutes of forward clock drift (e.g. mis-set TZ / NTP on the Render
+//   dyno) no longer rejects otherwise-valid Google ID tokens with
+//   "Token used too late". The library hard-codes `now = Date.now()/1000` and
+//   compares it to `exp + OAuth2Client.CLOCK_SKEW_SECS_` (default 300s).
+//   The actual production drift observed is ~2h (server_time - exp ≈ 7180s).
+//   3 hours of tolerance fully absorbs a 2h drift and gives a safety margin,
+//   while still rejecting tokens that are multiple hours past their Google
+//   1h lifetime — Google itself never issues a token with such skew.
+OAuth2Client.CLOCK_SKEW_SECS_ = 3 * 60 * 60; // 10800 seconds = 3 hours
+// Runtime-visible log so the deploy can be confirmed to have taken effect.
+console.log(
+  "[auth] OAuth2Client.CLOCK_SKEW_SECS_ =",
+  OAuth2Client.CLOCK_SKEW_SECS_,
+  "seconds"
+);
 const User = require("../models/User");
 const { requireAuth } = require("../middleware/auth");
 const { sendPasswordResetEmail } = require("../services/email.service");
@@ -36,6 +53,10 @@ function sign(user) {
  * Helper: Return a clean user object (no password)
  */
 function cleanUser(user) {
+  // Force vendorType to "restaurant" if restaurantDetails exists (backwards compatibility)
+  const hasRestaurantDetails = user.restaurantDetails && Object.keys(user.restaurantDetails).length > 0;
+  const forceRestaurant = hasRestaurantDetails ? "restaurant" : null;
+
   return {
     _id: String(user._id),
     name: user.name,
@@ -43,6 +64,8 @@ function cleanUser(user) {
     isAdmin: !!user.isAdmin,
     isVendor: !!user.isVendor,
     vendorStatus: user.vendorStatus || "pending",
+    /* ✅ NEW: Vendor Type for dual marketplace */
+    vendorType: user.vendorType || forceRestaurant || "marketplace",
     storeName: user.storeName,
     storeDescription: user.storeDescription,
     storeLogo: user.storeLogo,
@@ -50,6 +73,10 @@ function cleanUser(user) {
     ...(user.isVendor && {
       location: user.location || { country: "Ghana", region: "", city: "" },
     }),
+    /* ✅ NEW: Restaurant Details (if restaurant vendor) ── */
+    ...((user.isVendor && user.vendorType === "restaurant") || hasRestaurantDetails ? {
+      restaurantDetails: user.restaurantDetails || {},
+    } : {}),
     /* ── KYC Fields (if vendor) ── */
     ...(user.isVendor && {
       phoneNumber: user.phoneNumber,
@@ -78,6 +105,9 @@ router.post(
       }
 
       const isVendor = value.isVendor === true || value.isVendor === "true";
+      // ✅ NEW: Handle vendorType (marketplace or restaurant)
+      const vendorType = isVendor ? (value.vendorType === "restaurant" ? "restaurant" : "marketplace") : "marketplace";
+      const isRestaurantVendor = vendorType === "restaurant";
 
       // ✅ Validate KYC fields for vendors
       if (isVendor) {
@@ -138,7 +168,22 @@ router.post(
       const userData = {
         ...value,
         isVendor,
+        vendorType, // ✅ NEW: marketplace or restaurant
       };
+
+      // ✅ Add restaurant details if restaurant vendor
+      if (isRestaurantVendor) {
+        userData.restaurantDetails = {
+          restaurantName: value.restaurantName || value.storeName || "",
+          restaurantDescription: value.restaurantDescription || value.storeDescription || "",
+          address: value.address || "",
+          deliveryRadius: value.deliveryRadius || 5,
+          openingHours: value.openingHours || "08:00",
+          closingHours: value.closingHours || "22:00",
+          cuisineType: value.cuisineType || "",
+          isOpen: false, // Restaurants start closed until approved
+        };
+      }
 
       // ✅ Add location data if vendor (Ghana-focused)
       if (isVendor) {
@@ -221,7 +266,24 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    res.json({ user: cleanUser(user), token: sign(user) });
+    // DEBUG: Log vendorType before sending response
+    console.log("[AUTH LOGIN] ================= FULL DEBUG =================");
+    const userObjRaw = user.toObject ? user.toObject() : user;
+    console.log("[AUTH LOGIN] FULL DB DOC:", JSON.stringify(userObjRaw));
+    console.log("[AUTH LOGIN] DB vendorType VALUE:", userObjRaw.vendorType);
+    console.log("[AUTH LOGIN] DB vendorType TYPE:", typeof userObjRaw.vendorType);
+    console.log("[AUTH LOGIN] DB hasVendorType:", "vendorType" in userObjRaw);
+    console.log("[AUTH LOGIN] DB vendorStatus:", userObjRaw.vendorStatus);
+    console.log("[AUTH LOGIN] DB isVendor:", userObjRaw.isVendor);
+    console.log("[AUTH LOGIN] DB restaurantDetails:", userObjRaw.restaurantDetails);
+
+    const userObj = cleanUser(user);
+    console.log("[AUTH LOGIN] cleanUser output FULL:", JSON.stringify(userObj));
+    console.log("[AUTH LOGIN] cleanUser vendorType:", userObj.vendorType);
+    console.log("[AUTH LOGIN] cleanUser restaurantDetails:", userObj.restaurantDetails);
+    console.log("[AUTH LOGIN] ===============================================");
+
+    res.json({ user: userObj, token: sign(user) });
   } catch (err) {
     res.status(500).json({ error: "Login failed" });
   }
@@ -262,7 +324,17 @@ router.get("/me", requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).lean();
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json({ user: cleanUser(user) });
+
+    // EXTREME DEBUG: Log EVERY field in the document
+    console.log("[AUTH /me] ================ RAW DB DOC ================");
+    console.log("[AUTH /me] ALL KEYS:", Object.keys(user));
+    console.log("[AUTH /me] FULL DOC:", JSON.stringify(user, null, 2));
+    console.log("[AUTH /me] ===============================================");
+
+    const cleaned = cleanUser(user);
+    console.log("[AUTH /me] CLEANED USER:", JSON.stringify(cleaned, null, 2));
+
+    res.json({ user: cleaned });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch user" });
   }
@@ -277,7 +349,7 @@ router.put("/me", requireAuth, async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const { name, email, storeName, storeDescription, storeLogo, location } = value;
+    const { name, email, storeName, storeDescription, storeLogo, location, restaurantDetails } = value;
     const updates = {};
 
     // Update fields
@@ -315,6 +387,39 @@ router.put("/me", requireAuth, async (req, res) => {
         region: location?.region || "",
         city: location?.city || "",
       };
+    }
+
+    // ✅ FIX: Persist `restaurantDetails` for restaurant vendors.
+    //   Joi (`updateProfileSchema` in backend/utils/joiSchemas.js) now
+    //   accepts and type-checks the `restaurantDetails` sub-object, so by
+    //   the time we reach this line `value.restaurantDetails` is either
+    //   undefined (no field in the request body) or a plain object with
+    //   all sub-fields already validated. The previous version of this
+    //   handler destructured only {name,email,storeName,storeDescription,
+    //   storeLogo,location} and silently dropped `restaurantDetails` on
+    //   the floor — so PUT /auth/me returned HTTP 200 with "Settings
+    //   saved" but the database was never updated for the restaurant
+    //   sub-document. RestaurantSettingsPage then re-read the unchanged
+    //   docs on next mount and re-rendered the original values, making
+    //   the page look like everything had "reverted to defaults".
+    //
+    //   Guards:
+    //   1. Only vendors can write `restaurantDetails` — matches the
+    //      `location` guard above. Customers/marketplace-vendors ignore
+    //      the field (it is stripped/ignored on non-vendor docs anyway
+    //      by the Mongoose sub-schema).
+    //   2. `restaurantDetails` must be a plain object — not an array,
+    //      string, etc. Joi's `Joi.object(...).unknown(true)` already
+    //      enforces this, so this check is a belt-and-suspenders defense
+    //      against future schema drift.
+    if (
+      restaurantDetails !== undefined &&
+      req.user.isVendor &&
+      restaurantDetails !== null &&
+      typeof restaurantDetails === "object" &&
+      !Array.isArray(restaurantDetails)
+    ) {
+      updates.restaurantDetails = restaurantDetails;
     }
 
     const user = await User.findByIdAndUpdate(
@@ -414,7 +519,7 @@ router.post("/google", async (req, res) => {
 
     // ✅ CRITICAL: Verify token with Google's servers (not just decode)
     const client = new OAuth2Client(googleClientId);
-    
+
     let ticket;
     try {
       ticket = await client.verifyIdToken({

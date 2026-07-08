@@ -1,0 +1,100 @@
+/* pages/SeeAllPage.module.css — fully responsive */
+.page { padding: 32px 0 60px; }
+
+/* Header */
+.header { margin-bottom: 20px; }
+.crumbs { margin-bottom: 12px; }
+.crumbLink {
+  display: inline-block; font-size: 0.85rem; color: var(--brand-primary);
+  text-decoration: none; font-weight: 600;
+  transition: opacity var(--transition);
+}
+.crumbLink:hover { opacity: 0.8; }
+
+.title {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3.5vw, 2.2rem);
+  color: var(--brand-dark); margin: 0 0 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+.icon { font-size: 1.4em; line-height: 1; }
+.subtitle {
+  font-size: clamp(0.88rem, 2vw, 1rem);
+  color: var(--brand-muted);
+  margin: 0; max-width: 640px;
+}
+
+/* Controls bar */
+.controls {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  background: white; padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--brand-border);
+  margin-bottom: 22px;
+}
+.searchInput {
+  flex: 1; min-width: 200px;
+  padding: 9px 12px; border: 1.5px solid var(--brand-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem; font-family: var(--font-body);
+  outline: none; transition: border-color var(--transition);
+  background: white; color: var(--brand-dark);
+}
+.searchInput:focus { border-color: var(--brand-primary); }
+.select {
+  padding: 9px 12px; border: 1.5px solid var(--brand-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem; font-family: var(--font-body);
+  background: white; color: var(--brand-dark);
+  outline: none; cursor: pointer;
+  min-width: 140px;
+}
+.select:focus { border-color: var(--brand-primary); }
+
+/* Result count */
+.resultCount {
+  font-size: 0.85rem; color: var(--brand-muted);
+  margin: 0 0 16px;
+}
+
+/* Grid */
+.grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(4, 1fr);
+  /* ✅ Equalize row heights across the shared <ProductCard> instances
+     so the Add-to-cart button aligns across every row. */
+  grid-auto-rows: 1fr;
+}
+@media (max-width: 1024px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px)  { .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
+@media (max-width: 380px)  { .grid { grid-template-columns: 1fr; } }
+
+/* Error box */
+.errorBox {
+  background: #fee2e2; border: 1px solid #fca5a5;
+  border-radius: var(--radius-md); padding: 20px 24px;
+  color: #991b1b; font-weight: 500; line-height: 1.7;
+}
+
+/* Pagination */
+.pager {
+  display: flex; justify-content: center; align-items: center;
+  gap: 14px; margin-top: 32px; flex-wrap: wrap;
+}
+.pagerBtn {
+  background: white; border: 1.5px solid var(--brand-border);
+  color: var(--brand-dark);
+  padding: 8px 18px; border-radius: var(--radius-sm);
+  font-size: 0.88rem; font-weight: 600;
+  cursor: pointer; transition: all var(--transition);
+  font-family: var(--font-body);
+}
+.pagerBtn:hover:not(:disabled) {
+  background: var(--brand-primary); color: white;
+  border-color: var(--brand-primary);
+}
+.pagerBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pagerLabel {
+  font-size: 0.85rem; color: var(--brand-muted);
+  font-weight: 500;
+}

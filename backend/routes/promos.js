@@ -18,7 +18,9 @@ router.get("/active", async (req, res) => {
       endDate: { $gt: now },
     })
       .populate("productId")
-      .sort({ endDate: 1 })
+      // ✅ Marketplace-style sort: featured first, then by priority desc,
+      // then by manual displayOrder, then by soonest expiring.
+      .sort({ featured: -1, priority: -1, displayOrder: 1, endDate: 1 })
       .lean();
 
     const live = (promos || []).filter(
@@ -57,7 +59,7 @@ router.get("/search", async (req, res) => {
 
     const promos = await Promo.find(filter)
       .populate("productId")
-      .sort({ endDate: 1 })
+      .sort({ featured: -1, priority: -1, displayOrder: 1, endDate: 1 })
       .lean();
 
     const live = (promos || []).filter(
@@ -91,7 +93,10 @@ router.get("/admin", requireAuth, requireAdmin, async (req, res) => {
 /* CREATE PROMO */
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { productId, discountPercent, startDate, endDate, title, active = true } = req.body;
+    const {
+      productId, discountPercent, startDate, endDate, title, active = true,
+      badge, featured, priority, displayOrder,
+    } = req.body;
 
     if (!productId || !discountPercent || !startDate || !endDate) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -104,6 +109,12 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
       endDate: new Date(endDate),
       title,
       active,
+      // ✅ ADDED: persist marketplace-level configurability fields when supplied.
+      // All optional — defaults from the schema kick in for omitted keys.
+      ...(badge !== undefined ? { badge: badge || null } : {}),
+      ...(featured !== undefined ? { featured: Boolean(featured) } : {}),
+      ...(priority !== undefined ? { priority: Number(priority) || 0 } : {}),
+      ...(displayOrder !== undefined ? { displayOrder: Number(displayOrder) || 0 } : {}),
     });
 
     const populated = await Promo.findById(promo._id).populate("productId").lean();
@@ -117,13 +128,18 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 /* UPDATE PROMO */
 router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { discountPercent, startDate, endDate, title, active } = req.body;
+    const { discountPercent, startDate, endDate, title, active, badge, featured, priority, displayOrder } = req.body;
     const updates = {};
     if (discountPercent !== undefined) updates.discountPercent = Number(discountPercent);
     if (startDate !== undefined) updates.startDate = new Date(startDate);
     if (endDate !== undefined) updates.endDate = new Date(endDate);
     if (title !== undefined) updates.title = title;
     if (active !== undefined) updates.active = active;
+    // ✅ ADDED: allow toggling marketplace-level fields post-creation.
+    if (badge !== undefined) updates.badge = badge || null;
+    if (featured !== undefined) updates.featured = Boolean(featured);
+    if (priority !== undefined) updates.priority = Number(priority) || 0;
+    if (displayOrder !== undefined) updates.displayOrder = Number(displayOrder) || 0;
 
     const promo = await Promo.findByIdAndUpdate(
       req.params.id,

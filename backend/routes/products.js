@@ -1,141 +1,45 @@
 
 const router = require("express").Router();
-const mongoose = require("mongoose");
-const multer  = require("multer");
-const path    = require("path");
-const fs      = require("fs");
-const { v4: uuidv4 } = require("uuid");
 
 const Product = require("../models/Product");
 const Promo = require("../models/Promo");
+const User = require("../models/User");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
 const { createProductSchema, updateProductSchema, validate } = require("../utils/joiSchemas");
+const { validateCategory } = require("../utils/categoryValidator");
+const { prepareProductForSave } = require("../services/product.service");
+const mediaService = require("../services/media.service");
 const logger = require("../utils/logger");
 
-// ── CLOUDINARY CONFIGURATION ─────────────────────────────────────────────────
-let multiUpload;
-let CLOUDINARY_CONFIGURED = false;
+// ✅ All upload middleware (Cloudinary or local-disk) flows through the shared
+// media service. `productMulter` / `productVideoMulter` are named presets
+// produced by `mediaService.getMulter(...)`; when Cloudinary env vars are
+// missing the service falls back to a disk-storage multer rooted at
+// `backend/public/uploads/...` with the same fileFilter / size limits.
 
-// Check if Cloudinary is configured
-function checkCloudinaryConfig() {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  const apiKey = process.env.CLOUDINARY_API_KEY;
-  const apiSecret = process.env.CLOUDINARY_API_SECRET;
-  return !!(cloudName && apiKey && apiSecret && cloudName !== "Root");
+// ✅ NEW: Helper function to get marketplace vendor IDs
+// BACKWARD COMPATIBLE: Includes vendors without vendorType (legacy data)
+async function getMarketplaceVendorIds() {
+  const vendors = await User.find({
+    isVendor: true,
+    vendorStatus: "approved",
+    $or: [
+      { vendorType: "marketplace" },
+      { vendorType: { $exists: false } },
+      { vendorType: null },
+      { vendorType: "" }
+    ]
+  }).select("_id").lean();
+  return vendors.map(v => v._id);
 }
 
-function initStorage() {
-  CLOUDINARY_CONFIGURED = checkCloudinaryConfig();
-
-  if (CLOUDINARY_CONFIGURED) {
-    logger.log("☁️ [ADMIN] Using Cloudinary for image storage");
-    const { productMulter } = require("../config/cloudinary");
-    multiUpload = productMulter.array("images", 10);
-  } else {
-    // Fallback to local disk storage
-    logger.log("💾 [ADMIN] Using local disk storage for images");
-    const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads");
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-
-    const storage = multer.diskStorage({
-      destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-      filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
-    });
-
-    const fileFilter = (req, file, cb) => {
-      const allowed = /jpeg|jpg|webp|png|gif/;
-      const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
-      const mime = allowed.test(file.mimetype);
-      if (ext && mime) return cb(null, true);
-      cb(new Error("Only image files (JPEG, JPG, WEBP, PNG, GIF) are allowed"));
-    };
-
-    multiUpload = multer({
-      storage,
-      fileFilter,
-      limits: { fileSize: 5 * 1024 * 1024 },
-    }).array("images", 10);
-  }
-}
-
-initStorage();
-
-// ── VIDEO UPLOAD STORAGE ──────────────────────────────────────────────────────
-let videoUpload;
-let videoStorage;
-
-function initVideoStorage() {
-  if (CLOUDINARY_CONFIGURED) {
-    logger.log("☁️ [ADMIN] Using Cloudinary for video storage");
-    const { productVideoMulter } = require("../config/cloudinary");
-    videoUpload = productVideoMulter.single("video");
-  } else {
-    // Fallback to local disk storage for videos
-    logger.log("💾 [ADMIN] Using local disk storage for videos");
-    const UPLOAD_DIR = path.join(__dirname, "..", "public", "uploads", "videos");
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-
-    const storage = multer.diskStorage({
-      destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-      filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
-    });
-
-    const fileFilter = (req, file, cb) => {
-      const allowed = /mp4|webm|mov/;
-      const ext = allowed.test(path.extname(file.originalname).toLowerCase().slice(1));
-      const mime = allowed.test(file.mimetype) || file.mimetype.startsWith("video/");
-      if (ext && mime) return cb(null, true);
-      cb(new Error("Only video files (MP4, WebM, MOV) are allowed"));
-    };
-
-    videoUpload = multer({
-      storage,
-      fileFilter,
-      limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
-    }).single("video");
-  }
-}
-
-initVideoStorage();
-
-// Video upload error handler
-const handleVideoUploadError = (err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    console.error("[VIDEO UPLOAD ERROR] Code:", err.code, "Message:", err.message);
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(413).json({ error: "Video file too large. Max 50MB allowed." });
-    }
-    return res.status(400).json({ error: err.message });
-  }
-  if (err) {
-    console.error("[VIDEO UPLOAD ERROR]", err.message);
-    return res.status(400).json({ error: err.message });
-  }
-  next();
-};
-
-// Multer error handler for admin routes
-const handleMulterError = (err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    console.error("[ADMIN MULTER ERROR] Code:", err.code, "Message:", err.message);
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(413).json({ error: "Image file too large. Max 5MB per file." });
-    }
-    if (err.code === "LIMIT_FILE_COUNT") {
-      return res.status(413).json({ error: "Too many files. Max 10 images allowed." });
-    }
-    return res.status(400).json({ error: err.message });
-  }
-  if (err) {
-    console.error("[ADMIN UPLOAD ERROR]", err.message);
-    return res.status(400).json({ error: err.message });
-  }
-  next();
-};
+// ── UPLOAD MIDDLEWARE (shared via media.service) ────────────────────────────
+// `multiUpload` accepts up to 10 product images; `videoUpload` accepts one
+// product video. Both are Cloudinary-backed when env vars are set, local-disk
+// otherwise. The named presets expose the same `req.file` / `req.files` shape
+// in either case, so the route handlers can use a single normalization path.
+const multiUpload = mediaService.productMulter.array("images", 10);
+const videoUpload = mediaService.productVideoMulter.single("video");
 
 // ── HELPERS ────────────────────────────────────────────────────────────────────
 function isAdmin(req) {
@@ -145,18 +49,43 @@ function isAdmin(req) {
 // ── PUBLIC: GET ALL PRODUCTS WITH SEARCH & CATEGORY FILTERING ────────────────
 router.get("/", async (req, res) => {
   try {
-    const filter = { isDeleted: { $ne: true } };
+    // ✅ NEW: Filter to only marketplace products by default
+    // This ensures restaurant menu items never appear on marketplace pages
+    const filter = {
+      isDeleted: { $ne: true },
+      // ✅ NEW: Filter by productType to ensure only marketplace products
+      productType: "product"
+    };
+
+    // Get marketplace vendor IDs using helper
+    const marketplaceVendorIds = await getMarketplaceVendorIds();
+    console.log("[PRODUCTS] Marketplace vendor IDs found:", marketplaceVendorIds.length);
+
+    // Only show products from marketplace vendors
+    // If no marketplace vendors exist, return empty array (not error)
+    if (marketplaceVendorIds.length > 0) {
+      filter.vendorId = { $in: marketplaceVendorIds };
+    } else {
+      console.log("[PRODUCTS] No marketplace vendors found, returning empty array");
+      return res.json([]);
+    }
 
     // ── COMPREHENSIVE SEARCH: Search by name, description, category, brand, tags, vendor, location ─
     if (req.query.search) {
       const searchTerm = req.query.search.trim();
       const searchRegex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"); // escape special chars
 
-      // First, find vendors matching the search term (including location)
-      const Vendor = require("../models/User");
-      const matchingVendors = await Vendor.find({
+      // First, find MARKETPLACE vendors matching the search term (including location)
+      // BACKWARD COMPATIBLE: Include vendors without vendorType (legacy data)
+      const matchingVendors = await User.find({
         isVendor: true,
         vendorStatus: "approved",
+        $or: [
+          { vendorType: "marketplace" },
+          { vendorType: { $exists: false } },
+          { vendorType: null },
+          { vendorType: "" }
+        ],
         $or: [
           { storeName: { $regex: searchRegex } },
           { name: { $regex: searchRegex } },
@@ -184,9 +113,48 @@ router.get("/", async (req, res) => {
       filter.category = new RegExp(`^${req.query.category}$`, "i"); // exact match, case-insensitive
     }
 
+    // ── CATEGORIES (Task 7): Multi-category CSV union (used by HomepageSection "category" source) ──
+    if (req.query.categories) {
+      const list = String(req.query.categories)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (list.length === 1) {
+        filter.category = new RegExp(`^${list[0]}$`, "i");
+      } else if (list.length > 1) {
+        const escaped = list.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        filter.category = { $in: list.map((s) => new RegExp(`^${s}$`, "i")) };
+      }
+    }
+
     // ── VENDOR: Filter by vendor (if specified) ───────────────────────────
     if (req.query.vendorId) {
       filter.vendorId = req.query.vendorId;
+    }
+
+    // ── VENDORIDS (Task 7): Multi-vendor CSV union (used by HomepageSection "vendor" source) ──
+    if (req.query.vendorIds) {
+      const ids = String(req.query.vendorIds)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (ids.length > 0) {
+        // Intersect with the marketplace-vendor whitelist so we never leak non-marketplace vendors.
+        const allowed = new Set(marketplaceVendorIds.map(String));
+        const intersection = ids.filter((id) => allowed.has(String(id)));
+        if (intersection.length === 0) {
+          return res.json([]);
+        }
+        filter.vendorId = { $in: intersection };
+      }
+    }
+
+    // ── MERCHANDISING FLAGS (Task 7): Filter by isFeatured / isOnSale ───────
+    if (String(req.query.isFeatured).toLowerCase() === "true") {
+      filter.isFeatured = true;
+    }
+    if (String(req.query.isOnSale).toLowerCase() === "true") {
+      filter.isOnSale = true;
     }
 
     // ── LOCATION FILTER: Filter by vendor's region ───────────────────────
@@ -251,13 +219,54 @@ router.get("/", async (req, res) => {
 // ── PUBLIC: GET CATEGORIES ───────────────────────────────────────────────────
 router.get("/categories", async (req, res) => {
   try {
-    const cats = await Product.distinct("category", {
-      isDeleted: { $ne: true },
-      category: { $ne: null, $ne: "" },
-    });
-    // ── Sort categories alphabetically ────────────────────────────────────
-    const sortedCats = (cats || []).sort((a, b) => a.localeCompare(b));
-    res.json(sortedCats);
+    // ✅ Filter to only marketplace vendors' products
+    const marketplaceVendorIds = await getMarketplaceVendorIds();
+
+    if (marketplaceVendorIds.length === 0) {
+      // Don't bail — vendors may still submit new category requests before
+      // any product is listed, so we should still return approved names.
+    }
+
+    const cats = marketplaceVendorIds.length
+      ? await Product.distinct("category", {
+          isDeleted: { $ne: true },
+          category: { $ne: null, $ne: "" },
+          vendorId: { $in: marketplaceVendorIds },
+        })
+      : [];
+
+    // ✅ Merge distinct live categories with admin-approved CategoryRequest
+    // names AND the curated starter list. This is the union that the vendor
+    // dropdown reads from — a starter name is immediately selectable, even
+    // before any product has used it.
+    const CategoryRequest = require("../models/CategoryRequest");
+    const { STARTER_CATEGORIES } = require("../config/starterCategories");
+    const [approved, starter] = await Promise.all([
+      CategoryRequest.find({ status: "approved" }).select("name").lean(),
+      Promise.resolve(STARTER_CATEGORIES),
+    ]);
+    const approvedSet = new Set(approved.map((r) => String(r.name).toLowerCase()));
+
+    const merged = new Set();
+    for (const c of cats || []) {
+      if (c) merged.add(String(c).trim());
+    }
+    for (const name of approvedSet) {
+      if (name) merged.add(name);
+    }
+    for (const name of starter) {
+      if (name) merged.add(String(name).trim());
+    }
+
+    let result = Array.from(merged).sort((a, b) => a.localeCompare(b));
+
+    // Optional case-insensitive substring filter for the searchable dropdown.
+    if (req.query.search) {
+      const s = String(req.query.search).toLowerCase().trim();
+      if (s) result = result.filter((c) => c.toLowerCase().includes(s));
+    }
+
+    res.json(result);
   } catch (err) {
     console.error("❌ Categories error:", err.message);
     res.status(500).json({ error: "Failed to fetch categories" });
@@ -267,10 +276,14 @@ router.get("/categories", async (req, res) => {
 // ── PUBLIC: GET PRODUCT BY ID ────────────────────────────────────────────────
 router.get("/:id", async (req, res) => {
   try {
+    // ✅ Verify product is from marketplace vendor
+    const marketplaceVendorIds = await getMarketplaceVendorIds();
+
     const product = await Product.findOne({
       _id: req.params.id,
-      isDeleted: { $ne: true }
-    }).populate("vendorId", "storeName name email location").lean();
+      isDeleted: { $ne: true },
+      vendorId: { $in: marketplaceVendorIds },
+    }).populate("vendorId", "storeName name email location vendorType").lean();
 
     if (!product) return res.status(404).json({ error: "Product not found" });
 
@@ -286,106 +299,49 @@ router.get("/:id", async (req, res) => {
 });
 
 // ── ADMIN: UPLOAD PRODUCT VIDEO ────────────────────────────────────────────
-router.post("/:id/video", requireAuth, requireAdmin, videoUpload, handleVideoUploadError, async (req, res) => {
-  try {
-    logger.log("========================================");
-    logger.log("[VIDEO UPLOAD] Admin - Starting upload...");
-    logger.log("[VIDEO UPLOAD] Admin - videoUpload ready:", !!videoUpload);
-    logger.log("[VIDEO UPLOAD] Admin - CLOUDINARY_CONFIGURED:", CLOUDINARY_CONFIGURED);
-    logger.log("[VIDEO UPLOAD] Admin - req.file:", req.file ? "exists" : "MISSING");
-    if (req.file) {
-      logger.log("[VIDEO UPLOAD] Admin - File details:", {
-        originalname: req.file.originalname,
-        filename: req.file.filename,
-        path: req.file.path,
-        destination: req.file.destination,
-        size: req.file.size,
-        secure_url: req.file.secure_url,
-        public_id: req.file.public_id
-      });
-    }
-    logger.log("========================================");
+router.post(
+  "/:id/video",
+  requireAuth, requireAdmin,
+  videoUpload,
+  mediaService.handleVideoUploadError,
+  async (req, res) => {
+    try {
+      const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+      if (!product) return res.status(404).json({ error: "Product not found" });
 
-    const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
-    if (!product) return res.status(404).json({ error: "Product not found" });
-
-    if (!req.file) {
-      return res.status(400).json({ error: "No video file uploaded" });
-    }
-
-    // Delete old video from Cloudinary if exists
-    if (product.videoPublicId && CLOUDINARY_CONFIGURED) {
-      try {
-        const { cloudinary } = require("../config/cloudinary");
-        await cloudinary.uploader.destroy(product.videoPublicId, { resource_type: "video" });
-        logger.log("[VIDEO] Deleted old video:", product.videoPublicId);
-      } catch (e) {
-        console.error("[VIDEO] Failed to delete old video:", e.message);
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file uploaded" });
       }
+
+      // Delete old video from Cloudinary if we have a public_id.
+      if (product.videoPublicId) {
+        const result = await mediaService.destroyAsset(product.videoPublicId, { resourceType: "video" });
+        logger.log("[VIDEO] Destroyed old video:", product.videoPublicId, "→", result?.result || "ok");
+      }
+
+      // Normalize the uploaded file. `toVideoRecord` returns the canonical
+      // `{ url, public_id, duration }` shape whether the upload went to
+      // Cloudinary (URL is a https://res.cloudinary.com/... string) or to the
+      // local-disk fallback (URL is /uploads/videos/<uuid>.<ext>).
+      const rec = mediaService.toVideoRecord(req.file);
+      const videoUrl = rec.url;
+      const videoPublicId = rec.public_id;
+      const videoDuration = rec.duration || 0;
+
+      // Update product with video. Persist duration too so the product detail
+      // page can show a length badge without a follow-up probe.
+      product.videoUrl = videoUrl;
+      product.videoPublicId = videoPublicId;
+      product.videoDuration = videoDuration;
+      await product.save();
+
+      res.json({ videoUrl, videoPublicId, videoDuration, message: "Video uploaded successfully" });
+    } catch (err) {
+      console.error("[VIDEO UPLOAD] Error:", err.message);
+      res.status(500).json({ error: "Failed to upload video: " + err.message });
     }
-
-    // Get video URL and public ID - FIXED: Always use Cloudinary when configured
-    let videoUrl = "";
-    let videoPublicId = "";
-
-    // Debug: Log all available Cloudinary-related fields
-    logger.log("[VIDEO UPLOAD] Admin - Debug - all file fields:", {
-      secure_url: req.file.secure_url,
-      public_id: req.file.public_id,
-      url: req.file.url,
-      path: req.file.path,
-      filename: req.file.filename,
-      originalname: req.file.originalname,
-      CLOUDINARY_CONFIGURED: CLOUDINARY_CONFIGURED
-    });
-
-    // FIXED: Check Cloudinary first, even if secure_url seems empty
-    if (CLOUDINARY_CONFIGURED) {
-      if (req.file.secure_url && req.file.secure_url.startsWith("http")) {
-        videoUrl = req.file.secure_url;
-        videoPublicId = req.file.public_id || "";
-        logger.log("[VIDEO UPLOAD] Admin - ✓ Using Cloudinary secure_url:", videoUrl);
-      } else if (req.file.public_id) {
-        videoPublicId = req.file.public_id;
-        videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
-        logger.log("[VIDEO UPLOAD] Admin - ✓ Using constructed URL from public_id:", videoUrl);
-      } else if (req.file.path && req.file.path.startsWith("http")) {
-        videoUrl = req.file.path;
-        videoPublicId = "";
-        logger.log("[VIDEO UPLOAD] Admin - ✓ Using URL from path:", videoUrl);
-      } else {
-        // Cloudinary configured but no URL - construct from filename
-        videoPublicId = `siishop/products/videos/${req.file.filename.split('.')[0]}`;
-        videoUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/video/upload/${videoPublicId}`;
-        logger.log("[VIDEO UPLOAD] Admin - ✓ Using constructed URL (fallback):", videoUrl);
-      }
-    } else {
-      // Fallback to local storage - use full filename (includes extension)
-      let filename = req.file.filename;
-      if (filename.includes('/')) {
-        filename = filename.split('/').pop();
-      }
-      if (filename.includes('\\')) {
-        filename = filename.split('\\').pop();
-      }
-      videoUrl = `/uploads/videos/${filename}`;
-      logger.log("[VIDEO UPLOAD] Admin - ✗ Using local URL:", videoUrl, "from req.file.filename:", req.file.filename);
-    }
-
-    // Update product with video
-    product.videoUrl = videoUrl;
-    product.videoPublicId = videoPublicId || "";
-    await product.save();
-
-    logger.log("[VIDEO UPLOAD] Admin - ✓ Saved product.videoUrl:", product.videoUrl);
-    logger.log("========================================");
-
-    res.json({ videoUrl, videoPublicId, message: "Video uploaded successfully" });
-  } catch (err) {
-    console.error("[VIDEO UPLOAD] Error:", err.message);
-    res.status(500).json({ error: "Failed to upload video: " + err.message });
   }
-});
+);
 
 // ── ADMIN: DELETE PRODUCT VIDEO ─────────────────────────────────────────────
 router.delete("/:id/video", requireAuth, requireAdmin, async (req, res) => {
@@ -393,15 +349,10 @@ router.delete("/:id/video", requireAuth, requireAdmin, async (req, res) => {
     const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!product) return res.status(404).json({ error: "Product not found" });
 
-    // Delete from Cloudinary if exists
-    if (product.videoPublicId && CLOUDINARY_CONFIGURED) {
-      try {
-        const { cloudinary } = require("../config/cloudinary");
-        await cloudinary.uploader.destroy(product.videoPublicId, { resource_type: "video" });
-        logger.log("[VIDEO] Deleted video from Cloudinary:", product.videoPublicId);
-      } catch (e) {
-        console.error("[VIDEO] Failed to delete video:", e.message);
-      }
+    // Delete from Cloudinary if we have a public_id.
+    if (product.videoPublicId) {
+      const result = await mediaService.destroyAsset(product.videoPublicId, { resourceType: "video" });
+      logger.log("[VIDEO] Destroyed video from Cloudinary:", product.videoPublicId, "→", result?.result || "ok");
     }
 
     // Clear video fields
@@ -418,67 +369,77 @@ router.delete("/:id/video", requireAuth, requireAdmin, async (req, res) => {
 });
 
 /// ── ADMIN: CREATE PRODUCT ────────────────────────────────────────────────
-router.post("/", requireAuth, requireAdmin, multiUpload, handleMulterError, async (req, res) => {
-  try {
-    // 🐛 DEBUG LOGGING (MANDATORY)
-    logger.log("=== ADMIN CREATE PRODUCT DEBUG ===");
-    logger.log("ADMIN USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
-    logger.log("ADMIN BODY:", req.body);
-    logger.log("ADMIN FILES:", req.files);
-    logger.log("=====================================");
+router.post(
+  "/",
+  requireAuth, requireAdmin,
+  multiUpload,
+  mediaService.handleMulterError,
+  async (req, res) => {
+    try {
+      // 🐛 DEBUG LOGGING (MANDATORY)
+      logger.log("=== ADMIN CREATE PRODUCT DEBUG ===");
+      logger.log("ADMIN USER:", req.user ? { userId: req.user.userId, isAdmin: req.user.isAdmin } : "NO USER");
+      logger.log("ADMIN BODY:", req.body);
+      logger.log("ADMIN FILES:", req.files);
+      logger.log("=====================================");
 
-    // Validate at least one image
-    if (!req.files || req.files.length === 0) {
-      const legacyImage = req.body.image;
-      if (!legacyImage) {
-        return res.status(400).json({ error: "At least one product image is required" });
-      }
-    }
-
-    // Handle images from uploaded files
-    let images = [];
-    if (req.files && req.files.length > 0) {
-      images = req.files.map(file => {
-        let url;
-        let public_id = "";
-
-        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
-        const isCloudinaryUpload = CLOUDINARY_CONFIGURED && (file.secure_url || (file.path && file.path.startsWith("http")));
-
-        if (isCloudinaryUpload) {
-          // Cloudinary - use secure URL
-          url = file.secure_url || file.path;
-          public_id = file.public_id || "";
-        } else {
-          // Local storage
-          url = `/uploads/${file.filename}`;
+      // Validate at least one image
+      if (!req.files || req.files.length === 0) {
+        const legacyImage = req.body.image;
+        if (!legacyImage) {
+          return res.status(400).json({ error: "At least one product image is required" });
         }
+      }
 
-        return { url, public_id };
-      });
-    }
+      // Handle images from uploaded files. `toImageRecords` produces the
+      // canonical `{ url, public_id }` shape for every file regardless of
+      // whether the upload streamed to Cloudinary or to the local-disk
+      // fallback.
+      let images = mediaService.toImageRecords(req.files);
 
-    // Backward compatibility: if no files but legacy image field provided
-    const legacyImage = req.body.image;
-    if (images.length === 0 && legacyImage) {
-      images.push({ url: legacyImage, public_id: "" });
+      // Backward compatibility: if no files but legacy image field provided
+      const legacyImage = req.body.image;
+      if (images.length === 0 && legacyImage) {
+        images.push({ url: legacyImage, public_id: "" });
+      }
+
+    // ✅ Reject arbitrary category strings; require a value from the live list
+    // (union of distinct Product.category + approved CategoryRequest names).
+    const catCheck = await validateCategory({
+      submitted: req.body.category,
+      op: "create",
+    });
+    if (!catCheck.ok) {
+      return res.status(400).json({ error: catCheck.message });
     }
 
     const productData = {
       name:        req.body.name        || "",
       description: req.body.description || "",
       price:       parseFloat(req.body.price)    || 0,
-      category:    req.body.category   || "",
+      category:    catCheck.category,
       stock:       parseInt(req.body.stock, 10)  || 0,
       available:   req.body.available === "true" || req.body.available === true,
       images:      images,
       image:       images.length > 0 ? images[0].url : "",
       vendorId:    req.user.userId,
+      // Discount fields (optional). Normalized by prepareProductForSave().
+      originalPrice:  req.body.originalPrice !== undefined && req.body.originalPrice !== ""
+        ? parseFloat(req.body.originalPrice) : null,
+      discountType:   req.body.discountType || null,
+      discountValue:  req.body.discountValue !== undefined && req.body.discountValue !== ""
+        ? parseFloat(req.body.discountValue) : null,
     };
+
+    // ✅ Normalize & validate discount (auto-derives isOnSale).
+    const prepared = prepareProductForSave(productData);
+    if (prepared.error) {
+      return res.status(400).json({ error: prepared.error });
+    }
 
     logger.log("[ADMIN CREATE] Creating product:", productData);
 
-    const product = await Product.create(productData);
+    const product = await Product.create(prepared.payload);
     logger.log("[ADMIN CREATE] Product created:", product._id);
 
     res.status(201).json(product);
@@ -489,57 +450,48 @@ router.post("/", requireAuth, requireAdmin, multiUpload, handleMulterError, asyn
 });
 
 // ── ADMIN: UPDATE PRODUCT ────────────────────────────────────────────────
-router.put("/:id", requireAuth, requireAdmin, multiUpload, handleMulterError, async (req, res) => {
-  try {
-    logger.log("[ADMIN UPDATE] Files:", req.files);
-    logger.log("[ADMIN UPDATE] Body:", req.body);
+router.put(
+  "/:id",
+  requireAuth, requireAdmin,
+  multiUpload,
+  mediaService.handleMulterError,
+  async (req, res) => {
+    try {
+      logger.log("[ADMIN UPDATE] Files:", req.files);
+      logger.log("[ADMIN UPDATE] Body:", req.body);
 
-    const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
-    if (!product) return res.status(404).json({ error: "Not found" });
+      const product = await Product.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+      if (!product) return res.status(404).json({ error: "Not found" });
 
-    // Get existing images array or initialize
-    let existingImages = product.images || [];
-    if (existingImages.length === 0 && product.image) {
-      existingImages = [{ url: product.image, public_id: "" }];
-    }
-
-    // Parse deleteImages - array of URLs to remove
-    let imagesToDelete = [];
-    if (req.body.deleteImages) {
-      try {
-        imagesToDelete = typeof req.body.deleteImages === "string"
-          ? JSON.parse(req.body.deleteImages)
-          : req.body.deleteImages;
-      } catch (e) {
-        imagesToDelete = req.body.deleteImages ? [req.body.deleteImages] : [];
+      // Get existing images array or initialize
+      let existingImages = product.images || [];
+      if (existingImages.length === 0 && product.image) {
+        existingImages = [{ url: product.image, public_id: "" }];
       }
-    }
 
-    // Remove deleted images
-    if (imagesToDelete.length > 0) {
-      existingImages = existingImages.filter(img => !imagesToDelete.includes(img.url));
-    }
-
-    // Add new uploaded images
-    if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => {
-        let url;
-        let public_id = "";
-
-        // Check if this is a Cloudinary upload (has secure_url or path is a URL)
-        const isCloudinaryUpload = CLOUDINARY_CONFIGURED && (file.secure_url || (file.path && file.path.startsWith("http")));
-
-        if (isCloudinaryUpload) {
-          url = file.secure_url || file.path;
-          public_id = file.public_id || "";
-        } else {
-          url = `/uploads/${file.filename}`;
+      // Parse deleteImages - array of URLs to remove
+      let imagesToDelete = [];
+      if (req.body.deleteImages) {
+        try {
+          imagesToDelete = typeof req.body.deleteImages === "string"
+            ? JSON.parse(req.body.deleteImages)
+            : req.body.deleteImages;
+        } catch (e) {
+          imagesToDelete = req.body.deleteImages ? [req.body.deleteImages] : [];
         }
+      }
 
-        return { url, public_id };
-      });
-      existingImages = [...existingImages, ...newImages];
-    }
+      // Remove deleted images
+      if (imagesToDelete.length > 0) {
+        existingImages = existingImages.filter(img => !imagesToDelete.includes(img.url));
+      }
+
+      // Add new uploaded images (Cloudinary or local-disk both flow through
+      // the shared `toImageRecords` normalizer).
+      const newImages = mediaService.toImageRecords(req.files);
+      if (newImages.length > 0) {
+        existingImages = [...existingImages, ...newImages];
+      }
 
     // Limit to 10 images max
     if (existingImages.length > 10) {
@@ -554,9 +506,48 @@ router.put("/:id", requireAuth, requireAdmin, multiUpload, handleMulterError, as
     if (req.body.name !== undefined)        product.name = req.body.name;
     if (req.body.description !== undefined) product.description = req.body.description;
     if (req.body.price !== undefined)       product.price = parseFloat(req.body.price) || 0;
-    if (req.body.category !== undefined)    product.category = req.body.category;
+    // ✅ Category whitelist with legacy preservation. The product's CURRENT
+    // category is passed so re-saving an unchanged legacy typo is allowed.
+    if (req.body.category !== undefined) {
+      const catCheck = await validateCategory({
+        submitted: req.body.category,
+        current:   product.category,
+        op:        "update",
+      });
+      if (!catCheck.ok) {
+        return res.status(400).json({ error: catCheck.message });
+      }
+      product.category = catCheck.category;
+    }
     if (req.body.stock !== undefined)       product.stock = parseInt(req.body.stock, 10) || 0;
     if (req.body.available !== undefined)   product.available = req.body.available === "true" || req.body.available === true;
+
+    // Discount fields (optional). Normalized by prepareProductForSave().
+    // ✅ Multipart forms can't carry JSON `null` natively, so we accept the
+    // string sentinel "null" (and "undefined") as an explicit clear signal.
+    // This lets the client FormData path round-trip a "clear the discount"
+    // intent instead of having the route silently keep the stale DB value.
+    const isClear = (v) => v === null || v === "" || v === "null" || v === "undefined";
+    if (req.body.originalPrice !== undefined) {
+      product.originalPrice = isClear(req.body.originalPrice)
+        ? null
+        : parseFloat(req.body.originalPrice);
+    }
+    if (req.body.discountType !== undefined) {
+      product.discountType = isClear(req.body.discountType) ? null : req.body.discountType;
+    }
+    if (req.body.discountValue !== undefined) {
+      product.discountValue = isClear(req.body.discountValue)
+        ? null
+        : parseFloat(req.body.discountValue);
+    }
+
+    // ✅ Normalize & validate discount (auto-derives isOnSale).
+    const prepared = prepareProductForSave(product.toObject ? product.toObject() : product);
+    if (prepared.error) {
+      return res.status(400).json({ error: prepared.error });
+    }
+    Object.assign(product, prepared.payload);
 
     await product.save();
     logger.log("[ADMIN UPDATE] Product updated:", product._id);
@@ -585,10 +576,26 @@ router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 // ── PUBLIC: GET FLASH DEALS / PROMOS ─────────────────────────────────────────
 router.get("/promo/flash-deals", async (req, res) => {
   try {
+    // ✅ Filter to only marketplace vendors
+    const marketplaceVendorIds = await getMarketplaceVendorIds();
+
+    if (marketplaceVendorIds.length === 0) {
+      return res.json([]);
+    }
+
     const promos = await Promo.find({ isActive: true })
-      .populate("productIds")
+      .populate({
+        path: "productIds",
+        match: { vendorId: { $in: marketplaceVendorIds } },
+      })
       .lean();
-    res.json(promos || []);
+
+    // Filter out promos with no valid products (due to match)
+    const validPromos = (promos || []).filter(promo =>
+      promo.productIds && promo.productIds.length > 0
+    );
+
+    res.json(validPromos);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch promos" });
   }
@@ -642,8 +649,18 @@ router.get("/trending", async (req, res) => {
   try {
     const { limit = 12 } = req.query;
 
+    // ✅ Filter to only marketplace vendors
+    const marketplaceVendorIds = await getMarketplaceVendorIds();
+
+    if (marketplaceVendorIds.length === 0) {
+      return res.json([]);
+    }
+
     // Get products with highest viewCount or sales, available only
-    const products = await Product.find({ available: true })
+    const products = await Product.find({
+      available: true,
+      vendorId: { $in: marketplaceVendorIds },
+    })
       .sort({ views: -1, salesCount: -1, updatedAt: -1 })
       .limit(parseInt(limit))
       .populate("vendorId", "storeName slug")
@@ -660,7 +677,17 @@ router.get("/recent", async (req, res) => {
   try {
     const { limit = 12 } = req.query;
 
-    const products = await Product.find({ available: true })
+    // ✅ Filter to only marketplace vendors
+    const marketplaceVendorIds = await getMarketplaceVendorIds();
+
+    if (marketplaceVendorIds.length === 0) {
+      return res.json([]);
+    }
+
+    const products = await Product.find({
+      available: true,
+      vendorId: { $in: marketplaceVendorIds },
+    })
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .populate("vendorId", "storeName slug")
@@ -679,19 +706,27 @@ router.get("/related/:id", async (req, res) => {
     const { id } = req.params;
     const { limit = 6 } = req.query;
 
+    // ✅ Filter to only marketplace vendors
+    const marketplaceVendorIds = await getMarketplaceVendorIds();
+
+    if (marketplaceVendorIds.length === 0) {
+      return res.json([]);
+    }
+
     // Get the product to find related products
     const product = await Product.findById(id).lean();
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // Find products in same category, excluding current product
+    // Find products in same category, excluding current product, from marketplace vendors
     const related = await Product.find({
       _id: { $ne: id },
       available: true,
+      vendorId: { $in: marketplaceVendorIds },
       $or: [
         { category: product.category },
-        { "vendorId._id": product.vendorId?._id }
+        { vendorId: product.vendorId }
       ]
     })
       .sort({ salesCount: -1, views: -1 })
@@ -710,10 +745,11 @@ router.post("/:id/view", async (req, res) => {
   try {
     const { id } = req.params;
 
-    const product = await Product.findByIdAndUpdate(
-      id,
+    // ✅ Task 7: only increment for live, available, marketplace products
+    const product = await Product.findOneAndUpdate(
+      { _id: id, isDeleted: { $ne: true }, available: true },
       { $inc: { views: 1 } },
-      { new: true }
+      { new: true, projection: { views: 1 } }
     );
 
     if (!product) {

@@ -21,6 +21,7 @@ const notificationSchema = new mongoose.Schema({
       "order_status",
       "payment_received",
       "commission_due",
+      "commission_paid",
       "wishlist_price_drop",
       "wishlist_stock_available",
       "system",
@@ -59,6 +60,22 @@ const notificationSchema = new mongoose.Schema({
 // Index for common queries
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, createdAt: -1 });
+
+// Idempotency guard for commission_paid notifications: a Paystack
+// reference can only generate ONE in-app notification. Other
+// notification types that use metadata.paymentRef are not
+// constrained (the partial filter scopes the uniqueness).
+notificationSchema.index(
+  { "metadata.paymentRef": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      type: "commission_paid",
+      "metadata.paymentRef": { $exists: true, $type: "string" },
+    },
+    name: "uniq_commission_paid_paymentRef",
+  }
+);
 
 // Static method to count unread
 notificationSchema.statics.getUnreadCount = async function(userId) {

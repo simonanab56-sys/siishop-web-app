@@ -169,8 +169,17 @@ export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
   const orderCardRef = useRef({});
 
   // Toggle order expansion (accordion)
+  // ✅ FIX: Sync BOTH the mobile accordion (`expandedOrderId`) AND the
+  //   desktop detail panel (`selectedId`) on every click. The CSS hides the
+  //   mobile accordion at ≥901px and hides the desktop panel at ≤900px, so
+  //   only one view is ever visible — but both states must agree, otherwise
+  //   clicks silently do nothing on one of the two screen sizes.
+  //   `selectedId` was previously only initialised from localStorage and was
+  //   never updated, which made the desktop detail panel always show the
+  //   stale `lastOrderId` order (or the placeholder) — i.e. the regression.
   const toggleOrderDetails = useCallback((orderId) => {
-    setExpandedOrderId(prev => prev === orderId ? null : orderId);
+    setExpandedOrderId(prev => (prev === orderId ? null : orderId));
+    setSelectedId(prev => (prev === orderId ? null : orderId));
   }, []);
 
   // Handle message vendor - require authentication

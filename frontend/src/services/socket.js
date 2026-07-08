@@ -125,6 +125,28 @@ class SocketService {
     }
   }
 
+  // ─────────────────────────────────────────────────────────
+  // ADMIN LIVE-NOTIFY
+  // ─────────────────────────────────────────────────────────
+
+  // Join admin-notify-room. The admin frontend (AdminDashboard.jsx)
+  // calls this on mount. The room is used for live pushes of
+  // commission-paid (and any future admin-only) events. The server
+  // does NOT verify the user is admin at the socket layer — the
+  // route mount that triggers this is itself admin-only, so the
+  // trust model matches the existing chat-join.
+  adminNotifyJoin() {
+    if (this.socket?.connected) {
+      this.socket.emit("admin-notify-join");
+    }
+  }
+
+  adminNotifyLeave() {
+    if (this.socket?.connected) {
+      this.socket.emit("admin-notify-leave");
+    }
+  }
+
   // Mark messages as read
   chatRead(conversationId, userId) {
     if (this.socket?.connected) {

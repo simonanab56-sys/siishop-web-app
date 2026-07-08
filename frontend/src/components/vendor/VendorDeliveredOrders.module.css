@@ -1,0 +1,37 @@
+/* VendorDeliveredOrders.module.css
+ * Styles for the shared "Delivered Orders" tab used by both Marketplace
+ * VendorDashboard and Restaurant Dashboard. Self-contained so the
+ * component file is portable.
+ */
+.deliveredTab { display: flex; flex-direction: column; gap: 20px; }
+.statsGrid    { display: flex; flex-wrap: wrap; gap: 12px; }
+.filtersRow   { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.filterBtns   { display: flex; gap: 8px; }
+.filterBtn    {
+  padding: 6px 12px;
+  border: 1px solid var(--brand-border);
+  background: #fff;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.filterBtn:hover      { border-color: var(--brand-primary); }
+.filterBtnActive      {
+  background: var(--brand-primary);
+  color: #fff;
+  border-color: var(--brand-primary);
+}
+.dateInputs  { display: flex; align-items: center; gap: 8px; }
+.dateInput   {
+  padding: 6px 10px;
+  border: 1px solid var(--brand-border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.searchInput {
+  padding: 8px 12px;
+  border: 1px solid var(--brand-border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  min-width: 200px;
+}

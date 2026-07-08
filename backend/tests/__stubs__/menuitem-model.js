@@ -1,0 +1,1 @@
+module.exports = function(){}; module.exports.find = ()=>Promise.resolve([]);

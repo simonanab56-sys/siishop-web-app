@@ -22,6 +22,21 @@ const productSchema = new mongoose.Schema(
     stock:    { type: Number, default: 0, min: 0 },
     available: { type: Boolean, default: true },
 
+    // ✅ NEW: Product type for unified marketplace + restaurant system
+    // "product" = marketplace item (electronics, fashion, etc.)
+    // "food" = restaurant menu item (jollof rice, pizza, etc.)
+    productType: {
+      type: String,
+      enum: ["product", "food"],
+      default: "product",
+    },
+
+    // ✅ NEW: Preparation time (for food items only)
+    preparationTime: {
+      type: Number,
+      default: 0, // 0 means not applicable (for regular products)
+    },
+
     // New multi-image field
     images: {
       type: [imageSchema],
@@ -37,6 +52,21 @@ const productSchema = new mongoose.Schema(
     videoPublicId: { type: String, default: "" },
     videoDuration: { type: Number, default: 0 },
     isDeleted: { type: Boolean, default: false },
+
+    // ✅ NEW (Task 7 — Dynamic Homepage Sections): analytics + merchandising flags.
+    // All default to safe values so existing products continue to work without migration.
+    views:         { type: Number,  default: 0,    index: true },     // incremented by POST /:id/view
+    salesCount:    { type: Number,  default: 0,    index: true },     // incremented on order delivered
+    isFeatured:    { type: Boolean, default: false, index: true },     // surfaces in "Featured" automatic section
+    isOnSale:      { type: Boolean, default: false, index: true },     // surfaces in "Discounted" automatic section
+    originalPrice: { type: Number,  default: null },                  // pre-sale price, shown as a strikethrough
+
+    // ✅ NEW: optional per-product discount fields. When present, the form
+    // typically collects (originalPrice + discountType + discountValue) and the
+    // server snapshots the final selling price into `price`. `isOnSale` is
+    // auto-derived in prepareProductForSave().
+    discountType:  { type: String, enum: ["percentage", "fixed"], default: null },
+    discountValue: { type: Number, min: 0, default: null },
   },
   { timestamps: true }
 );
@@ -47,6 +77,17 @@ productSchema.virtual("primaryImage").get(function() {
     return this.images[0].url;
   }
   return this.image || "";
+});
+
+// ✅ NEW: discountAmount — absolute savings when the product is on sale.
+// Returns 0 when not on sale. Used by the /deals sort=biggest/smallest modes
+// via sortBy=discountAmount (the virtual participates in Mongoose sort).
+productSchema.virtual("discountAmount").get(function() {
+  const op = Number(this.originalPrice);
+  const p  = Number(this.price);
+  if (!op || !Number.isFinite(op) || !Number.isFinite(p)) return 0;
+  if (op <= p) return 0;
+  return Math.round((op - p) * 100) / 100;
 });
 
 // Ensure virtuals are included in JSON
@@ -93,5 +134,25 @@ productSchema.post("findOneAndDelete", async function (doc, next) {
 });
 
 // Prevent conflicts if model already exists
+// ✅ NEW: Composite index for the food items query in routes/restaurants.js
+// (`GET /api/restaurants/food`, `GET /api/restaurants/:slug`). The query
+// filters by `vendorId + productType + isDeleted` and sorts by `createdAt`;
+// this compound index makes the filter + sort O(log n) regardless of catalog
+// size.
+productSchema.index({ vendorId: 1, productType: 1, isDeleted: 1, createdAt: -1 });
+
+// ✅ NEW: Sparse partial index on `name` to back the search endpoint's
+// anchored regex (`^q`). Without an index, `new RegExp(q, "i")` is
+// unanchored and forces a full collection scan. The sparse partial filter
+// keeps the index small by only indexing non-deleted documents (the
+// search query already filters `{ isDeleted: { $ne: true } }`).
+productSchema.index(
+  { name: 1 },
+  {
+    name: "name_search_partial",
+    partialFilterExpression: { isDeleted: { $ne: true } },
+  }
+);
+
 module.exports =
   mongoose.models.Product || mongoose.model("Product", productSchema);

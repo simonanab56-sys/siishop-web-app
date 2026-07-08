@@ -1,17 +1,37 @@
-// GalleryModal.jsx — Fullscreen gallery modal with keyboard navigation
+// GalleryModal.jsx — Fullscreen gallery modal with keyboard navigation.
+//
+// ✅ RESTORED: pre-migration behavior. The OLD GalleryModal called
+//   `getProductImages(product)` (which goes through `getImageUrl` with no
+//   width option) and rendered `<img src={currentImage}>`. The recent
+//   migration added inline transforms like `w_1200,c_fill,q_auto,f_auto`
+//   via `getImageUrl(url, { width })`, which 404s for products whose
+//   Cloudinary asset doesn't have that exact variant cached. We restore
+//   the pre-migration call shape: no width, helper returns the secure_url
+//   as-is, browser fetches the eager-baked w_1200 variant.
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getImageUrl, getProductImages } from "../utils/image";
 import styles from "./GalleryModal.module.css";
 
-// Helper to get images array from product
-function getImagesArray(product) {
-  const images = getProductImages(product);
-  return images.length > 0 ? images : [];
+// Helper to get images array - accepts either product object or direct images array
+function getImagesArray(productOrImages, name) {
+  // If it's an array, use it directly
+  if (Array.isArray(productOrImages)) {
+    return productOrImages.length > 0 ? productOrImages : [];
+  }
+  // If it's an object (product), get images from it
+  if (productOrImages) {
+    return getProductImages(productOrImages);
+  }
+  return [];
 }
 
-export default function GalleryModal({ product, initialIndex = 0, onClose }) {
-  const images = getImagesArray(product);
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+export default function GalleryModal({ product, images: directImages, initialIndex = 0, onClose, name = "Product" }) {
+  // Support both product object and direct images array
+  const images = getImagesArray(product || directImages, name);
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    // Validate initialIndex is within bounds
+    return initialIndex >= 0 && initialIndex < images.length ? initialIndex : 0;
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [touchStart, setTouchStart] = useState(null);
   const modalRef = useRef(null);
@@ -142,7 +162,7 @@ export default function GalleryModal({ product, initialIndex = 0, onClose }) {
           {isLoading && <div className={styles.skeleton} />}
           <img
             src={currentImage}
-            alt={`${product.name || "Product"} - Image ${currentIndex + 1} of ${images.length}`}
+            alt={`${name} - Image ${currentIndex + 1} of ${images.length}`}
             className={`${styles.mainImage} ${!isLoading ? styles.imageLoaded : ""}`}
             onLoad={() => setIsLoading(false)}
           />

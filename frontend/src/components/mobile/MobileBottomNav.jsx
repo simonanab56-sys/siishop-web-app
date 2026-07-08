@@ -6,6 +6,8 @@ const BASE_NAV_ITEMS = [
   { id: "home", label: "Home", icon: Home, route: "home" },
   { id: "categories", label: "Categories", icon: Grid3X3, route: "categories" },
   { id: "stores", label: "Stores", icon: Store, route: "vendors" },
+  // ✅ NEW: Food marketplace - replaces Wishlist on mobile (can access via profile menu)
+  { id: "food", label: "Food", icon: () => <span style={{ fontSize: "1.2rem" }}>🍔</span>, route: "food" },
   { id: "wishlist", label: "Wishlist", icon: Heart, route: "wishlist" },
   { id: "cart", label: "Cart", icon: ShoppingCart, route: "cart" },
 ];
@@ -30,6 +32,7 @@ export default function MobileBottomNav({
     if (page === "wishlist") return "wishlist";
     if (page === "vendors") return "stores";
     if (page === "cart") return "cart";
+    if (page === "food") return "food";
     if (page === "notifications" || page === "vendor" || page === "admin" || page === "settings" || page === "orders") return "notifications";
     return page;
   };

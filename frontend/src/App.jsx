@@ -1,5 +1,5 @@
-// App.jsx — v10: global search support
-import { useState, Component, useEffect, useCallback, useRef } from "react";
+// App.jsx — v11: code splitting via React.lazy for heavy pages
+import { useState, Component, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import logger from "./utils/logger";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CurrencyProvider } from "./context/CurrencyContext";
@@ -9,6 +9,8 @@ import AuthModal from "./components/auth/AuthModal";
 import { useToast, ToastContainer } from "./components/Toast";
 import { productAPI } from "./services/api";
 import HomePage from "./pages/HomePage";
+import SeeAllPage from "./pages/SeeAllPage";
+import DealsPage from "./pages/DealsPage";
 import CategoriesPage from "./pages/CategoriesPage";
 import CartPage from "./pages/CartPage";
 import OrdersPage from "./pages/OrdersPage";
@@ -17,9 +19,6 @@ import WishlistPage from "./pages/WishlistPage";
 import StoresPage from "./pages/StoresPage";
 import VendorStorePage from "./pages/VendorStorePage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
-import VendorDashboard from "./pages/vendor/VendorDashboard";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminChatPage from "./pages/admin/AdminChatPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import AboutPage from "./pages/AboutPage";
 import ContactPage from "./pages/ContactPage";
@@ -27,10 +26,24 @@ import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsPage from "./pages/TermsPage";
 import RefundPolicyPage from "./pages/RefundPolicyPage";
 import FAQPage from "./pages/FAQPage";
-import DeliveryTrackingPage from "./pages/DeliveryTrackingPage";
-import ChatPage from "./pages/ChatPage";
 import { ChatProvider, useChat } from "./components/chat/ChatContext";
 import SEO from "./components/SEO";
+import PageSkeleton from "./components/PageSkeleton";
+
+// ✅ Code-split the heaviest pages. Each becomes a separate chunk that the
+// browser only fetches when the user actually navigates to it. The Suspense
+// fallback paints the page chrome immediately.
+const VendorDashboard = lazy(() => import("./pages/vendor/VendorDashboard"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminChatPage = lazy(() => import("./pages/admin/AdminChatPage"));
+const FoodPage = lazy(() => import("./pages/FoodPage"));
+const RestaurantPage = lazy(() => import("./pages/RestaurantPage"));
+const RestaurantDashboard = lazy(() => import("./pages/restaurant/RestaurantDashboard"));
+const FoodCartPage = lazy(() => import("./pages/FoodCartPage"));
+const FoodDetailPage = lazy(() => import("./pages/FoodDetailPage"));
+const FoodOrdersPage = lazy(() => import("./pages/FoodOrdersPage"));
+const DeliveryTrackingPage = lazy(() => import("./pages/DeliveryTrackingPage"));
+const ChatPage = lazy(() => import("./pages/ChatPage"));
 
 // ── Global Error Boundary ─────────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -156,22 +169,45 @@ const PAGE_SEO = {
     description: "SiiShop marketplace administration panel. Manage vendors, orders, and platform settings.",
     keywords: "admin dashboard, marketplace management, platform admin",
   },
+  // ✅ NEW: Food/Restaurant pages
+  food: {
+    title: "🍔 Food Delivery | SiiShop",
+    description: "Order food online from the best restaurants in Ghana. Fast delivery, great prices.",
+    keywords: "food delivery, restaurant, online food order, Ghana food, fast food, pizza, local food",
+  },
+  restaurant: {
+    title: "Restaurant | SiiShop Food",
+    description: "Order food from your favorite restaurants. Browse menu, reviews, and place your order.",
+    keywords: "restaurant, food delivery, order food, menu",
+  },
 };
 
 // ── Main App inner ────────────────────────────────────────────────────────────
 function AppInner() {
-  const { isLoggedIn, isAdmin, isApprovedVendor } = useAuth();
+  const { user, token, isLoggedIn, isAdmin, isApprovedVendor, authChecked } = useAuth();
   const { unreadCount: chatUnreadCount } = useChat();
   const [page, setPage] = useState(() => {
     try {
-      // Check URL first for store pages
+      // Check URL first for store/food pages
       if (typeof window !== "undefined") {
         const path = window.location.pathname || "";
+        // Match /store/:slug pattern
         const storeMatch = path.match(/^\/store\/(.+?)\/?$/);
         if (storeMatch && storeMatch[1]) {
           const slug = storeMatch[1];
           sessionStorage.setItem("vendorStoreSlug", slug);
           return "vendor-store";
+        }
+        // Match /restaurant/:slug pattern
+        const restaurantMatch = path.match(/^\/restaurant\/(.+?)\/?$/);
+        if (restaurantMatch && restaurantMatch[1]) {
+          const slug = restaurantMatch[1];
+          sessionStorage.setItem("restaurantSlug", slug);
+          return "restaurant";
+        }
+        // Match /food - food marketplace
+        if (path === "/food" || path.startsWith("/food")) {
+          return "food";
         }
       }
     } catch (e) {
@@ -183,29 +219,52 @@ function AppInner() {
   // Get current page SEO
   const currentPageSEO = PAGE_SEO[page] || PAGE_SEO.home;
 
-  // Handle URL path for vendor stores (e.g., /store/dzifa-fashion)
-  // Runs on mount to detect store URLs
+  // Handle URL path for vendor stores (e.g., /store/dzifa-fashion) and restaurants
+  // Runs on mount AND when URL changes (via popstate or history.pushState)
   useEffect(() => {
-    try {
-      const path = window.location.pathname;
-      logger.log("[App] Checking URL:", path);
+    function handleRouteChange() {
+      try {
+        const path = window.location.pathname;
+        logger.log("[App] Checking URL:", path);
 
-      // Match /store/:slug pattern (handle optional trailing slash)
-      const storeMatch = path.match(/^\/store\/(.+?)\/?$/);
-      if (storeMatch) {
-        const storeSlug = storeMatch[1];
-        logger.log("[App] Detected store URL, slug:", storeSlug);
-        // Store the slug and navigate to vendor-store page
-        sessionStorage.setItem("vendorStoreSlug", storeSlug);
-        if (page !== "vendor-store") {
+        // Match /store/:slug pattern (handle optional trailing slash)
+        const storeMatch = path.match(/^\/store\/(.+?)\/?$/);
+        if (storeMatch) {
+          const storeSlug = storeMatch[1];
+          logger.log("[App] Detected store URL, slug:", storeSlug);
+          // Store the slug and navigate to vendor-store page
+          sessionStorage.setItem("vendorStoreSlug", storeSlug);
           setPage("vendor-store");
+          return;
         }
+
+        // Match /restaurant/:slug pattern
+        const restaurantMatch = path.match(/^\/restaurant\/(.+?)\/?$/);
+        if (restaurantMatch) {
+          const restaurantSlug = restaurantMatch[1];
+          logger.log("[App] Detected restaurant URL, slug:", restaurantSlug);
+          sessionStorage.setItem("restaurantSlug", restaurantSlug);
+          setPage("restaurant");
+          return;
+        }
+
+        // Match /food - food marketplace
+        if (path === "/food" || path.startsWith("/food")) {
+          setPage("food");
+        }
+      } catch (e) {
+        logger.log("[App] Error parsing store URL:", e.message);
       }
-    } catch (e) {
-      logger.log("[App] Error parsing store URL:", e.message);
     }
+
+    // Run on mount
+    handleRouteChange();
+
+    // Listen for popstate events (triggered by browser back/forward and our pushState)
+    window.addEventListener("popstate", handleRouteChange);
+    return () => window.removeEventListener("popstate", handleRouteChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount only
+  }, []);
 
   // Handle URL query parameters from email links (e.g., ?page=orders)
   useEffect(() => {
@@ -218,7 +277,7 @@ function AppInner() {
       // If URL has a page parameter, navigate to it
       if (urlPage && urlPage !== page) {
         // Validate the page is valid before navigating
-        const validPages = ["home", "product", "vendors", "cart", "orders", "settings", "reset-password", "vendor", "admin", "about", "contact", "privacy", "terms", "refund", "faq"];
+        const validPages = ["home", "see-all", "deals", "product", "vendors", "cart", "orders", "settings", "reset-password", "vendor", "admin", "about", "contact", "privacy", "terms", "refund", "faq"];
         if (validPages.includes(urlPage)) {
           // For protected pages, we still set the page - auth guard will handle protection
           setPage(urlPage);
@@ -247,6 +306,46 @@ function AppInner() {
   useEffect(() => {
     localStorage.setItem("app_page", page);
   }, [page]);
+
+  // ✅ FIX: Correct dashboard routing on page refresh/load
+  // This runs when auth is fully checked and ensures restaurant vendors
+  // always land on RestaurantDashboard, never on Marketplace VendorDashboard
+  useEffect(() => {
+    // Only run when auth is fully checked
+    if (!authChecked) return;
+
+    console.log("[App] Dashboard routing check:", {
+      page,
+      isLoggedIn: !!token && !!user,
+      vendorType: user?.vendorType,
+      vendorStatus: user?.vendorStatus,
+      hasRestaurantDetails: !!(user?.restaurantDetails && Object.keys(user?.restaurantDetails).length > 0)
+    });
+
+    // Check if current page is vendor but user is a restaurant vendor
+    if (page === "vendor" && user?.isVendor && user?.vendorStatus === "approved") {
+      const isRestaurantVendor = user?.vendorType === "restaurant" ||
+        (user?.restaurantDetails && Object.keys(user?.restaurantDetails).length > 0);
+
+      if (isRestaurantVendor) {
+        console.log("[App] 🚨 Wrong dashboard detected! Redirecting to RestaurantDashboard");
+        setPage("restaurant-dashboard");
+        return;
+      }
+    }
+
+    // Check if current page is restaurant-dashboard but user is NOT a restaurant vendor
+    if (page === "restaurant-dashboard" && user?.isVendor) {
+      const isRestaurantVendor = user?.vendorType === "restaurant" ||
+        (user?.restaurantDetails && Object.keys(user?.restaurantDetails).length > 0);
+
+      if (!isRestaurantVendor) {
+        console.log("[App] 🚨 Wrong dashboard detected! Redirecting to VendorDashboard");
+        setPage("vendor");
+        return;
+      }
+    }
+  }, [authChecked, user, page, token]);
 
   // Initialize cart from localStorage for persistence across refreshes
   const [cart, setCart] = useState(() => {
@@ -340,12 +439,27 @@ function AppInner() {
 
   // ── Login redirect: go to correct dashboard based on role ─────────────────
   function onAuthSuccess(user) {
+    // DEBUG: Log user for debugging vendor routing
+    console.log("[onAuthSuccess] FULL USER:", JSON.stringify(user, null, 2));
+    console.log("[onAuthSuccess] vendorType:", user?.vendorType);
+    console.log("[onAuthSuccess] vendorStatus:", user?.vendorStatus);
+    console.log("[onAuthSuccess] restaurantDetails:", user?.restaurantDetails);
     addToast(`Welcome, ${user?.name || "there"}! 🎉`, "success");
     setAuthModalOpen(false);
     if (user?.isAdmin) {
       setPage("admin");
     } else if (user?.isVendor && user?.vendorStatus === "approved") {
-      setPage("vendor");
+      // ✅ Route based on vendorType OR restaurantDetails: restaurant vendors get restaurant dashboard
+      const isRestaurantVendor = user?.vendorType === "restaurant" ||
+        (user?.restaurantDetails && Object.keys(user.restaurantDetails).length > 0);
+
+      console.log("[onAuthSuccess] isRestaurantVendor:", isRestaurantVendor);
+
+      if (isRestaurantVendor) {
+        setPage("restaurant-dashboard");
+      } else {
+        setPage("vendor");
+      }
     } else {
       setPage("home");
     }
@@ -404,6 +518,37 @@ function AppInner() {
     }
   }
 
+  // Navigate to "see-all" with a section id (mirrors the URL-param effect that
+  // writes ?section=… to the address bar so a refresh deep-links correctly).
+  function handleSeeAllNavigate(pageName, ctx) {
+    if (pageName === "see-all" && ctx?.sectionId) {
+      try {
+        window.history.pushState({}, document.title, `/see-all?section=${ctx.sectionId}`);
+        sessionStorage.setItem("emailSection", ctx.sectionId);
+      } catch {
+        /* noop in non-browser env */
+      }
+    }
+    setPage(pageName);
+  }
+
+  // Navigate to the Deals page, optionally with ?sort=biggest|smallest|price
+  // — mirrors the see-all pattern so the URL is preserved on refresh.
+  function handleDealsNavigate(pageName, ctx) {
+    if (pageName === "deals") {
+      const sort = ctx?.sort;
+      try {
+        const qs = sort && ["biggest", "smallest", "price"].includes(sort)
+          ? `?sort=${sort}`
+          : "";
+        window.history.pushState({}, document.title, `/deals${qs}`);
+      } catch {
+        /* noop in non-browser env */
+      }
+    }
+    setPage(pageName);
+  }
+
   // Handle vendor store navigation
   function handleStoreNavigate(slug) {
     sessionStorage.setItem("vendorStoreSlug", slug);
@@ -442,7 +587,11 @@ function AppInner() {
   function renderPage() {
     switch (page) {
       case "home":
-        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} globalSearchQuery={searchQuery} onClearGlobalSearch={() => setSearchQuery("")} onRequireAuth={onRequireAuth} vendorContext={vendorContext} onClearVendorContext={clearVendorContext} />;
+        return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} globalSearchQuery={searchQuery} onClearGlobalSearch={() => setSearchQuery("")} onRequireAuth={onRequireAuth} vendorContext={vendorContext} onClearVendorContext={clearVendorContext} onNavigate={handleSeeAllNavigate} />;
+      case "see-all":
+        return <SeeAllPage onAddToCart={addToCart} onViewProduct={handleViewProduct} onRequireAuth={onRequireAuth} onNavigate={handleSeeAllNavigate} />;
+      case "deals":
+        return <DealsPage onAddToCart={addToCart} onViewProduct={handleViewProduct} onRequireAuth={onRequireAuth} onNavigate={handleDealsNavigate} />;
       case "categories":
         return <CategoriesPage onAddToCart={addToCart} onViewProduct={handleViewProduct} onRequireAuth={onRequireAuth} vendorContext={vendorContext} onClearVendorContext={clearVendorContext} />;
       case "product":
@@ -457,6 +606,74 @@ function AppInner() {
           />
         );
       case "vendors": return <StoresPage onNavigate={handleStoresPageNavigate} onAddToCart={addToCart} onRequireAuth={onRequireAuth} vendorContext={vendorContext} onClearVendorContext={clearVendorContext} />;
+      // ✅ NEW: Restaurant/Food pages
+      case "food": return <FoodPage onNavigate={setPage} />;
+      case "restaurant": {
+        // Get slug from sessionStorage or URL
+        let restaurantSlug = null;
+        try {
+          restaurantSlug = sessionStorage.getItem("restaurantSlug");
+          if (!restaurantSlug && window.location.pathname) {
+            const path = window.location.pathname;
+            const match = path.match(/^\/restaurant\/(.+?)\/?$/);
+            restaurantSlug = match ? match[1] : null;
+            if (restaurantSlug) sessionStorage.setItem("restaurantSlug", restaurantSlug);
+          }
+        } catch (e) {
+          logger.log("Error getting restaurant slug:", e);
+        }
+        if (!restaurantSlug) {
+          return (
+            <div className="container" style={{ padding: "60px 20px", textAlign: "center" }}>
+              <h2>Restaurant not found</h2>
+              <p style={{ color: "#666" }}>Invalid restaurant URL.</p>
+              <button className="btn btn-primary" style={{ marginTop: 20 }} onClick={() => setPage("home")}>
+                Go to Food
+              </button>
+            </div>
+          );
+        }
+        return (
+          <RestaurantPage
+            onNavigate={setPage}
+            // Unified cart props
+            cart={cart}
+            onAddToCart={addToCart}
+            onIncreaseQty={increaseQty}
+            onDecreaseQty={decreaseQty}
+            onRemoveFromCart={removeFromCart}
+            onClearCart={clearCart}
+            addToast={addToast}
+          />
+        );
+      }
+      // ✅ NEW: Food Cart & Orders
+      case "food-cart": return <FoodCartPage onNavigate={setPage} onRequireAuth={onRequireAuth} addToast={addToast} />;
+      case "food-orders": return <FoodOrdersPage onNavigate={setPage} onRequireAuth={onRequireAuth} />;
+      case "food-detail": {
+        // Get food item from sessionStorage
+        let foodItem = null;
+        let restaurantInfo = null;
+        try {
+          const stored = sessionStorage.getItem("foodDetailItem");
+          const storedRestaurant = sessionStorage.getItem("foodDetailRestaurant");
+          if (stored) foodItem = JSON.parse(stored);
+          if (storedRestaurant) restaurantInfo = JSON.parse(storedRestaurant);
+        } catch (e) {}
+        return (
+          <FoodDetailPage
+            item={foodItem}
+            restaurant={restaurantInfo}
+            onBack={() => {
+              sessionStorage.removeItem("foodDetailItem");
+              sessionStorage.removeItem("foodDetailRestaurant");
+              setPage("restaurant");
+            }}
+            onAddToCart={addToCart}
+            addToast={addToast}
+          />
+        );
+      }
       case "vendor-store": {
         // Get slug from sessionStorage or URL
         let storeSlug = null;
@@ -496,6 +713,8 @@ function AppInner() {
       case "settings": return <SettingsPage addToast={addToast} />;
       case "reset-password": return <ResetPasswordPage addToast={addToast} onNavigate={setPage} />;
       case "vendor": return <VendorDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
+      // ✅ NEW: Restaurant Dashboard (same route, checks vendorType internally)
+      case "restaurant-dashboard": return <RestaurantDashboard addToast={addToast} onRequireAuth={onRequireAuth} onNavigate={setPage} />;
       case "admin": return <AdminDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
       case "about": return <AboutPage onNavigate={setPage} />;
       case "contact": return <ContactPage />;
@@ -525,7 +744,7 @@ function AppInner() {
       >
         <ErrorBoundary>
           <SEO title={currentPageSEO.title} description={currentPageSEO.description} />
-          {renderPage()}
+          <Suspense fallback={<PageSkeleton />}>{renderPage()}</Suspense>
         </ErrorBoundary>
       </MobileLayoutWrapper>
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} onSuccess={onAuthSuccess} initialView={authModalView} />

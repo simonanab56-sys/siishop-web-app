@@ -353,12 +353,41 @@
   user-select: none;
   flex-wrap: wrap;
 }
-.vendorToggle input[type="checkbox"] { 
-  width: 16px; 
-  height: 16px; 
-  accent-color: #7c3aed; 
+.vendorToggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #7c3aed;
   flex-shrink: 0;
   margin: 0;
+}
+
+/* ✅ NEW: Radio label styles for vendor type selection */
+.radioLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--brand-border, #e5e7eb);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.radioLabel:hover {
+  border-color: var(--brand-primary, #f97316);
+}
+.radioLabel:has(input:checked) {
+  border-color: var(--brand-primary, #f97316);
+  background: #fff7ed;
+}
+.radioLabel input[type="radio"] {
+  margin-top: 3px;
+  accent-color: var(--brand-primary, #f97316);
+}
+.radioLabel small {
+  display: block;
+  color: #6b7280;
+  font-size: 0.75rem;
 }
 
 @media (max-width: 480px) {

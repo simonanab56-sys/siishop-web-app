@@ -1,5 +1,30 @@
-// components/SEO.jsx - Advanced SEO component with meta tags, Open Graph, Twitter Cards, JSON-LD, and Breadcrumbs
-import { useEffect } from "react";
+// components/SEO.jsx
+//
+// SEO component for setting per-page meta tags, Open Graph, Twitter Cards,
+// canonical link, and JSON-LD structured data.
+//
+// IMPORTANT — this component no longer mutates `document.head` directly.
+// Previous versions did `document.head.appendChild(...)` and raced with the
+// `<Helmet>` blocks inside individual pages. With two head-writers
+// competing, `react-helmet-async` (which manages its tags by manual DOM
+// manipulation) could call `removeChild` on a node React had already
+// reconciled, surfacing as:
+//
+//   "Failed to execute 'removeChild' on 'Node':
+//    The node to be removed is not a child of this node."
+//
+// All head tags are now rendered through `<Helmet>` from `react-helmet-async`.
+// Helmet hoists the children into <head> with full reconciliation ownership,
+// so React/Helmet remain the single source of truth. The component still
+// accepts the same props (title, description, keywords, image, url, type,
+// product, vendor, category, breadcrumbs) — public API is unchanged.
+//
+// Title is also pushed through Helmet (so the document title and the head
+// <title> stay in sync), but we additionally call `document.title =` once
+// for an instant paint before Helmet's effect runs. That is a single
+// idempotent set, not a managed child, so it cannot race.
+import { useEffect, useMemo } from "react";
+import { Helmet } from "react-helmet-async";
 
 const DEFAULT_SEO = {
   title: "SiiShop - Multi-Vendor Marketplace",
@@ -29,194 +54,154 @@ export default function SEO({
   const ogImage = image || DEFAULT_SEO.image;
   const ogUrl = url || DEFAULT_SEO.url;
 
-  // Build JSON-LD structured data
-  let jsonLd = [];
+  // Build JSON-LD structured data — memoized so the Helmet child identity
+  // is stable across renders unless any of the schema inputs change.
+  const jsonLd = useMemo(() => {
+    const list = [];
 
-  // Organization schema
-  jsonLd.push({
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    name: "SiiShop",
-    url: "https://siishops.com",
-    logo: "https://siishops.com/logo.png",
-    sameAs: [
-      "https://facebook.com/siishops",
-      "https://instagram.com/siishops",
-      "https://twitter.com/siishops",
-    ],
-    contactPoint: {
-      "@type": "ContactPoint",
-      telephone: "+233-000-000-000",
-      contactType: "customer service",
-      availableLanguage: "English",
-    },
-  });
-
-  // Website schema
-  jsonLd.push({
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: "SiiShop",
-    url: "https://siishops.com",
-    potentialAction: {
-      "@type": "SearchAction",
-      target: "https://siishops.com/search?q={search_term_string}",
-      "query-input": "required name=search_term_string",
-    },
-  });
-
-  // Product schema (if product data provided)
-  if (product) {
-    const productSchema = {
+    // Organization schema (always present)
+    list.push({
       "@context": "https://schema.org",
-      "@type": "Product",
-      name: product.name,
-      description: product.description,
-      image: product.images ? product.images.filter(Boolean) : (product.image ? [product.image] : []),
-      sku: product._id,
-      brand: {
-        "@type": "Brand",
-        name: product.vendorName || product.vendorId?.storeName || "SiiShop",
+      "@type": "Organization",
+      name: "SiiShop",
+      url: "https://siishops.com",
+      logo: "https://siishops.com/logo.png",
+      sameAs: [
+        "https://facebook.com/siishops",
+        "https://instagram.com/siishops",
+        "https://twitter.com/siishops",
+      ],
+      contactPoint: {
+        "@type": "ContactPoint",
+        telephone: "+233-000-000-000",
+        contactType: "customer service",
+        availableLanguage: "English",
       },
-      offers: {
-        "@type": "Offer",
-        price: product.price,
-        priceCurrency: "GHS",
-        availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-        seller: {
-          "@type": "Organization",
+    });
+
+    // Website schema
+    list.push({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "SiiShop",
+      url: "https://siishops.com",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: "https://siishops.com/search?q={search_term_string}",
+        "query-input": "required name=search_term_string",
+      },
+    });
+
+    // Product schema
+    if (product) {
+      list.push({
+        "@context": "https://schema.org",
+        "@type": "Product",
+        name: product.name,
+        description: product.description,
+        image: product.images ? product.images.filter(Boolean) : (product.image ? [product.image] : []),
+        sku: product._id,
+        brand: {
+          "@type": "Brand",
           name: product.vendorName || product.vendorId?.storeName || "SiiShop",
         },
-      },
-    };
-    jsonLd.push(productSchema);
-  }
-
-  // Vendor/Store schema (if vendor data provided)
-  if (vendor) {
-    jsonLd.push({
-      "@context": "https://schema.org",
-      "@type": "Store",
-      name: vendor.storeName,
-      url: `https://siishops.com/store/${vendor.slug}`,
-      description: vendor.description || `Shop products from ${vendor.storeName} on SiiShop`,
-      image: vendor.avatar || vendor.image,
-      priceRange: "GHS",
-      address: {
-        "@type": "PostalAddress",
-        addressCountry: "GH",
-      },
-    });
-  }
-
-  // Category schema
-  if (category) {
-    jsonLd.push({
-      "@context": "https://schema.org",
-      "@type": "CollectionPage",
-      name: `${category} Products in Ghana | SiiShop`,
-      description: `Shop ${category} products from verified vendors on SiiShop Ghana. Best prices, secure payments.`,
-      url: `https://siishops.com/categories?category=${encodeURIComponent(category)}`,
-    });
-  }
-
-  // BreadcrumbList schema
-  if (breadcrumbs && breadcrumbs.length > 0) {
-    jsonLd.push({
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      itemListElement: breadcrumbs.map((crumb, index) => ({
-        "@type": "ListItem",
-        position: index + 1,
-        name: crumb.name,
-        item: crumb.url,
-      })),
-    });
-  }
-
-  useEffect(() => {
-    // Set document title
-    document.title = fullTitle;
-
-    // Meta tags
-    const metaTags = [
-      { name: "description", content: metaDescription },
-      { name: "keywords", content: metaKeywords },
-      { name: "robots", content: "index, follow" },
-      { name: "author", content: "SiiShop" },
-      { name: "revisit-after", content: "7 days" },
-    ];
-
-    // Open Graph
-    const ogTags = [
-      { property: "og:title", content: fullTitle },
-      { property: "og:description", content: metaDescription },
-      { property: "og:image", content: ogImage },
-      { property: "og:url", content: ogUrl },
-      { property: "og:type", content: type },
-      { property: "og:site_name", content: DEFAULT_SEO.siteName },
-      { property: "og:locale", content: "en_GH" },
-    ];
-
-    // Twitter Card
-    const twitterTags = [
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: DEFAULT_SEO.twitter },
-      { name: "twitter:title", content: fullTitle },
-      { name: "twitter:description", content: metaDescription },
-      { name: "twitter:image", content: ogImage },
-    ];
-
-    // Set meta tags
-    const setMetaTags = (tags) => {
-      tags.forEach((tag) => {
-        const selector = tag.name
-          ? `meta[name="${tag.name}"]`
-          : `meta[property="${tag.property}"]`;
-        const existing = document.querySelector(selector);
-        if (existing) {
-          existing.setAttribute("content", tag.content);
-        } else {
-          const newTag = document.createElement("meta");
-          if (tag.name) {
-            newTag.setAttribute("name", tag.name);
-          } else {
-            newTag.setAttribute("property", tag.property);
-          }
-          newTag.setAttribute("content", tag.content);
-          document.head.appendChild(newTag);
-        }
+        offers: {
+          "@type": "Offer",
+          price: product.price,
+          priceCurrency: "GHS",
+          availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+          seller: {
+            "@type": "Organization",
+            name: product.vendorName || product.vendorId?.storeName || "SiiShop",
+          },
+        },
       });
-    };
-
-    setMetaTags([...metaTags, ...ogTags, ...twitterTags]);
-
-    // Canonical URL
-    let canonical = document.querySelector('link[rel="canonical"]');
-    if (!canonical) {
-      canonical = document.createElement("link");
-      canonical.setAttribute("rel", "canonical");
-      document.head.appendChild(canonical);
     }
-    canonical.setAttribute("href", ogUrl);
 
-    // Set JSON-LD structured data
-    let jsonLdScript = document.getElementById("json-ld");
-    if (!jsonLdScript) {
-      jsonLdScript = document.createElement("script");
-      jsonLdScript.setAttribute("type", "application/ld+json");
-      jsonLdScript.setAttribute("id", "json-ld");
-      document.head.appendChild(jsonLdScript);
+    // Vendor / Store schema
+    if (vendor) {
+      list.push({
+        "@context": "https://schema.org",
+        "@type": "Store",
+        name: vendor.storeName,
+        url: `https://siishops.com/store/${vendor.slug}`,
+        description: vendor.description || `Shop products from ${vendor.storeName} on SiiShop`,
+        image: vendor.avatar || vendor.image,
+        priceRange: "GHS",
+        address: {
+          "@type": "PostalAddress",
+          addressCountry: "GH",
+        },
+      });
     }
-    jsonLdScript.textContent = JSON.stringify(jsonLd);
 
-    // Cleanup on unmount
-    return () => {
-      document.title = DEFAULT_SEO.title;
-    };
-  }, [fullTitle, metaDescription, metaKeywords, ogImage, ogUrl, type, jsonLd]);
+    // Category schema
+    if (category) {
+      list.push({
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: `${category} Products in Ghana | SiiShop`,
+        description: `Shop ${category} products from verified vendors on SiiShop Ghana. Best prices, secure payments.`,
+        url: `https://siishops.com/categories?category=${encodeURIComponent(category)}`,
+      });
+    }
 
-  return null;
+    // BreadcrumbList schema
+    if (breadcrumbs && breadcrumbs.length > 0) {
+      list.push({
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: breadcrumbs.map((crumb, index) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          name: crumb.name,
+          item: crumb.url,
+        })),
+      });
+    }
+
+    return list;
+  }, [product, vendor, category, breadcrumbs]);
+
+  // ✅ Single head-writer path: every tag goes through Helmet. Helmet owns
+  // its tags' lifecycle (insert/update/remove) end-to-end. React reconciles
+  // the Helmet children, so add/remove cycles are atomic — there is no
+  // window for a separate `document.head.appendChild` call to leave a
+  // dangling node that Helmet later tries to detach.
+  //
+  // Title is set once via document.title for an instant paint, then mirrored
+  // by the Helmet <title> child so React stays the source of truth.
+  useEffect(() => {
+    document.title = fullTitle;
+  }, [fullTitle]);
+
+  // Serialize jsonLd once so the <script> child identity is stable.
+  const jsonLdText = JSON.stringify(jsonLd);
+
+  return (
+    <Helmet>
+      <title>{fullTitle}</title>
+      <meta name="description" content={metaDescription} />
+      <meta name="keywords" content={metaKeywords} />
+      <meta name="robots" content="index, follow" />
+      <meta name="author" content="SiiShop" />
+      <meta name="revisit-after" content="7 days" />
+      <meta property="og:title" content={fullTitle} />
+      <meta property="og:description" content={metaDescription} />
+      <meta property="og:image" content={ogImage} />
+      <meta property="og:url" content={ogUrl} />
+      <meta property="og:type" content={type} />
+      <meta property="og:site_name" content={DEFAULT_SEO.siteName} />
+      <meta property="og:locale" content="en_GH" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:site" content={DEFAULT_SEO.twitter} />
+      <meta name="twitter:title" content={fullTitle} />
+      <meta name="twitter:description" content={metaDescription} />
+      <meta name="twitter:image" content={ogImage} />
+      <link rel="canonical" href={ogUrl} />
+      <script type="application/ld+json">{jsonLdText}</script>
+    </Helmet>
+  );
 }
 
 // Hook for easy use in any component

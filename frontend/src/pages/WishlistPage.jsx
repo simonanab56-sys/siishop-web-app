@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { wishlistAPI } from "../services/api";
 import { getImageUrl, PLACEHOLDER_IMAGE } from "../utils/image";
 import WishlistButton from "../components/WishlistButton";
+import ProductCard from "../components/ProductCard";
 import SEO from "../components/SEO";
 import styles from "./WishlistPage.module.css";
 
@@ -315,22 +316,20 @@ export default function WishlistPage({ onNavigate, addToast, onRequireAuth, onAd
                 <p>Based on your wishlist</p>
 
                 <div className={styles.recGrid}>
+                  {/* ✅ Reuse the shared <ProductCard> so the
+                     "you may also like" grid matches the marketplace
+                     card rhythm. Previously a custom mini-card rendered
+                     at a different size, breaking the layout. */}
                   {recommendations.map((product) => (
-                    <div
-                      key={product._id}
-                      className={styles.recCard}
-                      onClick={() => onNavigate?.("product", product._id)}
-                    >
-                      <img
-                        src={product.images?.[0]?.url ? getImageUrl(product.images[0].url) : product.image || PLACEHOLDER_IMAGE}
-                        alt={product.name}
-                        className={styles.recImage}
+                    product?._id ? (
+                      <ProductCard
+                        key={product._id}
+                        product={product}
+                        onAddToCart={onAddToCart}
+                        onClick={(p) => onNavigate?.("product", p?._id || p)}
+                        onAuthRequired={onRequireAuth}
                       />
-                      <div className={styles.recBody}>
-                        <h4>{product.name}</h4>
-                        <span className={styles.recPrice}>{fmt(product.price)}</span>
-                      </div>
-                    </div>
+                    ) : null
                   ))}
                 </div>
               </div>

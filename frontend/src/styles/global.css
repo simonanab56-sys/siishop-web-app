@@ -21,6 +21,12 @@
   --status-preparing: #3b82f6;
   --status-delivered: #22c55e;
 
+  /* Customer-status colors (Restaurant Customers page) */
+  --status-customer-active:    #22c55e;   /* green   */
+  --status-customer-returning: #3b82f6;   /* blue    */
+  --status-customer-new:       #f97316;   /* orange  */
+  --status-customer-inactive:  #9ca3af;   /* gray    */
+
   /* Typography */
   --font-display: "Playfair Display", Georgia, serif;
   --font-body: "DM Sans", -apple-system, sans-serif;
@@ -44,13 +50,24 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 16px; scroll-behavior: smooth; min-height: 100%; }
+html { font-size: 16px; scroll-behavior: smooth; min-height: 100%; overflow-x: hidden; }
 
 #root {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   width: 100%;
+  /* ✅ FIX (responsive layout): clamp horizontal overflow at the root.
+     The body and #root must NEVER scroll horizontally — the only
+     element allowed to scroll horizontally on the admin pages is the
+     table wrapper inside the page. Without this, a 16-column table
+     with min-width: 1400px forces the whole document (including the
+     sticky navbar) to slide left/right, which is the bug the spec is
+     calling out. The sticky navbar (position: sticky; top: 0) rides
+     on the body scroll context, so as long as the body has no
+     horizontal overflow, the navbar stays put. */
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 body {
@@ -59,7 +76,15 @@ body {
   color: var(--brand-dark);
   line-height: 1.6;
   min-height: 100vh;
-  overflow-x: visible;
+  /* ✅ FIX: was `overflow-x: visible`, which let any child wider than
+     the viewport (e.g. the 16-column commissions table) grow the
+     document and scroll the sticky navbar with it. Clamping to hidden
+     forces every page to live within the viewport; wide content
+     (tables, code blocks) is the responsibility of an inner
+     `overflow-x: auto` wrapper, which the .table-wrap rule below
+     already provides. */
+  overflow-x: hidden;
+  max-width: 100vw;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -111,7 +136,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ── Utility classes ── */
-.container { max-width: 1280px; margin: 0 auto; padding: 0 24px; width: 100%; }
+.container { max-width: 1280px; margin: 0 auto; padding: 0 24px; width: 100%; overflow-x: hidden; min-width: 0; }
 
 /* Responsive container - prevent overflow */
 @media (max-width: 640px) {
@@ -129,13 +154,13 @@ input:focus, textarea:focus, select:focus {
 @media (max-width: 320px) {
   .container { padding: 0 8px; }
 }
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); grid-auto-rows: 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 1fr; gap: 16px; }
 
 @media (max-width: 1024px) { .grid-4 { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 768px)  { .grid-3, .grid-4 { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 520px)  { .grid-2, .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
+@media (max-width: 520px)  { .grid-2, .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
 
 /* ── Button system ── */
 .btn {
@@ -201,6 +226,12 @@ input:focus, textarea:focus, select:focus {
   box-shadow: var(--shadow-card);
   overflow: hidden;
   transition: transform var(--transition), box-shadow var(--transition);
+  /* ✅ Flex column + full height so internal blocks (header / body /
+     footer) can pin to the bottom and the card itself fills its grid
+     cell. This is the contract the marketplace card layouts rely on. */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
 
@@ -331,7 +362,8 @@ input:focus, textarea:focus, select:focus {
 .data-table tr:hover td { background: var(--brand-surface); }
 
 /* ── Responsive table wrapper (Part 4) ────────────────────────────────────── */
-.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-md); }
+.table-wrap,
+.tableWrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-md); max-width: 100%; min-width: 0; }
 @media (max-width: 640px) {
   .data-table th, .data-table td { padding: 10px 10px; font-size: 0.8rem; }
   .container { padding: 0 16px; }

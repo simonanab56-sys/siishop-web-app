@@ -1,14 +1,17 @@
 // components/NotificationBell.jsx - Notification bell with dropdown
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { notificationAPI } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import styles from "./NotificationBell.module.css";
 
 export default function NotificationBell({ userId, onNavigate }) {
+  const { user } = useAuth();
   const [showPanel, setShowPanel] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const panelRef = useRef(null);
+  const isAdmin = !!user?.isAdmin;
 
   const fetchNotifications = useCallback(async () => {
     if (!userId) return;
@@ -50,6 +53,23 @@ export default function NotificationBell({ userId, onNavigate }) {
       window.removeEventListener("focus", handleFocus);
     };
   }, [userId, fetchUnreadCount]);
+
+  // Live update on admin-notification (pushed by AdminDashboard
+  // when the socket receives a commission_paid broadcast). The
+  // listener is added regardless of role — if a non-admin somehow
+  // receives the event the handler is a no-op on the server side,
+  // and the bell just refreshes its badge. The 30s poll above
+  // remains the source of truth for non-admins.
+  useEffect(() => {
+    const handleAdminNotification = () => {
+      fetchUnreadCount();
+      if (showPanel) fetchNotifications();
+    };
+    window.addEventListener("admin-notification", handleAdminNotification);
+    return () => {
+      window.removeEventListener("admin-notification", handleAdminNotification);
+    };
+  }, [fetchUnreadCount, fetchNotifications, showPanel]);
 
   // Close panel when clicking outside
   useEffect(() => {
@@ -94,6 +114,11 @@ export default function NotificationBell({ userId, onNavigate }) {
     // Navigate based on notification type
     if (notification.type?.includes("withdrawal")) {
       onNavigate?.("vendor");
+    } else if (notification.type === "commission_paid" && isAdmin) {
+      // Admins land on the Admin Dashboard wallet tab. Vendor
+      // recipients never see this type (admins are the only
+      // recipients), but the role gate is here for safety.
+      onNavigate?.("admin");
     }
   };
 
@@ -103,6 +128,7 @@ export default function NotificationBell({ userId, onNavigate }) {
     if (type?.includes("withdrawal_processing")) return "🔄";
     if (type?.includes("withdrawal_completed")) return "🎉";
     if (type?.includes("withdrawal_rejected")) return "❌";
+    if (type === "commission_paid") return "💰";
     if (type?.includes("order")) return "📦";
     return "🔔";
   };

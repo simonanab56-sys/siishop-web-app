@@ -1,20 +1,25 @@
 // pages/admin/AdminDashboard.jsx — v11: Wallet tab
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { adminAPI, vendorAPI, productAPI, orderAPI, promoAPI, adminWalletAPI } from "../../services/api";
+import { adminAPI, vendorAPI, productAPI, orderAPI, promoAPI, categoryAPI, adminWalletAPI, homepageSectionAPI } from "../../services/api";
 import { useAuth }     from "../../context/AuthContext";
 import { useCurrency } from "../../context/CurrencyContext";
 import { getImageUrl, PLACEHOLDER_IMAGE } from "../../utils/image";
 import { regions, getCitiesByRegion } from "../../config/ghanaLocations";
 import ImageUpload     from "../../components/ImageUpload";
 import MultiImageUpload from "../../components/MultiImageUpload";
+import SearchableSelect from "../../components/SearchableSelect";
+import ProductMultiPicker from "../../components/ProductMultiPicker";
+import { useDebounce } from "../../hooks/useDebounce";
 import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import { AnalyticsCalendar, DateFilter, StatsCard } from "../../components/analytics";
 import AdminChatPage   from "./AdminChatPage";
+import { DISCOUNT_TYPES, deriveSellingPrice } from "../../utils/pricing";
+import socketService   from "../../services/socket";
 import styles          from "./AdminDashboard.module.css";
 
 const ORDER_STATUSES = ["pending","confirmed","preparing","out_for_delivery","delivered"];
-const EMPTY_PRODUCT  = { name:"", description:"", price:"", category:"", image:"", images:[], available:true, stock:"" };
+const EMPTY_PRODUCT  = { name:"", description:"", price:"", originalPrice:"", discountType:"", discountValue:"", category:"", image:"", images:[], available:true, stock:"" };
 
 function safeId(id)   { return id ? `#${String(id).slice(-6).toUpperCase()}` : "#------"; }
 
@@ -74,10 +79,62 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
     return () => { document.body.style.overflow = ""; };
   }, [imageModal.isOpen]);
 
+  // ─────────────────────────────────────────────────────────
+  // Live admin-notify room: connect the socket on mount, join the
+  // admin-notify-room, and forward any `commission_paid` (or future
+  // admin-only) events to a window CustomEvent that the Navbar's
+  // NotificationBell listens for. This is how the bell badge updates
+  // instantly when a vendor pays commission — the bell itself
+  // remains HTTP-polled (every 30s) as a fallback.
+  //
+  // Why a window event instead of a context: NotificationBell
+  // lives in the Navbar (one level above this component), and
+  // prop-drilling through App.jsx would be invasive. A
+  // CustomEvent is the existing pattern this codebase uses for
+  // cross-component messaging.
+  //
+  // Non-fatal: if the socket fails to connect (no token, network
+  // error, etc.) the admin still gets notifications via the 30s
+  // bell poll, so we log and move on.
+  // ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    let cancelled = false;
+
+    (async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      try {
+        await socketService.connect(token);
+        if (cancelled) return;
+        socketService.adminNotifyJoin();
+
+        const handler = (data) => {
+          if (data && data.type) {
+            window.dispatchEvent(new CustomEvent("admin-notification", { detail: data }));
+          }
+        };
+        socketService.on("admin-notify-room-broadcast", handler);
+
+        return () => {
+          socketService.off("admin-notify-room-broadcast", handler);
+          socketService.adminNotifyLeave();
+        };
+      } catch (err) {
+        // Non-fatal — bell still updates via 30s poll.
+        console.warn("[AdminDashboard] Live admin-notify socket unavailable:", err.message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
   if (!isLoggedIn) return <GateScreen msg="Sign in to access the Admin Dashboard" onAuth={onRequireAuth} icon="🔐" />;
   if (!isAdmin)    return <GateScreen msg="Admin access required." icon="🚫" />;
 
-  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["delivered-orders","✅ Delivered"],["analytics","📈 Analytics"],["wallet","💰 Wallet"],["promos","🏷️ Promos"],["chat","💬 Chat"]];
+  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["delivered-orders","✅ Delivered"],["analytics","📈 Analytics"],["wallet","💰 Wallet"],["commissions","💼 Commissions & Payouts"],["promos","🏷️ Promos"],["categories","🗂️ Categories"],["sections","🧩 Sections"],["chat","💬 Chat"],["restaurants","🍔 Restaurants"]];
 
   return (
     <React.Fragment>
@@ -116,8 +173,12 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
       {tab === "delivered-orders" && <AdminDeliveredOrders addToast={addToast} fmt={fmt} />}
       {tab === "analytics"  && <AdminAnalytics  addToast={addToast} fmt={fmt} />}
       {tab === "wallet"     && <AdminWallet    addToast={addToast} fmt={fmt} />}
+      {tab === "commissions" && <AdminCommissions addToast={addToast} fmt={fmt} />}
       {tab === "promos"     && <AdminPromos     addToast={addToast} fmt={fmt} />}
+      {tab === "categories" && <AdminCategories addToast={addToast} fmt={fmt} />}
+      {tab === "sections"   && <AdminSections   addToast={addToast} fmt={fmt} />}
       {tab === "chat"       && <AdminChatPage   addToast={addToast} />}
+      {tab === "restaurants" && <AdminRestaurants addToast={addToast} fmt={fmt} />}
     </div>
     </React.Fragment>
   );
@@ -919,6 +980,13 @@ function AdminProducts({ addToast, fmt }) {
   const [form,       setForm]       = useState(EMPTY_PRODUCT);
   const [formErrors, setFormErrors] = useState({});
   const [saving,     setSaving]     = useState(false);
+  // ✅ Category dropdown state (mirrors the vendor flow).
+  const [categories,        setCategories]        = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError,   setCategoriesError]   = useState(null);
+  const [requestingCategory, setRequestingCategory] = useState(false);
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const debouncedQuery = useDebounce(categoryQuery, 200);
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current=true; return ()=>{mountedRef.current=false;}; }, []);
 
@@ -928,6 +996,46 @@ function AdminProducts({ addToast, fmt }) {
       .catch(err => { if(mountedRef.current) addToast?.(err.message,"error"); setProducts([]); })
       .finally(() => { if(mountedRef.current) setLoading(false); });
   }, [addToast]);
+
+  // ✅ Live categories — loaded on form open and on debounced search.
+  const loadCategories = useCallback(async (search = "") => {
+    if (!mountedRef.current) return;
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    try {
+      const data = await productAPI.getCategories(search ? { search } : {});
+      if (mountedRef.current) setCategories(Array.isArray(data) ? data : []);
+    } catch (err) {
+      if (mountedRef.current) {
+        setCategoriesError(err?.message || "Failed to load categories");
+        setCategories([]);
+      }
+    } finally {
+      if (mountedRef.current) setCategoriesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showForm) loadCategories(debouncedQuery);
+  }, [showForm, debouncedQuery, loadCategories]);
+
+  const handleRequestNewCategory = useCallback(async (rawName) => {
+    const name = (rawName || "").trim();
+    if (!name || requestingCategory) return;
+    setRequestingCategory(true);
+    try {
+      await categoryAPI.requestNew(name);
+      addToast?.(
+        `Requested "${name}". Approving it will add it to the list.`,
+        "success"
+      );
+      setCategoryQuery("");
+    } catch (err) {
+      addToast?.(err?.message || "Failed to submit request", "error");
+    } finally {
+      if (mountedRef.current) setRequestingCategory(false);
+    }
+  }, [addToast, requestingCategory]);
 
   // Handle image changes
   const handleImagesChange = useCallback((newImages) => {
@@ -940,10 +1048,22 @@ function AdminProducts({ addToast, fmt }) {
     if(!form.name?.trim()) e.name="Required";
     if(!form.description?.trim()) e.description="Required";
     if(!form.price||isNaN(form.price)||Number(form.price)<=0) e.price="Enter a valid price";
-    if(!form.category?.trim()) e.category="Required";
+    if(!form.category?.trim()) e.category="Please select a category";
     // Check for at least one image
     const hasImages = form.images?.length > 0 || form.image;
     if(!hasImages) e.image="Upload at least one image";
+
+    // ✅ Discount validation — mirrors backend prepareProductForSave so we
+    // fail fast in the form before submitting.
+    const op = form.originalPrice === "" ? null : Number(form.originalPrice);
+    const dv = form.discountValue === "" ? null : Number(form.discountValue);
+    if (op != null && (isNaN(op) || op < 0)) e.originalPrice = "Must be ≥ 0";
+    if (dv != null && (isNaN(dv) || dv < 0)) e.discountValue = "Must be ≥ 0";
+    if (form.discountType === "percentage" && dv != null && dv > 100)
+      e.discountValue = "Cannot exceed 100%";
+    if (form.discountType === "fixed" && op != null && dv != null && dv > op)
+      e.discountValue = "Cannot exceed original price";
+
     return e;
   }
 
@@ -966,6 +1086,9 @@ function AdminProducts({ addToast, fmt }) {
       name: product.name || "",
       description: product.description || "",
       price: product.price || "",
+      originalPrice: product.originalPrice != null ? String(product.originalPrice) : "",
+      discountType: product.discountType || "",
+      discountValue: product.discountValue != null ? String(product.discountValue) : "",
       category: product.category || "",
       stock: product.stock || "",
       available: product.available !== false,
@@ -1049,6 +1172,11 @@ function AdminProducts({ addToast, fmt }) {
         category: form.category,
         stock: form.stock ? parseInt(form.stock, 10) : 0,
         available: form.available,
+        // ✅ Discount fields (optional). Empty strings are normalized to null
+        // server-side via prepareProductForSave().
+        originalPrice: form.originalPrice === "" ? null : parseFloat(form.originalPrice),
+        discountType:  form.discountType  || null,
+        discountValue: form.discountValue === "" ? null : parseFloat(form.discountValue),
       };
 
       // Get file objects from form.images
@@ -1095,13 +1223,187 @@ function AdminProducts({ addToast, fmt }) {
           <form onSubmit={handleAdd} noValidate>
             <div className={styles.formGrid}>
               <div className={styles.formFields}>
-                {[["name","Name","text","Product name"],["description","Description","textarea","Describe it"],["price","Price (GHS)","number","9.99"],["category","Category","text","e.g. Electronics"],["stock","Stock Qty","number","0"]].map(([key,label,type,ph]) => (
+                {[["name","Name","text","Product name"],["description","Description","textarea","Describe it"],["stock","Stock Qty","number","0"]].map(([key,label,type,ph]) => (
                   <div key={key} className={styles.formGroup}>
                     <label className={styles.label}>{label}</label>
                     {type==="textarea"?<textarea rows={2} placeholder={ph} {...f(key)} style={{resize:"vertical"}}/>:<input type={type} step={type==="number"?"0.01":undefined} min={type==="number"?"0":undefined} placeholder={ph} {...f(key)}/>}
                     {formErrors[key] && <span className={styles.fieldError}>{formErrors[key]}</span>}
                   </div>
                 ))}
+
+                {/* ✅ Price input — auto-derives from the discount trio when
+                    originalPrice + discountType + discountValue are all set.
+                    The user's direct edit always wins; the auto-derive only
+                    fires when the discount fields change and the derived
+                    selling price is well-defined. This ensures the value sent
+                    in the payload matches what the live preview shows. */}
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>Price (GHS)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="9.99"
+                    value={form.price}
+                    onChange={(e) => {
+                      setForm({ ...form, price: e.target.value });
+                      setFormErrors({ ...formErrors, price: "" });
+                    }}
+                  />
+                  {formErrors.price && <span className={styles.fieldError}>{formErrors.price}</span>}
+                </div>
+
+                {/* ✅ Discount / Pricing section — OPTIONAL.
+                    - Original Price + Discount Type + Discount Value produce a
+                      live-derived Selling Price preview.
+                    - Leaving Original Price blank disables discounts (server
+                      normalizes all three discount fields to null in
+                      prepareProductForSave). */}
+                <div className={`${styles.formGroup} ${styles.discountSection}`}>
+                  <label className={styles.label}>Discount (optional)</label>
+                  <div className={styles.discountGrid}>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Original Price"
+                      value={form.originalPrice}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((prev) => {
+                          const next = { ...prev, originalPrice: v };
+                          // ✅ Auto-derive selling price whenever the discount
+                          // trio is well-defined. Mirrors backend semantics
+                          // (deriveSellingPrice + prepareProductForSave).
+                          const op = v === "" ? null : Number(v);
+                          const dv = prev.discountValue === "" ? null : Number(prev.discountValue);
+                          const derived = deriveSellingPrice({
+                            originalPrice: op,
+                            discountType: prev.discountType,
+                            discountValue: dv,
+                          });
+                          if (derived != null) next.price = String(derived);
+                          return next;
+                        });
+                        setFormErrors((prev) => ({ ...prev, originalPrice: "" }));
+                      }}
+                    />
+                    <select
+                      value={form.discountType}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((prev) => {
+                          const next = { ...prev, discountType: v };
+                          const op = prev.originalPrice === "" ? null : Number(prev.originalPrice);
+                          const dv = prev.discountValue === "" ? null : Number(prev.discountValue);
+                          const derived = deriveSellingPrice({
+                            originalPrice: op,
+                            discountType: v,
+                            discountValue: dv,
+                          });
+                          if (derived != null) next.price = String(derived);
+                          return next;
+                        });
+                        setFormErrors((prev) => ({ ...prev, discountValue: "" }));
+                      }}
+                    >
+                      {DISCOUNT_TYPES.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder={
+                        form.discountType === "percentage"
+                          ? "Discount %"
+                          : form.discountType === "fixed"
+                          ? "Discount GHS"
+                          : "Discount value"
+                      }
+                      value={form.discountValue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((prev) => {
+                          const next = { ...prev, discountValue: v };
+                          const op = prev.originalPrice === "" ? null : Number(prev.originalPrice);
+                          const dv = v === "" ? null : Number(v);
+                          const derived = deriveSellingPrice({
+                            originalPrice: op,
+                            discountType: prev.discountType,
+                            discountValue: dv,
+                          });
+                          if (derived != null) next.price = String(derived);
+                          return next;
+                        });
+                        setFormErrors((prev) => ({ ...prev, discountValue: "" }));
+                      }}
+                    />
+                  </div>
+                  {/* Live preview line */}
+                  {(() => {
+                    const op = form.originalPrice === "" ? null : Number(form.originalPrice);
+                    const dv = form.discountValue === "" ? null : Number(form.discountValue);
+                    const selling = form.price === "" ? null : Number(form.price);
+                    const derived = deriveSellingPrice({
+                      originalPrice: op,
+                      discountType: form.discountType,
+                      discountValue: dv,
+                    });
+                    const previewPrice = derived != null ? derived : selling;
+                    const savings = op != null && derived != null ? op - derived : 0;
+                    const pct = op != null && op > 0 && derived != null
+                      ? Math.round((savings / op) * 100)
+                      : 0;
+                    if (previewPrice == null || form.originalPrice === "") return null;
+                    return (
+                      <p className={styles.discountPreview}>
+                        Final selling price: <strong>{fmt(previewPrice)}</strong>
+                        {savings > 0 && pct > 0 && (
+                          <span className={styles.discountPreviewSave}>
+                            {" — Save "}{fmt(savings)} (-{pct}%)
+                          </span>
+                        )}
+                      </p>
+                    );
+                  })()}
+                  {(formErrors.originalPrice || formErrors.discountValue) && (
+                    <span className={styles.fieldError}>
+                      {formErrors.originalPrice || formErrors.discountValue}
+                    </span>
+                  )}
+                </div>
+
+                {/* ✅ Category — searchable dropdown, same UX as the vendor form. */}
+                <div className={styles.formGroup}>
+                  <label className={styles.label}>
+                    Category
+                    <span style={{ color: "var(--brand-danger)", marginLeft: 4 }}>*</span>
+                  </label>
+                  <SearchableSelect
+                    options={categories}
+                    value={form.category}
+                    onChange={(v) => {
+                      setForm((prev) => ({ ...prev, category: v }));
+                      setFormErrors((prev) => ({ ...prev, category: "" }));
+                    }}
+                    onQueryChange={setCategoryQuery}
+                    loading={categoriesLoading}
+                    error={categoriesError}
+                    placeholder="Select a category…"
+                    emptyMessage="No matching categories"
+                    onRequestNew={handleRequestNewCategory}
+                    requestNewLabel="Request new category"
+                    required
+                    disabled={requestingCategory}
+                  />
+                  {formErrors.category && (
+                    <span className={styles.fieldError}>{formErrors.category}</span>
+                  )}
+                </div>
                 <div className={styles.formGroup}>
                   <label className={styles.label}>Availability</label>
                   <select value={form.available} onChange={e=>setForm({...form,available:e.target.value==="true"})}>
@@ -1295,7 +1597,11 @@ function AdminPromos({ addToast, fmt }) {
   const [loading,  setLoading]  = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving,   setSaving]   = useState(false);
-  const [form,     setForm]     = useState({ productId:"", discountPercent:"", startDate:"", endDate:"", title:"" });
+  const [form,     setForm]     = useState({
+    productId: "", discountPercent: "", startDate: "", endDate: "", title: "",
+    // ✅ ADDED: marketplace-level configurability fields. All optional.
+    badge: "", featured: false, priority: "", displayOrder: "",
+  });
   const [formErrors, setFormErrors] = useState({});
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current=true; return ()=>{mountedRef.current=false;}; }, []);
@@ -1332,11 +1638,21 @@ function AdminPromos({ addToast, fmt }) {
         startDate:       new Date(form.startDate).toISOString(),
         endDate:         new Date(form.endDate).toISOString(),
         title:           form.title.trim(),
+        // ✅ ADDED: marketplace-level configurability. Backend treats all four as
+        // optional — omitted fields fall back to schema defaults.
+        badge:           form.badge.trim() || null,
+        featured:        Boolean(form.featured),
+        priority:        form.priority === "" ? 0 : Number(form.priority),
+        displayOrder:    form.displayOrder === "" ? 0 : Number(form.displayOrder),
       });
       if(!mountedRef.current) return;
       const updated = await promoAPI.getAdmin();
       if(mountedRef.current) setPromos(Array.isArray(updated)?updated:[]);
-      setShowForm(false); setForm({productId:"",discountPercent:"",startDate:"",endDate:"",title:""});
+      setShowForm(false);
+      setForm({
+        productId:"", discountPercent:"", startDate:"", endDate:"", title:"",
+        badge:"", featured:false, priority:"", displayOrder:"",
+      });
       addToast?.("Promo created! 🎉","success");
     } catch (err) { if(mountedRef.current) addToast?.(err.message,"error"); }
     finally { if(mountedRef.current) setSaving(false); }
@@ -1361,6 +1677,12 @@ function AdminPromos({ addToast, fmt }) {
   }
 
   const f = (key) => ({ value: form[key], onChange: (e)=>{ setForm({...form,[key]:e.target.value}); setFormErrors({...formErrors,[key]:""}); } });
+  // Checkbox helper — same shape as f() but driven by e.target.checked so the
+  // existing per-field error-clearing flow stays consistent.
+  const fBool = (key) => ({
+    checked: !!form[key],
+    onChange: (e)=>{ setForm({...form,[key]:e.target.checked}); setFormErrors({...formErrors,[key]:""}); },
+  });
   const safePromos = Array.isArray(promos) ? promos : [];
 
   return (
@@ -1404,9 +1726,35 @@ function AdminPromos({ addToast, fmt }) {
                 <label className={styles.label}>Promo Title (optional)</label>
                 <input type="text" placeholder="e.g. Weekend Special — 30% Off" {...f("title")}/>
               </div>
+              {/* ✅ ADDED: marketplace-level configurability fields (all optional). */}
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Card Badge (optional)</label>
+                <input type="text" maxLength={40} placeholder="e.g. Best Deal, Hot, Limited" {...f("badge")}/>
+              </div>
+              <div className={styles.formGroup} style={{display:"flex", alignItems:"center", gap:8}}>
+                <input type="checkbox" id="promoFeatured" {...fBool("featured")}/>
+                <label htmlFor="promoFeatured" className={styles.label} style={{margin:0}}>
+                  Featured — pin to top of carousel
+                </label>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Priority (optional)</label>
+                <input type="number" min="0" placeholder="0 — higher = sooner" {...f("priority")}/>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Display Order (optional)</label>
+                <input type="number" min="0" placeholder="0 — lower = sooner" {...f("displayOrder")}/>
+              </div>
             </div>
             <div className={styles.formActions}>
-              <button type="button" className="btn btn-ghost" onClick={()=>{setShowForm(false);setFormErrors({});}}>Cancel</button>
+              <button type="button" className="btn btn-ghost" onClick={()=>{
+                setShowForm(false);
+                setFormErrors({});
+                setForm({
+                  productId:"", discountPercent:"", startDate:"", endDate:"", title:"",
+                  badge:"", featured:false, priority:"", displayOrder:"",
+                });
+              }}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>{saving?"Creating…":"Create Promo"}</button>
             </div>
           </form>
@@ -1658,6 +2006,1817 @@ function AdminWallet({ addToast, fmt }) {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Restaurants ─────────────────────────────────────────────────────────────────
+function AdminRestaurants({ addToast, fmt }) {
+  const [restaurants, setRestaurants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("pending");
+  const [actionLoading, setActionLoading] = useState(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current=true; return ()=>{mountedRef.current=false;}; }, []);
+
+  useEffect(() => {
+    fetchRestaurants();
+  }, [filter]);
+
+  async function fetchRestaurants() {
+    setLoading(true);
+    try {
+      const filterParam = filter === "all" ? "" : filter;
+      const data = await adminAPI.getVendors(filterParam ? { status: filterParam, vendorType: "restaurant" } : { vendorType: "restaurant" });
+      if (mountedRef.current) setRestaurants(data || []);
+    } catch (err) {
+      console.error("[AdminRestaurants] Error:", err.message);
+      addToast("Failed to load restaurants", "error");
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }
+
+  async function handleApprove(id) {
+    setActionLoading(id);
+    try {
+      await adminAPI.approveVendor(id);
+      addToast("Restaurant approved!", "success");
+      fetchRestaurants();
+    } catch (err) {
+      addToast(err.message || "Failed to approve", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleReject(id) {
+    const reason = prompt("Rejection reason:");
+    if (!reason) return;
+    setActionLoading(id);
+    try {
+      await adminAPI.rejectVendor(id, reason);
+      addToast("Restaurant rejected", "success");
+      fetchRestaurants();
+    } catch (err) {
+      addToast(err.message || "Failed to reject", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleSuspend(id) {
+    if (!confirm("Suspend this restaurant?")) return;
+    setActionLoading(id);
+    try {
+      await adminAPI.suspendVendor(id);
+      addToast("Restaurant suspended", "success");
+      fetchRestaurants();
+    } catch (err) {
+      addToast(err.message || "Failed to suspend", "error");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  const safeRestaurants = Array.isArray(restaurants) ? restaurants : [];
+  const pendingCount = safeRestaurants.filter(r => r.vendorStatus === "pending").length;
+  const approvedCount = safeRestaurants.filter(r => r.vendorStatus === "approved").length;
+  const suspendedCount = safeRestaurants.filter(r => r.vendorStatus === "suspended").length;
+
+  return (
+    <div>
+      <div style={{marginBottom:16,display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button className={`btn ${filter==="pending"?"btn-primary":"btn-ghost"}`} onClick={()=>setFilter("pending")}>
+          ⏳ Pending ({pendingCount})
+        </button>
+        <button className={`btn ${filter==="approved"?"btn-primary":"btn-ghost"}`} onClick={()=>setFilter("approved")}>
+          ✅ Approved ({approvedCount})
+        </button>
+        <button className={`btn ${filter==="suspended"?"btn-primary":"btn-ghost"}`} onClick={()=>setFilter("suspended")}>
+          ⛔ Suspended ({suspendedCount})
+        </button>
+        <button className={`btn ${filter==="all"?"btn-primary":"btn-ghost"}`} onClick={()=>setFilter("all")}>
+          📋 All ({safeRestaurants.length})
+        </button>
+      </div>
+
+      {loading ? <div className="loading-center"><div className="spinner"/></div> : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Restaurant</th>
+                <th>Owner</th>
+                <th>Location</th>
+                <th>Cuisine</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {safeRestaurants.map(r => {
+                if (!r?._id) return null;
+                return (
+                  <tr key={r._id}>
+                    <td>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        {r.storeLogo && <img src={getImageUrl(r.storeLogo)} alt="" style={{width:40,height:40,borderRadius:8,objectFit:"cover"}}/>}
+                        <div>
+                          <div style={{fontWeight:600}}>{r.restaurantDetails?.restaurantName || r.storeName}</div>
+                          <div style={{fontSize:"0.8rem",color:"var(--brand-muted)"}}>{r.restaurantDetails?.cuisineType}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div>{r.name}</div>
+                      <div style={{fontSize:"0.8rem",color:"var(--brand-muted)"}}>{r.email}</div>
+                    </td>
+                    <td>
+                      {r.location?.city && r.location?.region ? (
+                        <div>{r.location.city}, {r.location.region}</div>
+                      ) : (
+                        <span style={{color:"var(--brand-muted)"}}>Not set</span>
+                      )}
+                    </td>
+                    <td>{r.restaurantDetails?.cuisineType || "-"}</td>
+                    <td>
+                      <span className={`badge badge-${r.vendorStatus==="approved"?"delivered":r.vendorStatus==="suspended"?"pending":"preparing"}`}>
+                        {r.vendorStatus}
+                      </span>
+                    </td>
+                    <td>
+                      <div className={styles.actionBtns}>
+                        {r.vendorStatus === "pending" && (
+                          <>
+                            <button className="btn btn-primary btn-sm" onClick={() => handleApprove(r._id)} disabled={actionLoading === r._id}>
+                              Approve
+                            </button>
+                            <button className="btn btn-danger btn-sm" onClick={() => handleReject(r._id)} disabled={actionLoading === r._id}>
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {r.vendorStatus === "approved" && (
+                          <button className="btn btn-danger btn-sm" onClick={() => handleSuspend(r._id)} disabled={actionLoading === r._id}>
+                            Suspend
+                          </button>
+                        )}
+                        {r.vendorStatus === "suspended" && (
+                          <button className="btn btn-primary btn-sm" onClick={() => handleApprove(r._id)} disabled={actionLoading === r._id}>
+                            Reactivate
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {safeRestaurants.length === 0 && (
+                <tr><td colSpan={6} style={{textAlign:"center",padding:"32px",color:"var(--brand-muted)"}}>No restaurants found</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── CATEGORIES TAB ────────────────────────────────────────────────────────
+   Admins review vendor-submitted category requests. Approving a request
+   makes the new name appear in the vendor dropdown immediately (merged into
+   GET /api/products/categories on the server).
+   ─────────────────────────────────────────────────────────────────────────── */
+function AdminCategories({ addToast, fmt: _fmt }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("pending"); // "pending" | "approved" | "rejected" | "all"
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const load = useCallback(async () => {
+    if (!mountedRef.current) return;
+    setLoading(true);
+    try {
+      const params = statusFilter === "all" ? {} : { status: statusFilter };
+      const data = await categoryAPI.getAll(params);
+      if (mountedRef.current) setRequests(Array.isArray(data) ? data : []);
+    } catch (err) {
+      if (mountedRef.current) addToast?.(err?.message || "Failed to load category requests", "error");
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [statusFilter, addToast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleReview = async (id, action) => {
+    if (actionLoading) return;
+    setActionLoading(id);
+    try {
+      await categoryAPI.review(id, action);
+      if (!mountedRef.current) return;
+      addToast?.(action === "approve" ? "Category approved" : "Category rejected", "success");
+      // Remove the row from the local list (matches the new filter view).
+      setRequests((prev) => (Array.isArray(prev) ? prev : []).filter((r) => r._id !== id));
+    } catch (err) {
+      if (mountedRef.current) addToast?.(err?.message || `Failed to ${action}`, "error");
+    } finally {
+      if (mountedRef.current) setActionLoading(null);
+    }
+  };
+
+  const safeRequests = Array.isArray(requests) ? requests : [];
+
+  // Lightweight badge styling — keep parity with AdminPromos table.
+  const statusBadge = (status) => {
+    if (status === "pending")  return <span className="badge badge-preparing">Pending</span>;
+    if (status === "approved") return <span className="badge badge-delivered">✓ Approved</span>;
+    if (status === "rejected") return <span className="badge badge-pending">✗ Rejected</span>;
+    return status;
+  };
+
+  return (
+    <div>
+      <div className={styles.toolbar}>
+        <span style={{ fontWeight: 600 }}>
+          {safeRequests.length} request{safeRequests.length !== 1 ? "s" : ""}
+        </span>
+        <div style={{ display: "flex", gap: 6 }}>
+          {["pending", "approved", "rejected", "all"].map((s) => (
+            <button
+              key={s}
+              className={`btn btn-sm ${statusFilter === s ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => setStatusFilter(s)}
+            >
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="loading-center"><div className="spinner" /></div>
+      ) : (
+        <div className="table-wrap" style={{ marginTop: 8 }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Category Name</th>
+                <th>Requested By</th>
+                <th>Note</th>
+                <th>Status</th>
+                <th>Submitted</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {safeRequests.map((r) => (
+                <tr key={r._id}>
+                  <td>
+                    <strong style={{ fontSize: "0.95rem" }}>{r.name}</strong>
+                  </td>
+                  <td>{r.requestedBy?.name || r.requestedBy?.email || "—"}</td>
+                  <td style={{ color: "var(--brand-muted)", maxWidth: 280 }}>
+                    {r.note ? r.note : <span style={{ opacity: 0.6 }}>—</span>}
+                  </td>
+                  <td>{statusBadge(r.status)}</td>
+                  <td style={{ fontSize: "0.78rem" }}>
+                    {r.createdAt ? new Date(r.createdAt).toLocaleString() : "—"}
+                  </td>
+                  <td>
+                    {r.status === "pending" ? (
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleReview(r._id, "approve")}
+                          disabled={actionLoading === r._id}
+                        >
+                          ✓ Approve
+                        </button>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={() => handleReview(r._id, "reject")}
+                          disabled={actionLoading === r._id}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ color: "var(--brand-muted)", fontSize: "0.78rem" }}>
+                        {r.reviewedAt
+                          ? `by ${r.reviewedBy?.name || r.reviewedBy?.email || "admin"} · ${new Date(r.reviewedAt).toLocaleDateString()}`
+                          : "—"}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {safeRequests.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "var(--brand-muted)" }}>
+                    No category requests {statusFilter === "all" ? "" : `with status "${statusFilter}"`}.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   TASK 7 — AdminSections
+   Admin-curated blocks on the homepage. Mirrors AdminPromos' pattern:
+   toolbar (count + "+ New Section"), collapsible form card, data table
+   with reordering arrows + actions.
+   ────────────────────────────────────────────────────────────────────────── */
+
+const SOURCE_TYPES = [
+  { value: "automatic", label: "Automatic" },
+  { value: "manual",    label: "Manual (pick products)" },
+  { value: "category",  label: "By category" },
+  { value: "vendor",    label: "By vendor" },
+  { value: "featured",  label: "Featured" },
+  { value: "promo",     label: "Active promos" },
+];
+
+const AUTOMATIC_TYPES = [
+  { value: "best_sellers",     label: "Best Sellers" },
+  { value: "new_arrivals",     label: "New Arrivals" },
+  { value: "recently_added",   label: "Recently Added" },
+  { value: "most_viewed",      label: "Most Viewed" },
+  { value: "trending",         label: "Trending" },
+  { value: "most_purchased",   label: "Most Purchased" },
+  { value: "discounted",       label: "Discounted" },
+  { value: "featured",         label: "Featured" },
+  { value: "highest_rated",    label: "Highest Rated" },
+];
+
+const LAYOUTS = [
+  { value: "grid",     label: "Grid" },
+  { value: "carousel", label: "Carousel" },
+  { value: "featured", label: "Featured (1 large + grid)" },
+  { value: "mixed",    label: "Mixed (carousel + grid)" },
+];
+
+function AdminSections({ addToast }) {
+  const [sections, setSections] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [vendors, setVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(emptySectionForm());
+  const [formErrors, setFormErrors] = useState({});
+  const [bannerFile, setBannerFile] = useState(null);
+  const [bannerPreview, setBannerPreview] = useState(null);
+  const [deleteBanner, setDeleteBanner] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  function emptySectionForm() {
+    return {
+      title: "",
+      subtitle: "",
+      icon: "",
+      layout: "grid",
+      displayOrder: 0,
+      active: true,
+      maxProducts: 12,
+      showSeeAll: true,
+      startDate: "",
+      endDate: "",
+      source: { type: "automatic", automaticType: "best_sellers" },
+    };
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      homepageSectionAPI.getAdmin(),
+      productAPI.getCategories(),
+      // Vendors — use the existing vendorAPI helper (handles base URL,
+      // auth header, and JSON parsing the same way as the rest of the app).
+      vendorAPI.getList({ limit: 200 }).catch(() => []),
+    ])
+      .then(([secs, cats, vlist]) => {
+        if (cancelled || !mountedRef.current) return;
+        setSections(Array.isArray(secs) ? secs : []);
+        setCategories(Array.isArray(cats) ? cats : []);
+        setVendors(Array.isArray(vlist) ? vlist : []);
+      })
+      .catch((err) => {
+        if (mountedRef.current) addToast?.(err.message || "Failed to load sections", "error");
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [addToast]);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptySectionForm());
+    setFormErrors({});
+    setBannerFile(null);
+    setBannerPreview(null);
+    setDeleteBanner(false);
+    setShowForm(true);
+  }
+
+  function openEdit(section) {
+    setEditingId(section._id);
+    setForm({
+      title: section.title || "",
+      subtitle: section.subtitle || "",
+      icon: section.icon || "",
+      layout: section.layout || "grid",
+      displayOrder: section.displayOrder ?? 0,
+      active: section.active !== false,
+      maxProducts: section.maxProducts ?? 12,
+      showSeeAll: section.showSeeAll !== false,
+      startDate: section.startDate ? toLocalInput(section.startDate) : "",
+      endDate: section.endDate ? toLocalInput(section.endDate) : "",
+      source: {
+        type: section.source?.type || "automatic",
+        manualProductIds: section.source?.manualProductIds || [],
+        categories: section.source?.categories || [],
+        vendorIds: section.source?.vendorIds || [],
+        automaticType: section.source?.automaticType || "best_sellers",
+      },
+    });
+    setFormErrors({});
+    setBannerFile(null);
+    setBannerPreview(section.bannerImage?.url || null);
+    setDeleteBanner(false);
+    setShowForm(true);
+  }
+
+  function validate() {
+    const e = {};
+    if (!form.title.trim()) e.title = "Title is required";
+    if (!form.source?.type) e.sourceType = "Source type is required";
+    if (form.source?.type === "automatic" && !form.source.automaticType) {
+      e.automaticType = "Pick an automatic collection";
+    }
+    if (form.source?.type === "manual" && (!form.source.manualProductIds || form.source.manualProductIds.length === 0)) {
+      e.manualProductIds = "Add at least one product";
+    }
+    if (form.source?.type === "category" && (!form.source.categories || form.source.categories.length === 0)) {
+      e.categories = "Pick at least one category";
+    }
+    if (form.source?.type === "vendor" && (!form.source.vendorIds || form.source.vendorIds.length === 0)) {
+      e.vendorIds = "Pick at least one vendor";
+    }
+    if (form.endDate && form.startDate && new Date(form.endDate) <= new Date(form.startDate)) {
+      e.endDate = "End must be after start";
+    }
+    return e;
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (saving) return;
+    const errs = validate();
+    if (Object.keys(errs).length) { setFormErrors(errs); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        title: form.title.trim(),
+        subtitle: form.subtitle.trim(),
+        icon: form.icon.trim(),
+        layout: form.layout,
+        displayOrder: Number(form.displayOrder) || 0,
+        active: !!form.active,
+        maxProducts: Math.min(Math.max(Number(form.maxProducts) || 12, 1), 100),
+        showSeeAll: !!form.showSeeAll,
+        startDate: form.startDate || null,
+        endDate: form.endDate || null,
+        source: form.source,
+      };
+      if (editingId) {
+        await homepageSectionAPI.update(editingId, payload, bannerFile, deleteBanner);
+        addToast?.("Section updated.", "success");
+      } else {
+        await homepageSectionAPI.create(payload, bannerFile);
+        addToast?.("Section created! 🎉", "success");
+      }
+      if (!mountedRef.current) return;
+      const updated = await homepageSectionAPI.getAdmin();
+      if (mountedRef.current) setSections(Array.isArray(updated) ? updated : []);
+      setShowForm(false);
+    } catch (err) {
+      if (mountedRef.current) addToast?.(err.message || "Failed to save", "error");
+    } finally {
+      if (mountedRef.current) setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm("Delete this section?")) return;
+    try {
+      await homepageSectionAPI.remove(id);
+      if (!mountedRef.current) return;
+      setSections((prev) => (Array.isArray(prev) ? prev : []).filter((s) => s._id !== id));
+      addToast?.("Section deleted.", "info");
+    } catch (err) {
+      if (mountedRef.current) addToast?.(err.message, "error");
+    }
+  }
+
+  async function toggleActive(section) {
+    try {
+      await homepageSectionAPI.update(section._id, { active: !section.active });
+      if (!mountedRef.current) return;
+      setSections((prev) => (Array.isArray(prev) ? prev : []).map((s) => s._id === section._id ? { ...s, active: !s.active } : s));
+    } catch (err) {
+      if (mountedRef.current) addToast?.(err.message, "error");
+    }
+  }
+
+  async function moveSection(idx, dir) {
+    const safe = Array.isArray(sections) ? [...sections] : [];
+    const target = idx + dir;
+    if (target < 0 || target >= safe.length) return;
+    const [a, b] = [safe[idx], safe[target]];
+    safe[idx] = b; safe[target] = a;
+    setSections(safe);
+    try {
+      await homepageSectionAPI.reorder(safe.map((s) => s._id));
+    } catch (err) {
+      if (mountedRef.current) addToast?.(err.message || "Failed to reorder", "error");
+    }
+  }
+
+  function onBannerChange(file) {
+    setBannerFile(file || null);
+    setBannerPreview(file ? URL.createObjectURL(file) : null);
+    setDeleteBanner(false);
+  }
+
+  function clearBanner() {
+    setBannerFile(null);
+    setBannerPreview(null);
+    setDeleteBanner(true);
+  }
+
+  function updateSource(patch) {
+    setForm((prev) => ({ ...prev, source: { ...prev.source, ...patch } }));
+    setFormErrors((prev) => ({ ...prev, ...Object.fromEntries(Object.keys(patch).map((k) => [k, ""])) }));
+  }
+
+  function toggleCategory(cat) {
+    const list = form.source.categories || [];
+    const next = list.includes(cat) ? list.filter((c) => c !== cat) : [...list, cat];
+    updateSource({ categories: next });
+  }
+
+  function toggleVendor(vid) {
+    const list = form.source.vendorIds || [];
+    const next = list.includes(vid) ? list.filter((v) => v !== vid) : [...list, vid];
+    updateSource({ vendorIds: next });
+  }
+
+  const safeSections = Array.isArray(sections) ? sections : [];
+  const f = (key) => ({
+    value: form[key] ?? "",
+    onChange: (e) => {
+      setForm({ ...form, [key]: e.target.value });
+      setFormErrors({ ...formErrors, [key]: "" });
+    },
+  });
+  const fBool = (key) => ({
+    checked: !!form[key],
+    onChange: (e) => {
+      setForm({ ...form, [key]: e.target.checked });
+      setFormErrors({ ...formErrors, [key]: "" });
+    },
+  });
+  const fNum = (key) => ({
+    value: form[key] ?? "",
+    onChange: (e) => {
+      setForm({ ...form, [key]: e.target.value === "" ? "" : Number(e.target.value) });
+      setFormErrors({ ...formErrors, [key]: "" });
+    },
+  });
+
+  return (
+    <div>
+      <div className={styles.toolbar}>
+        <span style={{ fontWeight: 600 }}>
+          {safeSections.length} section{safeSections.length !== 1 ? "s" : ""}
+        </span>
+        <button className="btn btn-primary btn-sm" onClick={openCreate}>
+          {showForm ? "✕ Cancel" : "+ New Section"}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className={styles.formCard}>
+          <h4>{editingId ? "Edit Section" : "Create Homepage Section"}</h4>
+          <form onSubmit={handleSubmit} noValidate>
+            <div className={styles.promoFormGrid}>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Title *</label>
+                <input type="text" maxLength={120} {...f("title")} />
+                {formErrors.title && <span className={styles.fieldError}>{formErrors.title}</span>}
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Icon (emoji or short text)</label>
+                <input type="text" maxLength={16} placeholder="🔥" {...f("icon")} />
+              </div>
+              <div className={styles.formGroup} style={{ gridColumn: "span 2" }}>
+                <label className={styles.label}>Subtitle</label>
+                <input type="text" maxLength={240} {...f("subtitle")} />
+              </div>
+
+              {/* Banner */}
+              <div className={styles.formGroup} style={{ gridColumn: "span 2" }}>
+                <label className={styles.label}>Banner image (optional)</label>
+                <ImageUpload value={bannerPreview} onChange={(dataUrl) => {
+                  // ImageUpload returns base64 — but our backend takes a real file.
+                  // Convert the dataUrl back to a File so we can upload it.
+                  if (!dataUrl) { onBannerChange(null); return; }
+                  fetch(dataUrl).then((r) => r.blob()).then((blob) => {
+                    const file = new File([blob], "banner.png", { type: blob.type || "image/png" });
+                    onBannerChange(file);
+                  });
+                }} />
+                {editingId && (bannerPreview || sectionHasBanner(sections, editingId)) && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={clearBanner} style={{ marginTop: 8 }}>
+                    Remove current banner
+                  </button>
+                )}
+              </div>
+
+              {/* Layout + display order */}
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Layout</label>
+                <select {...f("layout")} className={styles.select}>
+                  {LAYOUTS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+                </select>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Display order (lower = sooner)</label>
+                <input type="number" min="0" {...fNum("displayOrder")} />
+              </div>
+
+              {/* Source type */}
+              <div className={styles.formGroup} style={{ gridColumn: "span 2" }}>
+                <label className={styles.label}>Source *</label>
+                <div className={styles.sourceRow}>
+                  {SOURCE_TYPES.map((t) => (
+                    <label
+                      key={t.value}
+                      className={`${styles.sourceChip} ${form.source.type === t.value ? styles.sourceChipActive : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="sourceType"
+                        checked={form.source.type === t.value}
+                        onChange={() => updateSource({ type: t.value })}
+                      />
+                      {t.label}
+                    </label>
+                  ))}
+                </div>
+                {formErrors.sourceType && <span className={styles.fieldError}>{formErrors.sourceType}</span>}
+              </div>
+
+              {/* Conditional fields per source type */}
+              {form.source.type === "automatic" && (
+                <div className={styles.formGroup} style={{ gridColumn: "span 2" }}>
+                  <label className={styles.label}>Collection</label>
+                  <select
+                    value={form.source.automaticType}
+                    onChange={(e) => updateSource({ automaticType: e.target.value })}
+                    className={styles.select}
+                  >
+                    {AUTOMATIC_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  {formErrors.automaticType && <span className={styles.fieldError}>{formErrors.automaticType}</span>}
+                </div>
+              )}
+
+              {form.source.type === "manual" && (
+                <div className={styles.formGroup} style={{ gridColumn: "span 2" }}>
+                  <label className={styles.label}>Pick products</label>
+                  <ProductMultiPicker
+                    value={form.source.manualProductIds}
+                    onChange={(ids) => updateSource({ manualProductIds: ids })}
+                    maxSelected={50}
+                  />
+                  {formErrors.manualProductIds && <span className={styles.fieldError}>{formErrors.manualProductIds}</span>}
+                </div>
+              )}
+
+              {form.source.type === "category" && (
+                <div className={styles.formGroup} style={{ gridColumn: "span 2" }}>
+                  <label className={styles.label}>Categories</label>
+                  <div className={styles.sourceRow}>
+                    {(Array.isArray(categories) ? categories : []).map((cat) => (
+                      <label
+                        key={cat}
+                        className={`${styles.sourceChip} ${(form.source.categories || []).includes(cat) ? styles.sourceChipActive : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={(form.source.categories || []).includes(cat)}
+                          onChange={() => toggleCategory(cat)}
+                        />
+                        {cat}
+                      </label>
+                    ))}
+                  </div>
+                  {formErrors.categories && <span className={styles.fieldError}>{formErrors.categories}</span>}
+                </div>
+              )}
+
+              {form.source.type === "vendor" && (
+                <div className={styles.formGroup} style={{ gridColumn: "span 2" }}>
+                  <label className={styles.label}>Vendors</label>
+                  <div className={styles.sourceRow}>
+                    {(Array.isArray(vendors) ? vendors : []).map((v) => (
+                      <label
+                        key={v._id}
+                        className={`${styles.sourceChip} ${(form.source.vendorIds || []).includes(v._id) ? styles.sourceChipActive : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={(form.source.vendorIds || []).includes(v._id)}
+                          onChange={() => toggleVendor(v._id)}
+                        />
+                        {v.storeName || v.name || "Vendor"}
+                      </label>
+                    ))}
+                  </div>
+                  {formErrors.vendorIds && <span className={styles.fieldError}>{formErrors.vendorIds}</span>}
+                </div>
+              )}
+
+              {/* Limits + scheduling */}
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Max products</label>
+                <input type="number" min="1" max="100" {...fNum("maxProducts")} />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Show "See All"</label>
+                <div style={{ paddingTop: 8 }}>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <input type="checkbox" {...fBool("showSeeAll")} />
+                    Show button on the section
+                  </label>
+                </div>
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Start (optional)</label>
+                <input type="datetime-local" {...f("startDate")} />
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>End (optional)</label>
+                <input type="datetime-local" {...f("endDate")} />
+                {formErrors.endDate && <span className={styles.fieldError}>{formErrors.endDate}</span>}
+              </div>
+              <div className={styles.formGroup}>
+                <label className={styles.label}>Active</label>
+                <div style={{ paddingTop: 8 }}>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <input type="checkbox" {...fBool("active")} />
+                    Visible on the homepage
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className={styles.formActions}>
+              <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? "Saving…" : editingId ? "Save Changes" : "Create Section"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="loading-center"><div className="spinner" /></div>
+      ) : (
+        <div className="table-wrap" style={{ marginTop: 8 }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: 70 }}>Order</th>
+                <th>Title</th>
+                <th>Source</th>
+                <th>Layout</th>
+                <th>Max</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {safeSections.map((section, idx) => (
+                <tr key={section._id}>
+                  <td>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button
+                        type="button"
+                        className={styles.reorderBtn}
+                        onClick={() => moveSection(idx, -1)}
+                        disabled={idx === 0}
+                        title="Move up"
+                      >↑</button>
+                      <button
+                        type="button"
+                        className={styles.reorderBtn}
+                        onClick={() => moveSection(idx, 1)}
+                        disabled={idx === safeSections.length - 1}
+                        title="Move down"
+                      >↓</button>
+                    </div>
+                  </td>
+                  <td>
+                    <strong>{section.icon ? `${section.icon} ` : ""}{section.title}</strong>
+                    {section.subtitle && (
+                      <div style={{ fontSize: "0.78rem", color: "var(--brand-muted)" }}>
+                        {section.subtitle.length > 60 ? section.subtitle.slice(0, 60) + "…" : section.subtitle}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`${styles.sourceBadge} ${styles[`sourceBadge${capitalize(section.source?.type || "")}`]}`}>
+                      {capitalize(section.source?.type || "")}
+                      {section.source?.type === "automatic" && ` · ${labelFor(AUTOMATIC_TYPES, section.source.automaticType)}`}
+                    </span>
+                  </td>
+                  <td style={{ textTransform: "capitalize" }}>{section.layout || "grid"}</td>
+                  <td>{section.maxProducts ?? 12}</td>
+                  <td>
+                    {!section.active ? (
+                      <span className="badge badge-pending">Inactive</span>
+                    ) : !isVisible(section) ? (
+                      <span className="badge badge-preparing">Scheduled</span>
+                    ) : (
+                      <span className="badge badge-delivered">Live</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className={styles.actionBtns}>
+                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(section)}>Edit</button>
+                      <button className={`btn btn-sm ${section.active ? "btn-secondary" : "btn-primary"}`} onClick={() => toggleActive(section)}>
+                        {section.active ? "Pause" : "Activate"}
+                      </button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(section._id)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {safeSections.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "var(--brand-muted)" }}>
+                    No homepage sections yet. Click "+ New Section" to add your first one.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sectionHasBanner(sections, id) {
+  const s = (sections || []).find((x) => x._id === id);
+  return !!(s && s.bannerImage && s.bannerImage.url);
+}
+
+function capitalize(s) {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function labelFor(list, value) {
+  const m = list.find((x) => x.value === value);
+  return m ? m.label : value;
+}
+
+function isVisible(section) {
+  if (!section || section.active === false) return false;
+  const now = new Date();
+  if (section.startDate && now < new Date(section.startDate)) return false;
+  if (section.endDate && now > new Date(section.endDate)) return false;
+  return true;
+}
+
+function toLocalInput(date) {
+  // Convert ISO/Date → "YYYY-MM-DDTHH:MM" for datetime-local inputs.
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ── Admin Commissions & Payouts ──────────────────────────────────────────────
+// Per-vendor financial control center.
+//
+// Renders:
+//   • 9 stat cards fed by /admin/wallet/commissions/analytics
+//   • Filter bar (vendor type, status, date range, search)
+//   • 16-column per-vendor table fed by /admin/wallet/commissions/vendors
+//   • Detail drawer (slide-in) for any vendor, with 7 sub-tabs:
+//       Business, Wallet Balance, Commission, Withdrawals,
+//       Commission Payments, Recent Orders, Recent Transactions, Paystack Refs
+//   • Approve / Reject withdrawal handlers — gated on the BUSINESS RULE
+//     "vendor cannot be paid while outstandingCommission > 0".
+//   • Socket-based real-time refresh on admin-notification events.
+//
+// All endpoints are admin-only GETs in backend/routes/admin-wallet.js. The
+// existing wallet.service.js approveWithdrawal is intentionally NOT modified
+// — the new page enforces the rule at the UI layer only so the original
+// AdminWallet tab continues to work exactly as before.
+function AdminCommissions({ addToast, fmt }) {
+  const fmtMoney = fmt || ((n) => `GHS ${(Number(n) || 0).toFixed(2)}`);
+  const formatDate = (d) => {
+    if (!d) return "—";
+    return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  };
+  const formatDateTime = (d) => {
+    if (!d) return "—";
+    return new Date(d).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
+
+  // Filters
+  const [vendorType, setVendorType] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const debouncedSearch = useDebounce(searchInput, 300);
+
+  // Data
+  const [analytics, setAnalytics] = useState(null);
+  const [vendors, setVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Drawer state
+  const [drawerVendor, setDrawerVendor] = useState(null);
+  const [drawerDetail, setDrawerDetail] = useState(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerTab, setDrawerTab] = useState("business");
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // Fetch analytics + vendor list together
+  const fetchAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    try {
+      const opts = { vendorType, status: statusFilter };
+      if (debouncedSearch) opts.search = debouncedSearch;
+      if (dateFrom) opts.dateFrom = dateFrom;
+      if (dateTo) opts.dateTo = dateTo;
+      const [a, v] = await Promise.all([
+        adminWalletAPI.getCommissionAnalytics(),
+        adminWalletAPI.getCommissionVendors(opts),
+      ]);
+      if (!mountedRef.current) return;
+      setAnalytics(a || {});
+      setVendors(Array.isArray(v?.vendors) ? v.vendors : []);
+    } catch (e) {
+      addToast?.(`Failed to load commissions: ${e?.message || e}`, "error");
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [vendorType, statusFilter, debouncedSearch, dateFrom, dateTo, addToast]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Socket-based real-time refresh on admin notifications
+  useEffect(() => {
+    const handler = (e) => {
+      const t = e?.detail?.type || e?.detail?.notification?.type;
+      if (
+        t === "commission_paid" ||
+        t === "withdrawal_submitted" ||
+        t === "withdrawal_approved" ||
+        t === "withdrawal_rejected" ||
+        t === "withdrawal_completed"
+      ) {
+        fetchAll(true);
+      }
+    };
+    window.addEventListener("admin-notification", handler);
+    return () => window.removeEventListener("admin-notification", handler);
+  }, [fetchAll]);
+
+  // Drawer fetcher
+  const openDrawer = useCallback(async (v) => {
+    setDrawerVendor(v);
+    setDrawerDetail(null);
+    setDrawerLoading(true);
+    setDrawerTab("business");
+    setRejectTarget(null);
+    setRejectReason("");
+    try {
+      const detail = await adminWalletAPI.getCommissionVendor(v.vendorId);
+      if (!mountedRef.current) return;
+      setDrawerDetail(detail || null);
+    } catch (e) {
+      addToast?.(`Failed to load vendor detail: ${e?.message || e}`, "error");
+    } finally {
+      if (mountedRef.current) setDrawerLoading(false);
+    }
+  }, [addToast]);
+
+  const closeDrawer = useCallback(() => {
+    setDrawerVendor(null);
+    setDrawerDetail(null);
+    setDrawerTab("business");
+    setRejectTarget(null);
+    setRejectReason("");
+  }, []);
+
+  // Approve / reject handlers
+  const handleApprove = useCallback(async (withdrawalId) => {
+    try {
+      await adminWalletAPI.approveWithdrawal(withdrawalId);
+      addToast?.("Withdrawal approved — vendor notified.", "success");
+      // Re-fetch drawer detail + list
+      if (drawerVendor) {
+        const detail = await adminWalletAPI.getCommissionVendor(drawerVendor.vendorId);
+        if (mountedRef.current) setDrawerDetail(detail || null);
+      }
+      fetchAll(true);
+    } catch (e) {
+      addToast?.(`Approval failed: ${e?.message || e}`, "error");
+    }
+  }, [addToast, drawerVendor, fetchAll]);
+
+  const handleReject = useCallback(async () => {
+    if (!rejectTarget) return;
+    if (!rejectReason.trim()) {
+      addToast?.("Rejection reason is required.", "error");
+      return;
+    }
+    try {
+      await adminWalletAPI.rejectWithdrawal(rejectTarget, rejectReason.trim());
+      addToast?.("Withdrawal rejected — vendor notified.", "success");
+      setRejectTarget(null);
+      setRejectReason("");
+      if (drawerVendor) {
+        const detail = await adminWalletAPI.getCommissionVendor(drawerVendor.vendorId);
+        if (mountedRef.current) setDrawerDetail(detail || null);
+      }
+      fetchAll(true);
+    } catch (e) {
+      addToast?.(`Rejection failed: ${e?.message || e}`, "error");
+    }
+  }, [rejectTarget, rejectReason, addToast, drawerVendor, fetchAll]);
+
+  const statusOptions = [
+    { value: "all", label: "All" },
+    { value: "outstanding", label: "Outstanding Commission" },
+    { value: "withdrawal", label: "Withdrawal Requested" },
+    { value: "paid", label: "Paid Out" },
+    { value: "pending", label: "Awaiting Approval" },
+    { value: "suspended", label: "Suspended" },
+  ];
+
+  return (
+    <div className={styles.commissionsContainer}>
+      {/* ── 9 stat cards ── */}
+      <div className="statsGrid">
+        <div className="statCard">
+          <div className="statValue">{analytics?.totalVendors ?? "—"}</div>
+          <div className="statLabel">Total Vendors</div>
+        </div>
+        <div className="statCard">
+          <div className="statValue">{analytics?.vendorsOwingCommission ?? "—"}</div>
+          <div className="statLabel">Vendors Owing Commission</div>
+        </div>
+        <div className="statCard" style={{ borderLeft: "4px solid #dc2626" }}>
+          <div className="statValue" style={{ color: "#dc2626" }}>
+            {fmtMoney((analytics?.totalOutstandingCommission || 0))}
+          </div>
+          <div className="statLabel">Total Outstanding Commission</div>
+        </div>
+        <div className="statCard">
+          <div className="statValue">{fmtMoney(analytics?.totalVendorEarnings || 0)}</div>
+          <div className="statLabel">Total Vendor Earnings</div>
+        </div>
+        <div className="statCard">
+          <div className="statValue">{analytics?.pendingWithdrawalRequests ?? "—"}</div>
+          <div className="statLabel">Pending Withdrawal Requests</div>
+        </div>
+        <div className="statCard" style={{ borderLeft: "4px solid #f59e0b" }}>
+          <div className="statValue" style={{ color: "#f59e0b" }}>
+            {fmtMoney(analytics?.totalPendingPayouts || 0)}
+          </div>
+          <div className="statLabel">Total Pending Payouts</div>
+        </div>
+        <div className="statCard" style={{ borderLeft: "4px solid #16a34a" }}>
+          <div className="statValue" style={{ color: "#16a34a" }}>
+            {fmtMoney(analytics?.totalPaidOut || 0)}
+          </div>
+          <div className="statLabel">Total Paid Out</div>
+        </div>
+        <div className="statCard" style={{ borderLeft: "4px solid #16a34a" }}>
+          <div className="statValue" style={{ color: "#16a34a" }}>
+            {fmtMoney(analytics?.totalCommissionCollected || 0)}
+          </div>
+          <div className="statLabel">Total Commission Collected</div>
+        </div>
+        <div className="statCard" style={{ borderLeft: "4px solid var(--brand-primary)" }}>
+          <div className="statValue" style={{ color: "var(--brand-primary)", fontWeight: 700 }}>
+            {fmtMoney(analytics?.platformRevenue || 0)}
+          </div>
+          <div className="statLabel">Platform Revenue</div>
+        </div>
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div className={styles.commissionsFilters}>
+        <span className={styles.commissionsFilterLabel}>Type</span>
+        <div className={styles.commissionsFilterChips}>
+          {[
+            ["all", "All"],
+            ["marketplace", "Marketplace"],
+            ["restaurant", "Restaurant"],
+          ].map(([v, l]) => (
+            <button
+              key={v}
+              className={`${styles.commissionsFilterChip} ${vendorType === v ? styles.commissionsFilterChipActive : ""}`}
+              onClick={() => setVendorType(v)}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+
+        <span className={styles.commissionsFilterLabel}>Status</span>
+        <select
+          className={styles.commissionsFilterSelect}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          {statusOptions.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+
+        <span className={styles.commissionsFilterLabel}>From</span>
+        <input
+          type="date"
+          className={`${styles.commissionsFilterInput} ${styles.commissionsFilterDate}`}
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+        />
+        <span className={styles.commissionsFilterLabel}>To</span>
+        <input
+          type="date"
+          className={`${styles.commissionsFilterInput} ${styles.commissionsFilterDate}`}
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+        />
+
+        <input
+          type="search"
+          placeholder="Search vendor or business…"
+          className={`${styles.commissionsFilterInput} ${styles.commissionsFilterSearch}`}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
+
+        <button
+          className="btn btn-secondary"
+          onClick={() => fetchAll()}
+          disabled={refreshing}
+          style={{ marginLeft: "auto" }}
+        >
+          {refreshing ? "Refreshing…" : "↻ Refresh"}
+        </button>
+      </div>
+
+      {/* ── Per-vendor table ── */}
+      {loading ? (
+        <div className="loading-center"><div className="spinner" /></div>
+      ) : vendors.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">💼</div>
+          <h3>No vendors found</h3>
+          <p>Try adjusting your filters.</p>
+        </div>
+      ) : (
+        <div className="tableWrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>Business</th>
+                <th>Type</th>
+                <th>Orders</th>
+                <th>Total Sales</th>
+                <th>Rate</th>
+                <th>Commission Earned</th>
+                <th>Commission Paid</th>
+                <th>Outstanding</th>
+                <th>Vendor Earnings</th>
+                <th>Already Withdrawn</th>
+                <th>Withdrawable</th>
+                <th>Withdrawal Status</th>
+                <th>Last Withdrawal</th>
+                <th>Last Commission Pmt</th>
+                <th>Wallet</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vendors.map((v) => {
+                const vtClass =
+                  v.vendorType === "marketplace" ? "marketplace" :
+                  v.vendorType === "restaurant" ? "restaurant" : "none";
+                return (
+                  <tr key={v.vendorId}>
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <strong>{v.name || "—"}</strong>
+                        <small style={{ color: "var(--brand-muted)" }}>{v.email}</small>
+                      </div>
+                    </td>
+                    <td>{v.businessName || v.storeName || "—"}</td>
+                    <td>
+                      <span className={`${styles.vendorTypeBadge} ${styles[vtClass]}`}>
+                        {v.vendorType === "marketplace" ? "Marketplace" : v.vendorType === "restaurant" ? "Restaurant" : "—"}
+                      </span>
+                    </td>
+                    <td className={styles.commissionsAmount}>{v.orderCount ?? 0}</td>
+                    <td className={styles.commissionsAmount}>{fmtMoney(v.totalSales || 0)}</td>
+                    <td className={styles.commissionsAmount}>{v.commissionRate ?? 0}%</td>
+                    <td className={styles.commissionsAmount}>{fmtMoney(v.commissionEarned || 0)}</td>
+                    <td className={styles.commissionsAmount}>{fmtMoney(v.commissionPaidByVendor || 0)}</td>
+                    <td className={`${styles.commissionsAmount} ${(v.outstandingCommission || 0) > 0 ? styles.commissionsAmountOwed : styles.commissionsAmountSettled}`}>
+                      {fmtMoney(v.outstandingCommission || 0)}
+                    </td>
+                    <td className={styles.commissionsAmount}>{fmtMoney(v.totalOnlineEarnings || 0)}</td>
+                    <td className={styles.commissionsAmount}>{fmtMoney(v.totalWithdrawn || 0)}</td>
+                    <td className={styles.commissionsAmount}>{fmtMoney(v.availableBalance || 0)}</td>
+                    <td>
+                      {(() => {
+                        // The backend returns `withdrawalStatusLabel` as
+                        // a human-readable string ("Outstanding
+                        // Commission", "Withdrawal Requested", etc.).
+                        // We derive a kebab-case key for the CSS class
+                        // (e.g. "Outstanding Commission" →
+                        // "outstanding-commission") and fall back to
+                        // "commissionPaid" if the label is missing.
+                        const label = v.withdrawalStatusLabel || "Commission Paid";
+                        const key = String(label)
+                          .toLowerCase()
+                          .replace(/[^a-z0-9]+/g, "-")
+                          .replace(/^-+|-+$/g, "") || "commissionPaid";
+                        return (
+                          <span className={`${styles.withdrawalStatusBadge} ${styles[key] || styles.commissionPaid}`}>
+                            {label}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td>{formatDate(v.lastWithdrawalDate)}</td>
+                    <td>{formatDate(v.lastCommissionPaymentDate)}</td>
+                    <td>
+                      <span className={`${styles.walletStatusBadge} ${styles[v.walletStatus || "none"]}`}>
+                        {v.walletStatus === "active" ? "Active" : v.walletStatus === "inactive" ? "Inactive" : "None"}
+                      </span>
+                    </td>
+                    <td>
+                      <button className="btn btn-secondary" onClick={() => openDrawer(v)}>
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Drawer ── */}
+      {drawerVendor && (
+        <>
+          <div className={styles.commissionsDrawerBackdrop} onClick={closeDrawer} />
+          <div className={styles.commissionsDrawer} role="dialog" aria-label="Vendor details">
+            <div className={styles.commissionsDrawerHeader}>
+              <div className={styles.commissionsDrawerTitle}>
+                {drawerVendor.businessName || drawerVendor.name}
+                <span style={{ marginLeft: 8, fontSize: "0.78rem", color: "var(--brand-muted)", fontWeight: 400 }}>
+                  ({drawerVendor.email})
+                </span>
+              </div>
+              <button className={styles.commissionsDrawerClose} onClick={closeDrawer} aria-label="Close">×</button>
+            </div>
+
+            <div className={styles.commissionsDrawerTabs}>
+              {[
+                ["business", "Business"],
+                ["wallet", "Wallet Balance"],
+                ["commission", "Commission"],
+                ["withdrawals", "Withdrawals"],
+                ["commissionPayments", "Commission Pmts"],
+                ["orders", "Recent Orders"],
+                ["transactions", "Transactions"],
+                ["paystack", "Paystack Refs"],
+              ].map(([k, l]) => (
+                <button
+                  key={k}
+                  className={`${styles.commissionsDrawerTab} ${drawerTab === k ? styles.active : ""}`}
+                  onClick={() => setDrawerTab(k)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            <div className={styles.commissionsDrawerBody}>
+              {drawerLoading ? (
+                <div className="loading-center"><div className="spinner" /></div>
+              ) : !drawerDetail ? (
+                <div className={styles.commissionsEmpty}>No detail available.</div>
+              ) : (
+                <>
+                  {drawerTab === "business" && (() => {
+                    // The detail endpoint returns everything under
+                    // `drawerDetail.vendor` (NOT `drawerDetail.user`).
+                    // We pull out a small `v` alias and a `nd`
+                    // ("not-defined") fallback for fields that are
+                    // genuinely missing from the database — the spec
+                    // is explicit: only show "—" when the field is
+                    // truly absent, never for a mapping bug. For
+                    // optional fields like `username` we use a more
+                    // descriptive "Not set" so the admin can tell a
+                    // real null apart from a missing piece of data.
+                    const v = drawerDetail.vendor || {};
+                    const stats = drawerDetail.statistics || {};
+                    const kyc = v.kyc || {};
+                    const nd = (val, friendlyForNull = true) => {
+                      if (val === undefined || val === null || val === "") {
+                        return friendlyForNull ? <span style={{ color: "var(--brand-muted)" }}>Not set</span> : "—";
+                      }
+                      return val;
+                    };
+                    const fmtVendorType = (t) =>
+                      t === "marketplace" ? "Marketplace" : t === "restaurant" ? "Restaurant" : nd(t);
+                    return (
+                      <div className={styles.commissionsDrawerSection}>
+                        <h4>Personal Information</h4>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Full Name</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{nd(v.name, false)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Email</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{nd(v.email, false)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Phone</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{nd(v.phone, false)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Username</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{nd(v.username)}</span>
+                        </div>
+
+                        <h4 style={{ marginTop: 16 }}>Business Information</h4>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Vendor Type</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{fmtVendorType(v.vendorType)}</span>
+                        </div>
+                        {v.vendorType === "restaurant" ? (
+                          <div className={styles.commissionsDrawerField}>
+                            <span className={styles.commissionsDrawerFieldLabel}>Restaurant Name</span>
+                            <span className={styles.commissionsDrawerFieldValue}>
+                              {nd(v.restaurantDetails?.restaurantName, false)}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className={styles.commissionsDrawerField}>
+                            <span className={styles.commissionsDrawerFieldLabel}>Store Name</span>
+                            <span className={styles.commissionsDrawerFieldValue}>{nd(v.storeName, false)}</span>
+                          </div>
+                        )}
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Business Name</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{nd(v.businessName, false)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Vendor Status</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{nd(v.vendorStatus, false)}</span>
+                        </div>
+                        {v.vendorStatus === "rejected" && v.vendorRejectedReason && (
+                          <div className={`${styles.commissionsCallout} ${styles.danger}`}>
+                            <span className={styles.commissionsCalloutIcon}>⚠️</span>
+                            <span>Rejection reason: {v.vendorRejectedReason}</span>
+                          </div>
+                        )}
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Approval Status</span>
+                          <span className={styles.commissionsDrawerFieldValue}>
+                            {v.vendorStatus === "approved" ? "✅ Approved" : v.vendorStatus === "pending" ? "⏳ Pending" : v.vendorStatus === "rejected" ? "❌ Rejected" : v.vendorStatus === "suspended" ? "🚫 Suspended" : nd(v.vendorStatus, false)}
+                          </span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Approved Date</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{formatDateTime(v.approvedAt)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Registration Date</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{formatDateTime(v.createdAt)}</span>
+                        </div>
+                        {v.location && (v.location.region || v.location.city) && (
+                          <div className={styles.commissionsDrawerField}>
+                            <span className={styles.commissionsDrawerFieldLabel}>Location</span>
+                            <span className={styles.commissionsDrawerFieldValue}>
+                              {[v.location.city, v.location.region].filter(Boolean).join(", ")}
+                            </span>
+                          </div>
+                        )}
+
+                        <h4 style={{ marginTop: 16 }}>KYC</h4>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>KYC Status</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{nd(kyc.status, false)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>ID Type</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{nd(kyc.idType)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>ID Front Image</span>
+                          <span className={styles.commissionsDrawerFieldValue}>
+                            {kyc.idFrontImage ? (
+                              <a href={kyc.idFrontImage} target="_blank" rel="noreferrer" className={styles.commissionsRefChip}>
+                                View document
+                              </a>
+                            ) : nd(null)}
+                          </span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>ID Back Image</span>
+                          <span className={styles.commissionsDrawerFieldValue}>
+                            {kyc.idBackImage ? (
+                              <a href={kyc.idBackImage} target="_blank" rel="noreferrer" className={styles.commissionsRefChip}>
+                                View document
+                              </a>
+                            ) : nd(null)}
+                          </span>
+                        </div>
+
+                        <h4 style={{ marginTop: 16 }}>Statistics</h4>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Total Orders</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{stats.totalOrders ?? 0}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Completed Orders</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{stats.completedOrders ?? 0}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Cancelled Orders</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{stats.cancelledOrders ?? 0}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Revenue</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{fmtMoney(stats.revenue || 0)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Commission Paid</span>
+                          <span className={styles.commissionsDrawerFieldValue}>{fmtMoney(stats.commissionPaid || 0)}</span>
+                        </div>
+                        <div className={styles.commissionsDrawerField}>
+                          <span className={styles.commissionsDrawerFieldLabel}>Commission Owing</span>
+                          <span className={styles.commissionsDrawerFieldValue}>
+                            <span className={(stats.commissionOwing || 0) > 0 ? styles.commissionsAmountOwed : styles.commissionsAmountSettled}>
+                              {fmtMoney(stats.commissionOwing || 0)}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {drawerTab === "wallet" && drawerDetail.wallet && (
+                    <div className={styles.commissionsDrawerSection}>
+                      <h4>Wallet Balance</h4>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Available Balance</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{fmtMoney((drawerDetail.wallet.availableBalance || 0))}</span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Pending Balance</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{fmtMoney((drawerDetail.wallet.pendingBalance || 0))}</span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Total Online Earnings</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{fmtMoney(drawerDetail.wallet.totalOnlineEarnings || 0)}</span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Total Withdrawn</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{fmtMoney(drawerDetail.wallet.totalWithdrawn || 0)}</span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Total Commission Paid</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{fmtMoney(drawerDetail.wallet.totalCommissionPaid || 0)}</span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Total COD Sales</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{fmtMoney(drawerDetail.wallet.totalCODSales || 0)}</span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Currency</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{drawerDetail.wallet.currency || "GHS"}</span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Wallet Active</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{drawerDetail.wallet.isActive ? "Yes" : "No"}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {drawerTab === "commission" && (
+                    <div className={styles.commissionsDrawerSection}>
+                      <h4>Commission Balance</h4>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Outstanding (owed to SiiShop)</span>
+                        <span className={`${styles.commissionsDrawerFieldValue} ${(drawerDetail.wallet?.commissionOwed || 0) > 0 ? styles.commissionsAmountOwed : styles.commissionsAmountSettled}`}>
+                          {fmtMoney(drawerDetail.wallet?.commissionOwed || 0)}
+                        </span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Commission Paid (lifetime)</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{fmtMoney(drawerDetail.wallet?.commissionPaid || 0)}</span>
+                      </div>
+                      <div className={styles.commissionsDrawerField}>
+                        <span className={styles.commissionsDrawerFieldLabel}>Commission Earned by SiiShop (lifetime)</span>
+                        <span className={styles.commissionsDrawerFieldValue}>{fmtMoney(drawerDetail.commissionEarned || 0)}</span>
+                      </div>
+                      {(drawerDetail.wallet?.commissionOwed || 0) > 0 ? (
+                        <div className={`${styles.commissionsCallout} ${styles.danger}`}>
+                          <span className={styles.commissionsCalloutIcon}>⚠️</span>
+                          <span>
+                            Vendor owes SiiShop <strong>{fmtMoney(drawerDetail.wallet.commissionOwed)}</strong> in commission.
+                            Payout blocked until commission is settled.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className={`${styles.commissionsCallout} ${styles.success}`}>
+                          <span className={styles.commissionsCalloutIcon}>✅</span>
+                          <span>Commission fully settled — vendor is eligible for withdrawal approval.</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {drawerTab === "withdrawals" && (
+                    <div className={styles.commissionsDrawerSection}>
+                      <h4>Withdrawal History</h4>
+                      {(drawerDetail.withdrawals || []).length === 0 ? (
+                        <div className={styles.commissionsEmpty}>No withdrawals yet.</div>
+                      ) : (
+                        <div className={styles.commissionsTableScroll}>
+                          <table className={styles.commissionsMiniTable}>
+                            <thead>
+                              <tr>
+                                <th>Amount</th>
+                                <th>Net</th>
+                                <th>Fee</th>
+                                <th>Status</th>
+                                <th>Requested</th>
+                                <th>Reviewed</th>
+                                <th>Reviewer</th>
+                                <th>Transfer Ref</th>
+                                <th>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {drawerDetail.withdrawals.map((w) => {
+                                const canApprove =
+                                  (w.status === "pending" || w.status === "requested") &&
+                                  (drawerDetail.wallet?.commissionOwed || 0) === 0;
+                                return (
+                                  <tr key={w._id || w.id}>
+                                    <td>{fmtMoney(w.requestedAmount || w.amount || 0)}</td>
+                                    <td>{fmtMoney(w.netAmount || 0)}</td>
+                                    <td>{fmtMoney(w.fee || 0)}</td>
+                                    <td>{w.status}</td>
+                                    <td>{formatDateTime(w.createdAt)}</td>
+                                    <td>{formatDateTime(w.reviewedAt)}</td>
+                                    <td>{w.reviewedByName || w.reviewedBy || "—"}</td>
+                                    <td>{w.externalRef ? <span className={styles.commissionsRefChip}>{w.externalRef}</span> : "—"}</td>
+                                    <td style={{ whiteSpace: "nowrap" }}>
+                                      {canApprove ? (
+                                        <div className={styles.commissionsActionRow}>
+                                          <button className="btn btn-primary" onClick={() => handleApprove(w._id || w.id)}>Approve</button>
+                                          <button className="btn btn-secondary" onClick={() => { setRejectTarget(w._id || w.id); setRejectReason(""); }}>Reject</button>
+                                        </div>
+                                      ) : w.status === "pending" || w.status === "requested" ? (
+                                        <div className={`${styles.commissionsCallout} ${styles.danger}`} style={{ margin: 0, fontSize: "0.78rem", padding: "6px 8px" }}>
+                                          <span className={styles.commissionsCalloutIcon}>🚫</span>
+                                          <span>Vendor owes SiiShop commission. Payout blocked.</span>
+                                        </div>
+                                      ) : (
+                                        <span style={{ color: "var(--brand-muted)" }}>—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {rejectTarget && (
+                        <div className={styles.commissionsRejectForm}>
+                          <label style={{ fontSize: "0.82rem", color: "var(--brand-muted)" }}>Rejection reason</label>
+                          <textarea
+                            placeholder="Why are you rejecting this withdrawal?"
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                          />
+                          <div className={styles.commissionsActionRow}>
+                            <button className="btn btn-primary" onClick={handleReject}>Confirm Reject</button>
+                            <button className="btn btn-secondary" onClick={() => { setRejectTarget(null); setRejectReason(""); }}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {drawerTab === "commissionPayments" && (
+                    <div className={styles.commissionsDrawerSection}>
+                      <h4>Commission Payment History</h4>
+                      {(drawerDetail.commissionPayments || []).length === 0 ? (
+                        <div className={styles.commissionsEmpty}>No commission payments yet.</div>
+                      ) : (
+                        <div className={styles.commissionsTableScroll}>
+                          <table className={styles.commissionsMiniTable}>
+                            <thead>
+                              <tr>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Reference</th>
+                                <th>Description</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {drawerDetail.commissionPayments.map((tx) => (
+                                <tr key={tx._id || tx.id}>
+                                  <td>{formatDateTime(tx.createdAt)}</td>
+                                  <td>{fmtMoney(tx.amount || 0)}</td>
+                                  <td>{tx.paymentRef ? <span className={styles.commissionsRefChip}>{tx.paymentRef}</span> : "—"}</td>
+                                  <td>{tx.description || "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {drawerTab === "orders" && (
+                    <div className={styles.commissionsDrawerSection}>
+                      <h4>Recent Orders</h4>
+                      {(drawerDetail.recentOrders || []).length === 0 ? (
+                        <div className={styles.commissionsEmpty}>No orders yet.</div>
+                      ) : (
+                        <div className={styles.commissionsTableScroll}>
+                          <table className={styles.commissionsMiniTable}>
+                            <thead>
+                              <tr>
+                                <th>Date</th>
+                                <th>Total</th>
+                                <th>Status</th>
+                                <th>Payment</th>
+                                <th>Payment Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {drawerDetail.recentOrders.map((o) => (
+                                <tr key={o._id || o.id}>
+                                  <td>{formatDateTime(o.createdAt)}</td>
+                                  <td>{fmtMoney(o.totalAmount || 0)}</td>
+                                  <td>{o.orderStatus}</td>
+                                  <td>{o.paymentMethod}</td>
+                                  <td>{o.paymentStatus}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {drawerTab === "transactions" && (
+                    <div className={styles.commissionsDrawerSection}>
+                      <h4>Recent Wallet Transactions</h4>
+                      {(drawerDetail.recentTransactions || []).length === 0 ? (
+                        <div className={styles.commissionsEmpty}>No transactions yet.</div>
+                      ) : (
+                        <div className={styles.commissionsTableScroll}>
+                          <table className={styles.commissionsMiniTable}>
+                            <thead>
+                              <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Balance After</th>
+                                <th>Status</th>
+                                <th>Description</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {drawerDetail.recentTransactions.map((tx) => (
+                                <tr key={tx._id || tx.id}>
+                                  <td>{formatDateTime(tx.createdAt)}</td>
+                                  <td>{tx.type}</td>
+                                  <td>{fmtMoney(tx.amount || 0)}</td>
+                                  <td>{fmtMoney(tx.balanceAfter || 0)}</td>
+                                  <td>{tx.status}</td>
+                                  <td>{tx.description || "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {drawerTab === "paystack" && (
+                    <div className={styles.commissionsDrawerSection}>
+                      <h4>Paystack References</h4>
+                      {(drawerDetail.paystackReferences || []).length === 0 ? (
+                        <div className={styles.commissionsEmpty}>No Paystack references on file.</div>
+                      ) : (
+                        <div className={styles.commissionsTableScroll}>
+                          <table className={styles.commissionsMiniTable}>
+                            <thead>
+                              <tr>
+                                <th>Type</th>
+                                <th>Reference</th>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {drawerDetail.paystackReferences.map((r) => (
+                                <tr key={`${r.type}-${r.reference}`}>
+                                  <td>{r.type}</td>
+                                  <td><span className={styles.commissionsRefChip}>{r.reference}</span></td>
+                                  <td>{formatDateTime(r.date)}</td>
+                                  <td>{fmtMoney(r.amount || 0)}</td>
+                                  <td>{r.status || "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

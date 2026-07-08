@@ -1,4 +1,8 @@
-/* components/PromoSection.module.css */
+/* components/PromoSection.module.css — v2 (marketplace-level upgrade)
+   All existing rules preserved + new classes for header row, category chips,
+   horizontal carousel, stock bar, badges, skeletons.
+   ──────────────────────────────────────────────────────────────────────────── */
+
 .section {
   margin: 36px 0 24px;
   padding: 28px 28px 32px;
@@ -14,30 +18,91 @@
   user-select: none;
 }
 
+/* ── Section header (title + countdown + See All on one row) ────────────── */
 .sectionHeader { margin-bottom: 22px; }
 .sectionTitleGroup { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .flashIcon  { font-size: 1.4rem; }
 .sectionTitle { font-family: var(--font-display); font-size: clamp(1.3rem, 3vw, 1.8rem); color: white; }
 .sectionSub   { font-size: 0.85rem; color: rgba(255,255,255,0.55); }
 
-/* Grid */
+.headerRow {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.headerRow .sectionTitleGroup { flex: 1; min-width: 0; }
+
+.globalCountdown {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.08); color: white;
+  padding: 6px 12px; border-radius: var(--radius-full);
+  font-size: 0.78rem; font-weight: 700;
+  border: 1px solid rgba(255,255,255,0.15);
+  white-space: nowrap;
+}
+.globalCountdownLabel { color: rgba(255,255,255,0.6); font-weight: 600; text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.06em; }
+.globalCountdownTime  { font-variant-numeric: tabular-nums; }
+
+.seeAllBtn {
+  background: rgba(255,255,255,0.1); color: white;
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 7px 14px; border-radius: var(--radius-full);
+  font-size: 0.78rem; font-weight: 700; cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+  white-space: nowrap;
+}
+.seeAllBtn:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.35); }
+
+/* ── Category chips strip ───────────────────────────────────────────────── */
+.categoryChips {
+  display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto;
+  padding: 4px 0 14px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.categoryChips::-webkit-scrollbar { display: none; }
+
+.categoryChip {
+  flex: 0 0 auto;
+  background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 6px 14px; border-radius: var(--radius-full);
+  font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  white-space: nowrap;
+}
+.categoryChip:hover { background: rgba(255,255,255,0.14); color: white; }
+.categoryChipActive {
+  background: white; color: var(--brand-dark);
+  border-color: white;
+}
+
+/* ── Grid (expanded mode, also fallback for very short lists) ──────────── */
 .promoGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
-}
-@media (max-width: 480px) {
-  .promoGrid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .section { padding: 20px 16px 24px; margin: 24px 0 16px; }
-  .sectionTitle { font-size: 1.2rem; }
-  .sectionSub { font-size: 0.8rem; }
+  /* ✅ Equalize row heights across shared <PromoCard> instances so the
+     Add-to-cart button aligns across every row. */
+  grid-auto-rows: 1fr;
+  gap: 14px;
 }
 
-@media (max-width: 360px) {
-  .promoGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+/* ── Carousel (collapsed mode) ──────────────────────────────────────────── */
+.promoScroll {
+  display: flex; gap: 14px;
+  overflow-x: auto; overflow-y: visible;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 4px 4px 14px;
+  /* Allow children to escape the gradient clip on hover (transform/shadow). */
+  margin: 0 -4px;
 }
+.promoScroll::-webkit-scrollbar { display: none; }
+.promoScroll > .promoCard { scroll-snap-align: start; flex: 0 0 220px; }
+@media (min-width: 640px) { .promoScroll > .promoCard { flex-basis: 240px; } }
+@media (min-width: 1024px) { .promoScroll > .promoCard { flex-basis: 260px; } }
 
-/* Card */
+/* ── Card ───────────────────────────────────────────────────────────────── */
 .promoCard {
   background: white;
   border-radius: var(--radius-md);
@@ -47,6 +112,9 @@
   flex-direction: column;
   transition: transform var(--transition), box-shadow var(--transition);
   cursor: pointer;
+  /* ✅ Uniform-height contract: in any grid row the promo card stretches
+     to the row height and pins the Add-to-cart button to its bottom. */
+  height: 100%;
 }
 .promoCard:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
 
@@ -58,21 +126,119 @@
   letter-spacing: 0.04em;
 }
 
-.promoImg { height: 160px; overflow: hidden; background: #f5f5f4; flex-shrink: 0; }
+/* Custom admin badge (top-right) — distinguished from discount %. */
+.customBadgeChip {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  background: var(--brand-primary); color: white;
+  font-size: 0.7rem; font-weight: 700;
+  padding: 4px 9px; border-radius: var(--radius-sm);
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+
+.promoImg {
+  height: 170px;
+  overflow: hidden;
+  background: #f5f5f4;
+  flex-shrink: 0;
+  position: relative;
+}
 .promoImg img { width: 100%; height: 100%; object-fit: contain; transition: transform 0.4s; }
 .promoCard:hover .promoImg img { transform: scale(1.08); }
 .imgPlaceholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 3rem; }
 
-.promoBody { padding: 10px; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+/* Wishlist heart pinned to image (mirrors ProductCard). */
+.wishlistWrapper {
+  position: absolute; bottom: 8px; right: 8px; z-index: 2;
+}
 
-.promoTitle { font-size: 0.72rem; font-weight: 700; color: var(--brand-primary); text-transform: uppercase; letter-spacing: 0.05em; }
-.productName { font-family: var(--font-display); font-size: 0.95rem; font-weight: 700; color: var(--brand-dark); line-height: 1.3; }
+.promoBody {
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-height: 0;
+}
 
-.pricing { display: flex; flex-direction: column; align-items: baseline; gap: 8px; }
-.salePrice     { font-size: 0.88rem; font-weight: 700; color: var(--brand-danger); }
-.originalPrice { font-size: 0.82rem; color: var(--brand-muted); text-decoration: line-through; }
+.promoBody p,
+.promoBody h1,
+.promoBody h2,
+.promoBody h3,
+.promoBody h4 {
+  margin: 0;
+}
 
-/* Countdown */
+.promoTitle {
+  font-size: 0.72rem; font-weight: 700;
+  color: var(--brand-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  /* ✅ Single-line title bar — never grows past one row. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.productName {
+  font-family: var(--font-display); font-size: 0.95rem; font-weight: 700;
+  color: var(--brand-dark); line-height: 1.3;
+  /* ✅ Same 2-line clamp as ProductCard so promo + regular cards line up
+     when they share a grid. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+  min-height: calc(0.95rem * 1.3 * 2);
+}
+
+/* Pricing row */
+.pricing {
+  display: flex; flex-direction: column; align-items: baseline; gap: 1px; margin-top: 1px;
+}
+.salePrice     { font-size: 0.95rem; font-weight: 800; color: var(--brand-danger); }
+.originalPrice { font-size: 0.78rem; color: var(--brand-muted); text-decoration: line-through; }
+.saveAmount {
+  font-size: 0.7rem; font-weight: 700; color: var(--brand-success);
+  background: rgba(16,185,129,0.08);
+  padding: 2px 6px; border-radius: var(--radius-sm); align-self: flex-start;
+}
+
+/* Limited-stock chip (auto-derived) */
+.limitedStockChip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.68rem; font-weight: 700;
+  background: #fef3c7; color: #92400e;
+  padding: 2px 7px; border-radius: var(--radius-full);
+  align-self: flex-start;
+}
+
+/* ── Stock progress bar ─────────────────────────────────────────────────── */
+.stockBar {
+  position: relative; width: 100%; height: 4px;
+  background: #e7e5e4; border-radius: 999px; overflow: hidden;
+  margin-top: 4px;
+}
+.stockBarFill {
+  height: 100%; border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.stockBarFill--ok   { background: var(--brand-success, #10b981); }
+.stockBarFill--warn { background: #f59e0b; }
+.stockBarFill--low  { background: var(--brand-danger, #ef4444); }
+
+/* Sold Out overlay — covers the image when stock === 0 or available === false */
+.soldOutOverlay {
+  position: absolute; top: 10px; left: 10px; right: 10px; z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.55); color: white;
+  font-size: 0.78rem; font-weight: 800;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  letter-spacing: 0.04em;
+}
+
+/* ── Countdown ──────────────────────────────────────────────────────────── */
 .countdown { display: flex; align-items:  flex-start; gap: 6px; flex-wrap: wrap; }
 .countdownLabel { font-size: 0.72rem; color: var(--brand-muted); font-weight: 600; white-space: nowrap; }
 .countdownBoxes { display: flex; gap: 2px;  width: 100%;
@@ -89,3 +255,35 @@
 .expiredTag { font-size: 0.75rem; color: var(--brand-muted); font-style: italic; }
 
 .addBtn { margin-top: auto; border-radius: var(--radius-full) !important; font-size: 0.82rem !important; padding: 7px 14px !important; }
+
+/* ── Skeletons (loading state) ──────────────────────────────────────────── */
+.skeleton {
+  background: #f5f5f4; border-radius: var(--radius-md);
+  height: 320px; position: relative; overflow: hidden;
+}
+.skeleton::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .promoGrid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .section { padding: 20px 16px 24px; margin: 24px 0 16px; }
+  .sectionTitle { font-size: 1.2rem; }
+  .sectionSub { font-size: 0.8rem; }
+  .promoScroll > .promoCard { flex-basis: 180px; }
+  .headerRow { flex-direction: column; align-items: stretch; }
+  .seeAllBtn { align-self: flex-end; }
+  .globalCountdown { font-size: 0.7rem; padding: 5px 10px; }
+}
+
+@media (max-width: 360px) {
+  .promoGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .promoScroll > .promoCard { flex-basis: 160px; }
+}

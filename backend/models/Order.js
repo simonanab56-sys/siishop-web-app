@@ -14,9 +14,15 @@ const orderSchema = new mongoose.Schema(
         name: String,
         description: String,  // ✅ ADDED: Product description
         price: Number,
+        originalPrice: Number,  // ✅ NEW: pre-sale price when product was discounted (for receipts)
         quantity: Number,
         image: String,  // ✅ ADDED: Product image for order display
         vendorId: mongoose.Schema.Types.ObjectId,
+        // ✅ Restaurant/Food order fields
+        itemType: { type: String, enum: ["food", "product"], default: "product" },
+        menuItemId: mongoose.Schema.Types.ObjectId,
+        restaurantId: mongoose.Schema.Types.ObjectId,
+        restaurantName: String,
       },
     ],
     totalAmount: Number,
@@ -35,12 +41,18 @@ const orderSchema = new mongoose.Schema(
     paymentRef: String,
     orderStatus: {
       type: String,
+      // Canonical 6-status enum — single source of truth for both marketplace
+      // and restaurant vendors. Legacy restaurant-only values (received,
+      // ready, rider_assigned, on_the_way) were normalized to the canonical
+      // set by migrations/migrateRestaurantOrderStatuses.js and removed here
+      // as part of the restaurant-order unification.
       enum: [
         "pending",
         "confirmed",
         "preparing",
         "out_for_delivery",
         "delivered",
+        "cancelled",
       ],
       default: "pending",
     },
@@ -55,6 +67,24 @@ const orderSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    // ✅ ADDED: Track if wallet earnings were already processed (prevent double-credit)
+    // Mirrors _revenueTracked's role in services/revenue.js. Declared in the
+    // schema so Mongoose's strict mode persists it; otherwise wallet.service.js
+    // would silently strip the value and the idempotency check would always
+    // re-process the order.
+    _walletEarningsProcessed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    // ✅ Restaurant order support
+    orderType: {
+      type: String,
+      enum: ["food", "product"],
+      default: "product",
+    },
+    restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    restaurantName: String,
     /* ── Delivery Tracking Fields ── */
     riderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
     riderLocation: {

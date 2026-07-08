@@ -1,16 +1,27 @@
 /* ─────────────────────────────────────────────────────────────────────────────
- * config/multer.js — File upload configuration for vendor KYC documents
- * Supports both Cloudinary (production) and local storage (development)
+ * config/multer.js — File upload configuration for vendor KYC documents.
+ *
+ * The actual multer instance (Cloudinary-backed when env vars are set, or a
+ * local-disk fallback otherwise) lives in `services/media.service.js` as the
+ * `vendorKycMulter` preset. This file is kept as a thin compatibility
+ * shim because `routes/auth.js` imports `vendorKYCUpload` from here, and
+ * the public contract — a 2MB / 2-file / JPG+PNG-only multer that supports
+ * `.fields([{ name: "idFrontImage", maxCount: 1 }, { name: "idBackImage", maxCount: 1 }])`
+ * — is preserved exactly.
+ *
+ * Cloudinary folder: `siishop/vendor-docs` (matches the original
+ * `config/cloudinary.js` `vendorDocMulter` so existing assets keep working).
+ * Local-disk fallback: `backend/public/uploads/vendor-docs/`.
+ *
+ * The 2MB file-size limit, JPG/PNG file filter, and Cloudinary folder are
+ * baked into the `vendorKycMulter` preset. The `files: 2` count limit is
+ * enforced at the route level (auth.js) via the per-field maxCount on
+ * `.fields([...])` — we don't re-wrap with a second multer() because that
+ * would mask the underlying storage from the shared service.
  * ───────────────────────────────────────────────────────────────────────────── */
 
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const mediaService = require("../services/media.service");
 
-let vendorDocUpload;
-let CLOUDINARY_KYC_CONFIGURED = false;
-
-// Check if Cloudinary is configured
 function checkCloudinaryConfig() {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
@@ -18,87 +29,19 @@ function checkCloudinaryConfig() {
   return !!(cloudName && apiKey && apiSecret && cloudName !== "Root");
 }
 
-// Initialize storage based on configuration
-function initKYCStorage() {
-  CLOUDINARY_KYC_CONFIGURED = checkCloudinaryConfig();
+// `vendorKYCUpload` IS the shared-service multer instance, re-exported
+// under the legacy name that `routes/auth.js` already imports.
+const vendorKYCUpload = mediaService.vendorKycMulter;
 
-  if (CLOUDINARY_KYC_CONFIGURED) {
-    console.log("☁️ [KYC] Using Cloudinary for vendor documents");
-
-    // Dynamic import to avoid issues if cloudinary not installed
-    try {
-      const { vendorDocMulter } = require("./cloudinary");
-      vendorDocUpload = vendorDocMulter;
-    } catch (err) {
-      console.warn("⚠️ [KYC] Cloudinary multer not available, falling back to local:", err.message);
-      vendorDocUpload = createLocalStorage();
-    }
-  } else {
-    console.log("💾 [KYC] Using local disk storage for vendor documents");
-    vendorDocUpload = createLocalStorage();
-  }
+// Local-disk path: the shared service's `vendorKycMulter` already routes
+// uploads to `backend/public/uploads/vendor-docs/` (it auto-creates the
+// directory). We expose a small helper so other parts of the codebase can
+// detect Cloudinary availability without reaching into the service module.
+function isKYCCloudinaryConfigured() {
+  return checkCloudinaryConfig();
 }
-
-// Create local storage fallback
-function createLocalStorage() {
-  const uploadDir = path.join(__dirname, "../public/uploads/vendor-docs");
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true, mode: 0o755 });
-  }
-
-  // Verify directory is writable
-  try {
-    fs.accessSync(uploadDir, fs.constants.W_OK);
-  } catch (err) {
-    console.error(`❌ Upload directory not writable: ${uploadDir}`);
-  }
-
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true, mode: 0o755 });
-      }
-      cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      const ext = path.extname(file.originalname).toLowerCase();
-      const name = path.basename(file.originalname, ext);
-      const sanitizedName = name
-        .replace(/[^a-zA-Z0-9_-]/g, "_")
-        .substring(0, 50);
-      const finalFilename = `${sanitizedName}-${uniqueSuffix}${ext}`;
-      cb(null, finalFilename);
-    },
-  });
-
-  const fileFilter = (req, file, cb) => {
-    const allowedMimes = ["image/jpeg", "image/png", "image/jpg"];
-    const allowedExts = [".jpg", ".jpeg", ".png"];
-    const ext = path.extname(file.originalname).toLowerCase();
-    const mime = file.mimetype.toLowerCase();
-
-    if (allowedMimes.includes(mime) && allowedExts.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`Invalid file type: ${mime}. Only JPG, JPEG, and PNG images are allowed`));
-    }
-  };
-
-  return multer({
-    storage,
-    fileFilter,
-    limits: {
-      fileSize: 2 * 1024 * 1024,
-      files: 2,
-    },
-  });
-}
-
-// Initialize on module load
-initKYCStorage();
 
 module.exports = {
-  vendorKYCUpload: vendorDocUpload,
-  isKYCCloudinaryConfigured: () => CLOUDINARY_KYC_CONFIGURED,
+  vendorKYCUpload,
+  isKYCCloudinaryConfigured,
 };

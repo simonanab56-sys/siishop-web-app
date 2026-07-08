@@ -1,4 +1,14 @@
-// ProductGallery.jsx — Professional product gallery with thumbnails and video
+// ProductGallery.jsx — Professional product gallery with thumbnails and video.
+//
+// ✅ RESTORED: pre-migration behavior. The OLD ProductGallery called
+//   `getProductImages(product)` (which goes through `getImageUrl` with no
+//   width option) and rendered `<img src={currentImage}>` / `<img src={img}>`
+//   for main + thumbnails. The recent migration added an inline
+//   `w_400,c_limit,q_auto,f_auto` transform via `getImageUrl(url, { width })`,
+//   which 404s for products whose Cloudinary asset doesn't have that exact
+//   variant cached. We restore the pre-migration call shape: no width,
+//   helper returns the secure_url as-is, browser fetches the eager-baked
+//   w_1200 variant.
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Play } from "lucide-react";
 import styles from "./ProductGallery.module.css";
@@ -57,10 +67,13 @@ export default function ProductGallery({ product, onOpenFullscreen }) {
 
   // If no images and no video
   if (images.length === 0 && !hasVideo) {
+    // Check if it's a food item (has productType or category)
+    const isFood = product?.productType === "food" || product?.category === "food";
+    const placeholderIcon = isFood ? "🍔" : "🛍️";
     return (
       <div className={styles.gallery}>
         <div className={styles.mainImageContainer}>
-          <div className={styles.noImage}>🛍️</div>
+          <div className={styles.noImage}>{placeholderIcon}</div>
         </div>
       </div>
     );
@@ -107,6 +120,9 @@ export default function ProductGallery({ product, onOpenFullscreen }) {
             )}
           </div>
         ) : (
+          // ✅ RESTORED: pre-migration. Raw secure_url, no inline transform,
+          // no srcSet. The image Cloudinary serves is the eager-baked w_1200
+          // variant that the upload pipeline pre-generated.
           <img
             src={currentImage}
             alt={`${product.name || "Product"} - Image ${selectedIndex + 1}`}

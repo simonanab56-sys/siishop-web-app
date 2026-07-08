@@ -39,31 +39,8 @@ export function StatusBadge({ status }) {
 }
 
 export function OrderTimeline({ status }) {
-  const safeStatus   = (status && ALL_META[status]) ? status : "Pending";
-  const currentIndex = STEPS.indexOf(safeStatus);
-
-  return (
-    <div className={styles.timeline}>
-      {STEPS.map((step, i) => {
-        const isCompleted = i < currentIndex;
-        const isCurrent   = i === currentIndex;
-        const meta        = ALL_META[step] || ALL_META["Pending"];
-
-        return (
-          <div key={step} className={styles.stepWrapper}>
-            {i > 0 && (
-              <div className={`${styles.connector} ${isCompleted || isCurrent ? styles.connectorActive : ""}`} />
-            )}
-            <div className={`${styles.step} ${isCompleted ? styles.completed : ""} ${isCurrent ? styles.current : ""}`}>
-              <div className={styles.dot}>{isCompleted ? "✓" : meta.icon}</div>
-              <div className={styles.stepInfo}>
-                <span className={styles.stepLabel}>{meta.label}</span>
-                <span className={styles.stepDesc}>{meta.desc}</span>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+  // DEPRECATED: unused export kept temporarily as a no-op shim in case any
+  // external code still imports it. Will be removed once callers are audited.
+  void status;
+  return null;
 }

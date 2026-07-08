@@ -1,0 +1,1 @@
+module.exports = function(){}; module.exports.find = ()=>({select:()=>({lean:()=>({sort:()=>({skip:()=>({limit:()=>Promise.resolve([])})})}), populate:()=>({lean:()=>({sort:()=>({skip:()=>({limit:()=>Promise.resolve([])})})})})});

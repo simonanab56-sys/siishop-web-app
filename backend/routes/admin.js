@@ -22,6 +22,7 @@ router.use(requireAdmin);
 router.get(
   "/stats",
   asyncHandler(async (req, res) => {
+    // ✅ Counts for ALL vendors
     const [totalUsers, totalVendors, totalProducts, totalOrders] =
       await Promise.all([
         User.countDocuments({ isAdmin: false }),
@@ -29,6 +30,25 @@ router.get(
         Product.countDocuments({ isDeleted: { $ne: true } }), // Only count non-deleted products
         Order.countDocuments(),
       ]);
+
+    // ✅ NEW: Restaurant vendor counts
+    const [
+      pendingRestaurants,
+      approvedRestaurants,
+      suspendedRestaurants,
+      marketplaceVendors,
+      marketplacePending,
+    ] = await Promise.all([
+      User.countDocuments({ isVendor: true, vendorType: "restaurant", vendorStatus: "pending" }),
+      User.countDocuments({ isVendor: true, vendorType: "restaurant", vendorStatus: "approved" }),
+      User.countDocuments({ isVendor: true, vendorType: "restaurant", vendorStatus: "suspended" }),
+      User.countDocuments({ isVendor: true, vendorType: { $in: ["marketplace", undefined, null, ""] } }),
+      User.countDocuments({ isVendor: true, vendorStatus: "pending", vendorType: { $ne: "restaurant" } }),
+    ]);
+
+    console.log("[admin/stats] Restaurant counts:", { pendingRestaurants, approvedRestaurants, suspendedRestaurants });
+    console.log("[admin/stats] Marketplace counts:", { marketplaceVendors, marketplacePending });
+
     let totalRevenue = 0;
     let vendorEarnings = [];
     try {
@@ -82,6 +102,7 @@ router.get(
       Order.find().sort({ createdAt: -1 }).limit(5).lean(),
       User.countDocuments({ isVendor: true, vendorStatus: "pending" }),
     ]);
+
     // Return flat object (NOT wrapped in success helper to match frontend expectation)
     res.json({
       totalUsers,
@@ -92,6 +113,12 @@ router.get(
       vendorEarnings,
       recentOrders,
       pendingVendors,
+      // ✅ NEW: Restaurant vendor breakdown
+      pendingRestaurants,
+      approvedRestaurants,
+      suspendedRestaurants,
+      marketplaceVendors,
+      marketplacePending,
     });
   })
 );
@@ -175,6 +202,11 @@ router.get(
   "/vendors",
   asyncHandler(async (req, res) => {
     const filter = { isVendor: true };
+
+    // ✅ NEW: Filter by vendorType (marketplace or restaurant)
+    if (req.query.vendorType) {
+      filter.vendorType = req.query.vendorType;
+    }
 
     // ── SEARCH: by name, storeName, location ───────────────────────────────
     if (req.query.search) {

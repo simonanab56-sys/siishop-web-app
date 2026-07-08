@@ -20,6 +20,7 @@ const Withdrawal = require("../models/Withdrawal");
 const Settings = require("../models/Settings");
 const Order = require("../models/Order");
 const User = require("../models/User");
+const paystackService = require("./paystack.service");
 
 // Convert GHS to pesewas (minor units)
 const toMinor = (amount) => Math.round(amount * 100);
@@ -132,13 +133,14 @@ async function processOrderEarnings(orderId) {
       return { success: false, message: "Earnings already processed" };
     }
 
-    // Only process for paid orders (including COD - vendor collected cash)
-    if (order.paymentStatus !== "paid") {
-      await session.abortTransaction();
-      return { success: false, message: "Order not paid" };
-    }
-
-    // CRITICAL: Check if this is a COD order
+    // CRITICAL: Check if this is a COD order. The order-creation flow leaves
+    // paymentStatus="pending" for COD (see services/order.service.js#createOrder)
+    // and nothing ever flips it to "paid" — the vendor collects cash at
+    // delivery. We therefore admit both online-paid orders AND COD orders
+    // here; the orderStatus="delivered" transition (set by the caller) is the
+    // proof of payment for COD. Without this, every COD order would short-
+    // circuit out of wallet processing and totalCODSales / commissionOwed
+    // would stay at 0 forever.
     const isCOD = order.paymentMethod === "cash";
 
     const settings = await getSettings();
@@ -464,44 +466,152 @@ async function processWithdrawal(vendorId, withdrawalData) {
 }
 
 /**
- * Pay commission owed (for COD orders)
+ * Initialize a Paystack transaction for paying commission owed.
+ *
+ * This is step 1 of 2 in the commission payment flow. It only
+ * calls Paystack to mint a reference + authorization URL — it does
+ * NOT debit `commissionOwed` or create any WalletTransaction. The
+ * real money movement + ledger entry happens in `payCommission`
+ * after the vendor completes the popup and the server verifies the
+ * reference.
+ *
+ * @param {String|ObjectId} vendorId  - the vendor's user _id
+ * @param {Number} amount            - amount in GHS (major units)
+ * @returns {Promise<{authorization_url, access_code, reference}>}
  */
-async function payCommission(vendorId, amount, paymentMethod, paymentDetails) {
+async function initializeCommissionPayment(vendorId, amount) {
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Amount must be a positive number");
+  }
+
+  // Pre-check (without writing) so we don't call Paystack for a
+  // request the server already knows is invalid.
+  const wallet = await Wallet.findOne({ vendorId });
+  if (!wallet) {
+    throw new Error("Wallet not found");
+  }
+  const amountMinor = toMinor(amount);
+  if (amountMinor > wallet.commissionOwed) {
+    throw new Error(
+      `Amount exceeds commission owed (${toMajor(wallet.commissionOwed)} GHS)`
+    );
+  }
+  if (wallet.commissionOwed <= 0) {
+    throw new Error("No commission owed");
+  }
+
+  const user = await User.findById(vendorId).select("email").lean();
+  if (!user || !user.email) {
+    throw new Error("Vendor email is not available for Paystack");
+  }
+
+  // Paystack amount is in the smallest currency unit. GHS uses pesewas,
+  // so 1 GHS = 100. The order flow does the same conversion in
+  // routes/orders.js#initialize-payment.
+  return paystackService.initializeTransaction({
+    email: user.email,
+    amount: amountMinor,
+    metadata: {
+      purpose: "commission_payment",
+      vendorId: String(vendorId),
+    },
+  });
+}
+
+/**
+ * Pay commission owed (for COD orders) — Paystack-verified.
+ *
+ * This is step 2 of 2. It must be called ONLY after
+ * `paystackService.verifyPaystackPayment(reference)` has returned
+ * a success payload. The caller (the route) is responsible for
+ * that verification; `payCommission` re-asserts the amount match
+ * before writing the ledger.
+ *
+ * Idempotent: if a `commission_payment` WalletTransaction with the
+ * same `paymentRef` already exists, the existing record is returned
+ * without re-debiting. This makes duplicate verify calls safe.
+ *
+ * @param {String|ObjectId} vendorId     - the vendor's user _id
+ * @param {Number} amount               - amount in GHS (major units)
+ * @param {String} paymentRef           - the Paystack reference
+ * @param {Object} paystackData         - the verified Paystack payload
+ * @returns {Promise<{success, amountPaid, remainingOwed, paymentRef, alreadyProcessed?}>}
+ */
+async function payCommission(vendorId, amount, paymentRef, paystackData) {
+  if (!paymentRef || typeof paymentRef !== "string") {
+    throw new Error("paymentRef is required (Paystack must verify the payment first)");
+  }
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Amount must be a positive number");
+  }
+  if (!paystackData || paystackData.status !== "success") {
+    throw new Error("Paystack data is not a successful payment");
+  }
+
+  // Idempotency: a second verify call with the same reference
+  // returns the original record instead of double-debiting.
+  const existing = await WalletTransaction.findOne({
+    type: "commission_payment",
+    paymentRef,
+  }).lean();
+  if (existing) {
+    const wallet = await Wallet.findOne({ vendorId }).lean();
+    return {
+      success: true,
+      alreadyProcessed: true,
+      amountPaid: toMajor(existing.amount),
+      remainingOwed: toMajor(wallet ? wallet.commissionOwed : 0),
+      paymentRef,
+    };
+  }
+
+  const amountMinor = toMinor(amount);
+
+  // Re-assert the Paystack amount matches what the client claimed.
+  // Paystack reports `amount` in kobo/pesewas, and the init step
+  // already passed `amount: amountMinor`, so they must be equal.
+  if (typeof paystackData.amount === "number" && paystackData.amount !== amountMinor) {
+    throw new Error(
+      `Amount mismatch: client sent ${amountMinor} but Paystack recorded ${paystackData.amount}`
+    );
+  }
+
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
 
-    const amountMinor = toMinor(amount);
-
-    // Get wallet
     const wallet = await Wallet.findOne({ vendorId }).session(session);
     if (!wallet) {
       throw new Error("Wallet not found");
     }
-
-    // Validate amount
     if (amountMinor > wallet.commissionOwed) {
-      throw new Error(`Amount exceeds commission owed (${toMajor(wallet.commissionOwed)} GHS)`);
+      throw new Error(
+        `Amount exceeds commission owed (${toMajor(wallet.commissionOwed)} GHS)`
+      );
     }
 
-    // In production, this would process the payment via Paystack
-    // For now, we'll record the payment
-
-    // Update wallet
+    // Update wallet balances.
     wallet.commissionOwed -= amountMinor;
     wallet.commissionPaid += amountMinor;
     await wallet.save();
 
-    // Create transaction record
-    await WalletTransaction.create([{
+    // Create the ledger entry. paymentRef is indexed on the model so
+    // the idempotency check above stays O(log n) even after many
+    // commission payments have been recorded.
+    const txn = await WalletTransaction.create([{
       walletId: wallet._id,
       vendorId,
       type: "commission_payment",
       amount: amountMinor,
       balanceAfter: wallet.availableBalance + wallet.pendingBalance,
+      paymentRef,
       status: "completed",
-      description: `Commission payment via ${paymentMethod}`,
-      metadata: { paymentMethod, paymentDetails },
+      description: `Commission payment via Paystack (ref: ${paymentRef})`,
+      metadata: {
+        paymentRef,
+        customerEmail: paystackData.customerEmail,
+        gatewayResponse: paystackData.gateway_response,
+      },
     }], { session });
 
     await session.commitTransaction();
@@ -510,6 +620,8 @@ async function payCommission(vendorId, amount, paymentMethod, paymentDetails) {
       success: true,
       amountPaid: amount,
       remainingOwed: toMajor(wallet.commissionOwed),
+      paymentRef,
+      transactionId: txn[0]._id,
     };
   } catch (error) {
     await session.abortTransaction();
@@ -837,6 +949,7 @@ module.exports = {
   processOrderEarnings,
   releaseHeldFunds,
   processWithdrawal,
+  initializeCommissionPayment,
   payCommission,
   approveWithdrawal,
   rejectWithdrawal,

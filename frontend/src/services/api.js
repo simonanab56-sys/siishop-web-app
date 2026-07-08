@@ -1,6 +1,7 @@
 // services/api.js — Complete API layer with all methods, no duplicates
 import { API_BASE } from "../config/api";
 import logger from "../utils/logger";
+import { cachedFetch } from "../utils/cache";
 
 const DEV = import.meta.env.DEV;
 
@@ -22,6 +23,10 @@ export async function apiRequest(endpoint, options = {}) {
   const baseURL = getApiBaseUrl();
   const url = `${baseURL}${endpoint}`;
 
+  // DEBUG: Log token presence for debugging 401 errors
+  const token = getToken();
+  console.log(`[API] ${endpoint} - Token present:`, !!token, "Token prefix:", token?.substring(0, 20));
+
   if (DEV) {
     logger.log(`[API] ${endpoint}`, { method: options.method || "GET" });
   }
@@ -34,6 +39,11 @@ export async function apiRequest(endpoint, options = {}) {
         ...options.headers,
       },
     });
+
+    // DEBUG: Log response status for debugging
+    if (!response.ok) {
+      console.log(`[API] ${endpoint} - HTTP ${response.status} - Token was:`, token ? "sent" : "NOT SENT");
+    }
 
     if (!response.ok) {
       const errorBody = await response.text();
@@ -49,6 +59,17 @@ export async function apiRequest(endpoint, options = {}) {
     }
 
     const data = await response.json();
+
+    // DEBUG: Log raw API responses for auth endpoints
+    if (endpoint.includes("auth")) {
+      console.log(`[API] ${endpoint} response:`, data);
+      if (data?.user) {
+        console.log(`[API] ${endpoint} user keys:`, Object.keys(data.user));
+        console.log(`[API] ${endpoint} vendorType:`, data.user.vendorType);
+        console.log(`[API] ${endpoint} restaurantDetails:`, data.user.restaurantDetails);
+      }
+    }
+
     return data;
   } catch (err) {
     if (DEV) {
@@ -82,7 +103,7 @@ export const authAPI = {
     }),
   updateMe: (data) =>
     apiRequest("/auth/me", {
-      method: "PATCH",
+      method: "PUT",
       body: JSON.stringify(data),
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
@@ -129,7 +150,13 @@ export const productAPI = {
     return apiRequest(`/products?${params.toString()}`);
   },
   getById: (id) => apiRequest(`/products/${id}`),
-  getCategories: () => apiRequest("/products/categories"),
+  // ✅ Optional params: { search } — substring filter, case-insensitive,
+  // applied server-side in the categories endpoint. Backward-compatible
+  // (no-arg callers still get the full list).
+  getCategories: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return apiRequest(`/products/categories${q ? "?" + q : ""}`);
+  },
   create: async (data, imageFiles = []) => {
     // If there are image files, use FormData
     if (imageFiles.length > 0) {
@@ -164,7 +191,16 @@ export const productAPI = {
     if (newImageFiles.length > 0 || deleteImages.length > 0) {
       const formData = new FormData();
       Object.keys(data).forEach(key => {
-        if (data[key] !== undefined && data[key] !== null) {
+        if (data[key] === undefined) return;
+        // ✅ Round-trip explicit nulls on the FormData path. Multipart bodies
+        // can't carry JSON `null` natively, so we send the string "null" as
+        // a sentinel — the server's discount normalizers (routes/products.js,
+        // routes/vendor.js) treat it the same as an absent value with the
+        // intent of "clear". Without this, clearing a discount while also
+        // editing images would silently keep the stale DB value.
+        if (data[key] === null) {
+          formData.append(key, "null");
+        } else {
           formData.append(key, data[key]);
         }
       });
@@ -276,6 +312,14 @@ export const vendorAPI = {
     apiRequest("/vendor/dashboard", {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  // ✅ Consolidated stats: single source of truth for Total Revenue,
+  // Online Revenue, COD Revenue, Total Customers, Total Orders. Called
+  // by Restaurant Dashboard, Wallet, Customers and Analytics pages so
+  // they all show identical numbers after refresh.
+  getStats: () =>
+    apiRequest("/vendor/stats", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
   getProducts: () =>
     apiRequest("/vendor/products", {
       headers: { Authorization: `Bearer ${getToken()}` },
@@ -380,24 +424,32 @@ export const vendorAPI = {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
   },
-  getDeliveredOrdersStats: () =>
-    apiRequest("/vendor/orders/delivered/stats", {
+  // Stats share the same filter contract as the list endpoint so the four
+  // stat cards always stay in lockstep with the filtered table. Callers
+  // pass the same `{ filter, startDate, endDate, search }` object.
+  getDeliveredOrdersStats: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/vendor/orders/delivered/stats${query ? "?" + query : ""}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
-    }),
+    });
+  },
   updateStatus: (id, orderStatus) =>
     apiRequest(`/vendor/orders/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ orderStatus }),
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
-  // Vendor listing for customers
+  // Vendor listing for customers (default to marketplace for backward compatibility)
   getList: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    // Ensure vendorType is set to marketplace for backward compatibility
+    // Use "vendorType" parameter to match backend route
+    const mergedParams = { ...params, vendorType: params.vendorType || "marketplace" };
+    const query = new URLSearchParams(mergedParams).toString();
     return apiRequest(`/vendor/list${query ? "?" + query : ""}`);
   },
   // Get vendors by location
   getByLocation: (region, city) => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ vendorType: "marketplace" });
     if (region) params.append("region", region);
     if (city) params.append("city", city);
     return apiRequest(`/vendor/list?${params.toString()}`);
@@ -528,12 +580,32 @@ export const adminAPI = {
     apiRequest(`/admin/analytics/chart?type=${type}&days=${days}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  // Vendors
+  getVendors: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/admin/vendors${query ? "?" + query : ""}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+  },
+  suspendVendor: (id) =>
+    apiRequest(`/admin/vendors/${id}/suspend`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
 };
 
 /* ── Promos ────────────────────────────────────────────────────────────────── */
 export const promoAPI = {
   getAll: () => apiRequest("/promos"),
-  getActive: () => apiRequest("/promos/active"),
+  getActive: (params = {}) => {
+    // Optional query-string builder so callers can request a filtered view
+    // (e.g. by category). Server-side currently ignores extra params — the
+    // frontend does its own category filtering client-side from the returned
+    // data — but accepting the param keeps the door open for a future
+    // server-side filter without an API shape change.
+    const q = new URLSearchParams(params).toString();
+    return apiRequest(`/promos/active${q ? "?" + q : ""}`);
+  },
   getAdmin: () =>
     apiRequest("/promos/admin", {
       headers: { Authorization: `Bearer ${getToken()}` },
@@ -558,6 +630,143 @@ export const promoAPI = {
     }),
   validate: (code) =>
     apiRequest(`/promos/validate/${code}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+};
+
+/* ── Category requests ──────────────────────────────────────────────────────
+   Vendors ask admin to add a new marketplace category; admin approves or
+   rejects. The approved names are merged into the live categories list so
+   the vendor's product form dropdown reflects them immediately.
+   ──────────────────────────────────────────────────────────────────────────── */
+export const categoryAPI = {
+  // Vendor — submit a new request. Server validates against the live list
+  // and any pending/approved requests.
+  requestNew: (name, note = "") =>
+    apiRequest("/category-requests", {
+      method: "POST",
+      body: JSON.stringify({ name, note }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  // Vendor — list my own requests (pending / approved / rejected).
+  getMine: () =>
+    apiRequest("/category-requests/mine", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+  // Admin — list all (optional status filter).
+  getAll: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return apiRequest(`/category-requests${q ? "?" + q : ""}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+  },
+  // Admin — approve or reject.
+  review: (id, action /* "approve" | "reject" */) =>
+    apiRequest(`/category-requests/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ action }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+};
+
+/* ── Homepage sections (Task 7) ─────────────────────────────────────────────
+   Admin-curated dynamic blocks on the homepage (like Jumia). Public
+   endpoints fetch the active section configs and per-section product lists;
+   admin endpoints manage the section documents themselves.
+   ──────────────────────────────────────────────────────────────────────────── */
+export const homepageSectionAPI = {
+  /** Public: list active section configs (no products). */
+  getActive: () => apiRequest("/homepage-sections/configs"),
+
+  /** Public: list active sections WITH their resolved products. */
+  getAll: () => apiRequest("/homepage-sections"),
+
+  /** Public: get one section document. */
+  getOne: (id) => apiRequest(`/homepage-sections/${id}`),
+
+  /** Public: get the resolved product list for a single section. */
+  getProducts: (id) => apiRequest(`/homepage-sections/${id}/products`),
+
+  /** Admin: list ALL sections (including inactive / scheduled). */
+  getAdmin: () =>
+    apiRequest("/homepage-sections/admin", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  /** Admin: create. Accepts FormData when a banner image is provided. */
+  create: async (data, bannerFile = null) => {
+    if (bannerFile) {
+      const formData = new FormData();
+      Object.keys(data).forEach((key) => {
+        if (data[key] === undefined || data[key] === null) return;
+        // source + sortOverride are objects — server expects JSON strings
+        if (key === "source" || key === "sortOverride") {
+          formData.append(key, JSON.stringify(data[key]));
+        } else {
+          formData.append(key, data[key]);
+        }
+      });
+      formData.append("banner", bannerFile);
+      const baseURL = getApiBaseUrl();
+      const response = await fetch(`${baseURL}/homepage-sections`, {
+        method: "POST",
+        body: formData,
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to create section");
+      return result;
+    }
+    return apiRequest("/homepage-sections", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+  },
+
+  /** Admin: update. `deleteBanner=true` removes the existing banner. */
+  update: async (id, data, bannerFile = null, deleteBanner = false) => {
+    if (bannerFile || deleteBanner) {
+      const formData = new FormData();
+      Object.keys(data).forEach((key) => {
+        if (data[key] === undefined || data[key] === null) return;
+        if (key === "source" || key === "sortOverride") {
+          formData.append(key, JSON.stringify(data[key]));
+        } else {
+          formData.append(key, data[key]);
+        }
+      });
+      if (bannerFile) formData.append("banner", bannerFile);
+      if (deleteBanner) formData.append("deleteBanner", "true");
+      const baseURL = getApiBaseUrl();
+      const response = await fetch(`${baseURL}/homepage-sections/${id}`, {
+        method: "PUT",
+        body: formData,
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to update section");
+      return result;
+    }
+    return apiRequest(`/homepage-sections/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+  },
+
+  /** Admin: hard delete. */
+  remove: (id) =>
+    apiRequest(`/homepage-sections/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  /** Admin: bulk-update displayOrder. */
+  reorder: (orderedIds) =>
+    apiRequest("/homepage-sections/reorder", {
+      method: "PATCH",
+      body: JSON.stringify({ orderedIds }),
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
 };
@@ -672,11 +881,30 @@ export const walletAPI = {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
 
-  // Pay commission for COD orders
-  payCommission: (amount, paymentMethod, paymentDetails) =>
-    apiRequest("/wallet/pay-commission", {
+  // Commission payment via Paystack — two-step flow.
+  //
+  // Step 1: initializeCommissionPayment(amount) — server calls
+  //   Paystack and returns { authorization_url, reference, access_code }.
+  //   No wallet change happens here.
+  // Step 2: verifyCommissionPayment(paymentRef, amount) — server
+  //   re-verifies the reference with Paystack before debiting
+  //   commissionOwed. Only on a successful Paystack verify do we
+  //   create the WalletTransaction and update balances.
+  //
+  // The split is mandatory: a single "trust the client" endpoint
+  // would let anyone mark their commission as paid by sending a
+  // fabricated amount. Paystack is the single source of truth.
+  initializeCommissionPayment: (amount) =>
+    apiRequest("/wallet/commission/initialize", {
       method: "POST",
-      body: JSON.stringify({ amount, paymentMethod, paymentDetails }),
+      body: JSON.stringify({ amount }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  verifyCommissionPayment: (paymentRef, amount) =>
+    apiRequest("/wallet/commission/verify", {
+      method: "POST",
+      body: JSON.stringify({ paymentRef, amount }),
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
 };
@@ -740,6 +968,33 @@ export const adminWalletAPI = {
   releaseHeldFunds: () =>
     apiRequest("/admin/wallet/release-held", {
       method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  /* ── Admin Commissions & Payouts (per-vendor financial table) ── */
+  // Platform summary for the 9 stat cards on the new Commissions tab.
+  // Returns: { totalVendors, vendorsOwingCommission,
+  //   totalOutstandingCommission, totalVendorEarnings,
+  //   pendingWithdrawalRequests, totalPendingPayouts, totalPaidOut,
+  //   totalCommissionCollected, platformRevenue, settings }
+  getCommissionAnalytics: () =>
+    apiRequest("/admin/wallet/commissions/analytics", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Per-vendor list (paginated, filterable by vendorType, status,
+  // search, dateFrom, dateTo). Returns { vendors, pagination }.
+  getCommissionVendors: (options = {}) =>
+    apiRequest(
+      `/admin/wallet/commissions/vendors?${new URLSearchParams(options)}`,
+      { headers: { Authorization: `Bearer ${getToken()}` } }
+    ),
+
+  // Single-vendor detail (for the drawer). Returns { vendor, wallet,
+  // recentTransactions, withdrawals, commissionPayments, recentOrders,
+  // paystackReferences }.
+  getCommissionVendor: (vendorId) =>
+    apiRequest(`/admin/wallet/commissions/vendors/${vendorId}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
 };
@@ -828,4 +1083,262 @@ export const wishlistAPI = {
     apiRequest("/wishlist/recommendations", {
       headers: getAuthHeader(),
     }),
+};
+
+/* ── Restaurant / Food Marketplace ──────────────────────────────────────────── */
+export const restaurantAPI = {
+  // Get all restaurants.
+  // ✅ FIX: The new `composite: "true"` query mode asks the server to
+  //   return `{ all, featured, popular }` in a single round-trip
+  //   instead of 3. FoodPage collapses its 3 parallel calls into 1.
+  //   Default callers (no `composite` in params) still get the original
+  //   array shape.
+  getRestaurants: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/restaurants?${query}`, {});
+  },
+
+  // ✅ NEW: Get all food items (unified from Product collection)
+  getFoodItems: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/restaurants/food?${query}`, {});
+  },
+
+  // Get restaurant by slug
+  // ✅ FIX: Cached for 60s. The same restaurant is often opened twice
+  //   in a session (refresh, back button) — a per-user 60s TTL is plenty.
+  //   The slug endpoint is the heaviest single call in the food flow
+  //   (User + categories + products + review stats), so even a short
+  //   cache saves a perceptible amount of network + DB work.
+  getRestaurantBySlug: (slug) =>
+    cachedFetch(
+      `restaurant:${slug}`,
+      () => apiRequest(`/restaurants/${slug}`, {}),
+      60_000
+    ),
+
+  // Search restaurants and menu items
+  search: (query, limit = 20) =>
+    apiRequest(`/restaurants/search/query?q=${encodeURIComponent(query)}&limit=${limit}`, {}),
+
+  // Get restaurants by location
+  getByLocation: (region, city) => {
+    const params = new URLSearchParams();
+    if (region) params.append("region", region);
+    if (city) params.append("city", city);
+    return apiRequest(`/restaurants/locations?${params}`, {});
+  },
+
+  // Get all regions with restaurants
+  // ✅ Cached for 10 min — regions rarely change, but every filter
+  // interaction on FoodPage would otherwise re-fetch them.
+  getRegions: () =>
+    cachedFetch("restaurants:regions", () => apiRequest("/restaurants/regions", {}), 10 * 60_000),
+
+  // Get all cuisine types
+  // ✅ Cached for 10 min — same rationale as getRegions.
+  getCuisines: () =>
+    cachedFetch("restaurants:cuisines", () => apiRequest("/restaurants/cuisines", {}), 10 * 60_000),
+};
+
+/* ── Menu (Restaurant Dashboard) ──────────────────────────────────────────────── */
+export const menuAPI = {
+  // Get menu categories
+  // ✅ Cached for 5 min — categories change rarely, but the vendor dashboard
+  // hot-reloads them on every tab switch.
+  getCategories: () =>
+    cachedFetch(
+      "menu:categories",
+      () => apiRequest("/menu/categories", { headers: getAuthHeader() }),
+      5 * 60_000
+    ),
+
+  // Create category
+  createCategory: (name, displayOrder = 0) =>
+    apiRequest("/menu/categories", {
+      method: "POST",
+      body: JSON.stringify({ name, displayOrder }),
+      headers: getAuthHeader(),
+    }),
+
+  // Update category
+  updateCategory: (id, data) =>
+    apiRequest(`/menu/categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      headers: getAuthHeader(),
+    }),
+
+  // Delete category
+  deleteCategory: (id) =>
+    apiRequest(`/menu/categories/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader(),
+    }),
+
+  // Get menu items
+  getItems: (category) => {
+    const params = category ? `?category=${category}` : "";
+    return apiRequest(`/menu/items${params}`, { headers: getAuthHeader() });
+  },
+
+  // Create menu item
+  createItem: (itemData) =>
+    apiRequest("/menu/items", {
+      method: "POST",
+      body: JSON.stringify(itemData),
+      headers: getAuthHeader(),
+    }),
+
+  // Update menu item
+  updateItem: (id, data) =>
+    apiRequest(`/menu/items/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      headers: getAuthHeader(),
+    }),
+
+  // Delete menu item
+  deleteItem: (id) =>
+    apiRequest(`/menu/items/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader(),
+    }),
+
+  // Toggle availability
+  toggleAvailability: (id, available) =>
+    apiRequest(`/menu/items/${id}/availability`, {
+      method: "PATCH",
+      body: JSON.stringify({ available }),
+      headers: getAuthHeader(),
+    }),
+
+  // Upload menu item images (supports multiple)
+  uploadImages: async (itemId, imageFiles = []) => {
+    const baseURL = getApiBaseUrl();
+    const formData = new FormData();
+
+    imageFiles.forEach(file => {
+      formData.append("images", file);
+    });
+
+    if (itemId) {
+      formData.append("itemId", itemId);
+    }
+
+    const response = await fetch(`${baseURL}/menu/upload`, {
+      method: "POST",
+      body: formData,
+      headers: { ...getAuthHeader() }, // Don't set Content-Type for FormData
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Upload failed");
+    return data;
+  },
+
+  // Upload single image for menu item — Cloudinary-backed (returns {url, public_id})
+  uploadSingleImage: async (imageFile) => {
+    const baseURL = getApiBaseUrl();
+    const formData = new FormData();
+    formData.append("image", imageFile);
+
+    const response = await fetch(`${baseURL}/menu/upload-single`, {
+      method: "POST",
+      body: formData,
+      headers: { ...getAuthHeader() },
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Upload failed");
+    return data; // { url, public_id }
+  },
+
+  // Upload a short video for a menu item — Cloudinary video resource.
+  uploadVideo: async (videoFile) => {
+    const baseURL = getApiBaseUrl();
+    const formData = new FormData();
+    formData.append("video", videoFile);
+
+    const response = await fetch(`${baseURL}/menu/upload-video`, {
+      method: "POST",
+      body: formData,
+      headers: { ...getAuthHeader() },
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Video upload failed");
+    return data; // { url, public_id, duration }
+  },
+};
+
+/* ── Food Orders ──────────────────────────────────────────────────────────────── */
+export const foodOrderAPI = {
+  // Create food order
+  create: (orderData) =>
+    apiRequest("/food-orders", {
+      method: "POST",
+      body: JSON.stringify(orderData),
+      headers: getAuthHeader(),
+    }),
+
+  // Get user's food orders
+  getMyOrders: (status, limit = 20, skip = 0) => {
+    const params = new URLSearchParams({ limit, skip });
+    if (status) params.append("status", status);
+    return apiRequest(`/food-orders/my?${params}`, { headers: getAuthHeader() });
+  },
+
+  // Get single order
+  getOrder: (id) =>
+    apiRequest(`/food-orders/${id}`, { headers: getAuthHeader() }),
+
+  // Update order status
+  updateStatus: (id, orderStatus) =>
+    apiRequest(`/food-orders/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ orderStatus }),
+      headers: getAuthHeader(),
+    }),
+
+  // Get restaurant orders
+  getRestaurantOrders: (restaurantId, status, limit = 50, skip = 0) => {
+    const params = new URLSearchParams({ limit, skip });
+    if (status) params.append("status", status);
+    return apiRequest(`/food-orders/restaurant/${restaurantId}?${params}`, { headers: getAuthHeader() });
+  },
+
+  // Initialize payment
+  initializePayment: (id) =>
+    apiRequest(`/food-orders/${id}/initialize-payment`, {
+      method: "POST",
+      headers: getAuthHeader(),
+    }),
+
+  // Verify payment
+  verifyPayment: (id, paymentRef) =>
+    apiRequest(`/food-orders/${id}/verify-payment`, {
+      method: "POST",
+      body: JSON.stringify({ paymentRef }),
+      headers: getAuthHeader(),
+    }),
+};
+
+/* ── Restaurant Reviews ──────────────────────────────────────────────────────── */
+export const restaurantReviewAPI = {
+  // Get restaurant reviews
+  getReviews: (restaurantId, limit = 20, skip = 0) =>
+    apiRequest(`/restaurant-reviews/${restaurantId}?limit=${limit}&skip=${skip}`, {}),
+
+  // Create review
+  create: (restaurantId, orderId, rating, review) =>
+    apiRequest("/restaurant-reviews", {
+      method: "POST",
+      body: JSON.stringify({ restaurantId, orderId, rating, review }),
+      headers: getAuthHeader(),
+    }),
+
+  // Get review for order
+  getOrderReview: (orderId) =>
+    apiRequest(`/restaurant-reviews/order/${orderId}`, { headers: getAuthHeader() }),
 };

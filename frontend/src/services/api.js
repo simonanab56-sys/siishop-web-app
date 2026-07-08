@@ -23,9 +23,13 @@ export async function apiRequest(endpoint, options = {}) {
   const baseURL = getApiBaseUrl();
   const url = `${baseURL}${endpoint}`;
 
-  // DEBUG: Log token presence for debugging 401 errors
+  // ✅ DEBUG: Log token presence for debugging 401 errors.
+  // Routed through `logger.log` so the call site is stripped from the
+  // production bundle entirely (Vite drops the dead branch because
+  // `isDev` is a module-level const). The token prefix would otherwise
+  // leak into the production browser console.
   const token = getToken();
-  console.log(`[API] ${endpoint} - Token present:`, !!token, "Token prefix:", token?.substring(0, 20));
+  logger.log(`[API] ${endpoint} - Token present:`, !!token, "Token prefix:", token?.substring(0, 20));
 
   if (DEV) {
     logger.log(`[API] ${endpoint}`, { method: options.method || "GET" });
@@ -40,9 +44,10 @@ export async function apiRequest(endpoint, options = {}) {
       },
     });
 
-    // DEBUG: Log response status for debugging
+    // ✅ DEBUG: Log response status for debugging.
+    // Same `logger.log` so it disappears in production.
     if (!response.ok) {
-      console.log(`[API] ${endpoint} - HTTP ${response.status} - Token was:`, token ? "sent" : "NOT SENT");
+      logger.log(`[API] ${endpoint} - HTTP ${response.status} - Token was:`, token ? "sent" : "NOT SENT");
     }
 
     if (!response.ok) {
@@ -60,13 +65,17 @@ export async function apiRequest(endpoint, options = {}) {
 
     const data = await response.json();
 
-    // DEBUG: Log raw API responses for auth endpoints
+    // ✅ DEBUG: Log raw API responses for auth endpoints.
+    // Routed through `logger.log` so it disappears in production. The
+    // full user object (including vendorType, restaurantDetails) is
+    // debug-only — these are visible during local dev and replaced by
+    // a real "user signed in" toast in production.
     if (endpoint.includes("auth")) {
-      console.log(`[API] ${endpoint} response:`, data);
+      logger.log(`[API] ${endpoint} response:`, data);
       if (data?.user) {
-        console.log(`[API] ${endpoint} user keys:`, Object.keys(data.user));
-        console.log(`[API] ${endpoint} vendorType:`, data.user.vendorType);
-        console.log(`[API] ${endpoint} restaurantDetails:`, data.user.restaurantDetails);
+        logger.log(`[API] ${endpoint} user keys:`, Object.keys(data.user));
+        logger.log(`[API] ${endpoint} vendorType:`, data.user.vendorType);
+        logger.log(`[API] ${endpoint} restaurantDetails:`, data.user.restaurantDetails);
       }
     }
 

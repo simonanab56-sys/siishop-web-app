@@ -7,6 +7,7 @@ import { authAPI } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { regions, getCitiesByRegion } from "../../config/ghanaLocations";
 import { cuisineTypes } from "../../config/cuisineTypes";
+import logger from "../../utils/logger";
 import styles from "./AuthModal.module.css";
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "login" }) {
@@ -185,18 +186,25 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
     setError(""); setLoading(true);
     try {
       const res = await authAPI.login(email.trim(), password);
-      console.log("[AuthModal] ============ FRONTEND DEBUG ============");
-      console.log("[AuthModal] Full response keys:", Object.keys(res));
-      console.log("[AuthModal] Full user keys:", res.user ? Object.keys(res.user) : "NO USER");
-      console.log("[AuthModal] Full user object:", JSON.stringify(res.user, null, 2));
-      console.log("[AuthModal] vendorType from response:", res.user?.vendorType);
-      console.log("[AuthModal] restaurantDetails from response:", res.user?.restaurantDetails);
-      console.log("[AuthModal] vendorStatus from response:", res.user?.vendorStatus);
-      console.log("[AuthModal] ===========================================");
+      // ✅ Dev-only — these dump the full user object (PII) to the
+      // console. In production they short-circuit to `false && ...`
+      // and Vite strips them from the bundle entirely. Real
+      // "signed in" feedback for the user is shown via the `success`
+      // toast + AuthContext login.
+      logger.log("[AuthModal] ============ FRONTEND DEBUG ============");
+      logger.log("[AuthModal] Full response keys:", Object.keys(res));
+      logger.log("[AuthModal] Full user keys:", res.user ? Object.keys(res.user) : "NO USER");
+      logger.log("[AuthModal] Full user object:", JSON.stringify(res.user, null, 2));
+      logger.log("[AuthModal] vendorType from response:", res.user?.vendorType);
+      logger.log("[AuthModal] restaurantDetails from response:", res.user?.restaurantDetails);
+      logger.log("[AuthModal] vendorStatus from response:", res.user?.vendorStatus);
+      logger.log("[AuthModal] ===========================================");
       if (!res?.token || !res?.user) throw new Error("Invalid response from server");
       login(res.token, res.user);
       onSuccess?.(res.user);
     } catch (err) {
+      // ✅ Genuine error — keep in production. Visible to Sentry-style
+      // error reporters and to the support team.
       console.error("[AuthModal] login error:", err.message);
       setError(err.message || "Login failed. Please try again.");
     } finally {

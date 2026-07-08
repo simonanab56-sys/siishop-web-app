@@ -30,6 +30,7 @@ import { restaurantAPI } from "../services/api";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
 import { getImageUrl, getImageSrcSet } from "../utils/image";
+import logger from "../utils/logger";
 import SEO from "../components/SEO";
 import RestaurantPageSkeleton from "../components/skeletons/RestaurantPageSkeleton";
 import styles from "./RestaurantPage.module.css";
@@ -239,7 +240,11 @@ export default function RestaurantPage({
         storeName: restaurant.storeName || restaurant.restaurantDetails?.restaurantName,
       }));
     } catch (e) {
-      console.log("[RestaurantPage] Error storing food detail:", e.message);
+      // ✅ Dev-only — this is a recently-viewed localStorage write
+      // failure, not a real error. The catch block is silent in
+      // production (logger.log is dev-only). The user keeps using
+      // the app normally.
+      logger.log("[RestaurantPage] Error storing food detail:", e.message);
     }
     onNavigate?.("food-detail");
   }, [restaurant, onNavigate]);

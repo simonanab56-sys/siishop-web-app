@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { restaurantReviewAPI } from "../../services/api";
 import { useToast } from "../../components/Toast";
+import logger from "../../utils/logger";
 
 export default function RestaurantReviewsPage({ onBack, vendorId, addToast }) {
   const { addToast: showToast } = useToast();
@@ -17,7 +18,7 @@ export default function RestaurantReviewsPage({ onBack, vendorId, addToast }) {
     setLoading(true);
     try {
       const response = await restaurantReviewAPI.getReviews(vendorId);
-      console.log("[RestaurantReviewsPage] API response:", response);
+      logger.log("[RestaurantReviewsPage] API response:", response);
 
       // DEFENSIVE: Normalize response to always be an array
       let reviewsArray = [];
@@ -35,14 +36,16 @@ export default function RestaurantReviewsPage({ onBack, vendorId, addToast }) {
         // Object with success flag { success: true, data: [...] }
         reviewsArray = response.data;
       } else {
-        // Unexpected format - use empty array
+        // Unexpected format - use empty array.
+        // console.warn is preserved in production per spec.
         console.warn("[RestaurantReviewsPage] Unexpected response format:", response);
         reviewsArray = [];
       }
 
-      console.log("[RestaurantReviewsPage] Normalized reviews:", reviewsArray.length);
+      logger.log("[RestaurantReviewsPage] Normalized reviews:", reviewsArray.length);
       setReviews(reviewsArray);
     } catch (err) {
+      // console.error is preserved in production per spec.
       console.error("[RestaurantReviewsPage] Fetch error:", err.message);
       showToast?.("Failed to load reviews", "error");
       setReviews([]); // Ensure we always have an array on error

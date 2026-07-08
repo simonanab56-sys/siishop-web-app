@@ -1,6 +1,7 @@
 // context/AuthContext.jsx — FIXED: unified storage keys (token/user), no null bug
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { authAPI } from "../services/api";
+import logger from "../utils/logger";
 
 const AuthContext = createContext(null);
 
@@ -30,9 +31,13 @@ export function AuthProvider({ children }) {
     authAPI.getMe()
       .then((res) => {
         if (res?.user) {
-          console.log("[AuthContext] getMe response:", res.user);
-          console.log("[AuthContext] vendorType:", res.user.vendorType);
-          console.log("[AuthContext] restaurantDetails:", res.user.restaurantDetails);
+          // ✅ All dev-only — see utils/logger.js. In production these
+          // resolve to `false && console.log(...)` and the bundler
+          // drops them, so the user object never appears in the
+          // production browser console (PII concern).
+          logger.log("[AuthContext] getMe response:", res.user);
+          logger.log("[AuthContext] vendorType:", res.user.vendorType);
+          logger.log("[AuthContext] restaurantDetails:", res.user.restaurantDetails);
 
           // ✅ ALWAYS update user with FRESH data from server - this fixes stale cached data
           setUser(res.user);
@@ -42,7 +47,7 @@ export function AuthProvider({ children }) {
           localStorage.setItem("user", JSON.stringify(res.user));
           if (res.token) localStorage.setItem("token", res.token);
 
-          console.log("[AuthContext] ✅ Fresh user data saved to localStorage");
+          logger.log("[AuthContext] ✅ Fresh user data saved to localStorage");
         }
       })
       .catch(() => {

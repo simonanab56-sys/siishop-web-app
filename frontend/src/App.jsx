@@ -314,7 +314,7 @@ function AppInner() {
     // Only run when auth is fully checked
     if (!authChecked) return;
 
-    console.log("[App] Dashboard routing check:", {
+    logger.log("[App] Dashboard routing check:", {
       page,
       isLoggedIn: !!token && !!user,
       vendorType: user?.vendorType,
@@ -328,7 +328,7 @@ function AppInner() {
         (user?.restaurantDetails && Object.keys(user?.restaurantDetails).length > 0);
 
       if (isRestaurantVendor) {
-        console.log("[App] 🚨 Wrong dashboard detected! Redirecting to RestaurantDashboard");
+        logger.log("[App] 🚨 Wrong dashboard detected! Redirecting to RestaurantDashboard");
         setPage("restaurant-dashboard");
         return;
       }
@@ -340,7 +340,7 @@ function AppInner() {
         (user?.restaurantDetails && Object.keys(user?.restaurantDetails).length > 0);
 
       if (!isRestaurantVendor) {
-        console.log("[App] 🚨 Wrong dashboard detected! Redirecting to VendorDashboard");
+        logger.log("[App] 🚨 Wrong dashboard detected! Redirecting to VendorDashboard");
         setPage("vendor");
         return;
       }
@@ -439,11 +439,12 @@ function AppInner() {
 
   // ── Login redirect: go to correct dashboard based on role ─────────────────
   function onAuthSuccess(user) {
-    // DEBUG: Log user for debugging vendor routing
-    console.log("[onAuthSuccess] FULL USER:", JSON.stringify(user, null, 2));
-    console.log("[onAuthSuccess] vendorType:", user?.vendorType);
-    console.log("[onAuthSuccess] vendorStatus:", user?.vendorStatus);
-    console.log("[onAuthSuccess] restaurantDetails:", user?.restaurantDetails);
+    // ✅ Dev-only — same pattern as above. Full user object (PII)
+    // stays out of the production console.
+    logger.log("[onAuthSuccess] FULL USER:", JSON.stringify(user, null, 2));
+    logger.log("[onAuthSuccess] vendorType:", user?.vendorType);
+    logger.log("[onAuthSuccess] vendorStatus:", user?.vendorStatus);
+    logger.log("[onAuthSuccess] restaurantDetails:", user?.restaurantDetails);
     addToast(`Welcome, ${user?.name || "there"}! 🎉`, "success");
     setAuthModalOpen(false);
     if (user?.isAdmin) {
@@ -453,7 +454,7 @@ function AppInner() {
       const isRestaurantVendor = user?.vendorType === "restaurant" ||
         (user?.restaurantDetails && Object.keys(user.restaurantDetails).length > 0);
 
-      console.log("[onAuthSuccess] isRestaurantVendor:", isRestaurantVendor);
+      logger.log("[onAuthSuccess] isRestaurantVendor:", isRestaurantVendor);
 
       if (isRestaurantVendor) {
         setPage("restaurant-dashboard");

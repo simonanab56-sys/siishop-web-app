@@ -17,6 +17,7 @@ import { menuAPI, vendorAPI } from "../../services/api";
 import { useCurrency } from "../../context/CurrencyContext";
 import { useToast } from "../../components/Toast";
 import { menuCategories } from "../../config/cuisineTypes";
+import logger from "../../utils/logger";
 import SEO from "../../components/SEO";
 import MenuItemsPage from "./MenuItemsPage";
 import OrderRow from "../../components/vendor/OrderRow";
@@ -214,13 +215,15 @@ function MenuItemModal({ item, onSave, onClose }) {
 
 /* ── Main Restaurant Dashboard ───────────────────────────────────────────────── */
 export default function RestaurantDashboard({ onNavigate, addToast }) {
-  console.log("[RestaurantDashboard] ✅ Component MOUNTED");
+  // ✅ Dev-only — this fires on every mount, so in production the
+  // call is dead-code-eliminated by Vite.
+  logger.log("[RestaurantDashboard] ✅ Component MOUNTED");
 
   const { user, isLoggedIn } = useAuth();
   const { fmt } = useCurrency();
   const { addToast: showToast } = useToast();
 
-  console.log("[RestaurantDashboard] Auth state:", { isLoggedIn, vendorType: user?.vendorType, vendorStatus: user?.vendorStatus });
+  logger.log("[RestaurantDashboard] Auth state:", { isLoggedIn, vendorType: user?.vendorType, vendorStatus: user?.vendorStatus });
 
   // Safe format function
   const formatPrice = (value) => {
@@ -266,11 +269,11 @@ export default function RestaurantDashboard({ onNavigate, addToast }) {
   });
 
   useEffect(() => {
-    console.log("[RestaurantDashboard] useEffect:", { isLoggedIn, vendorType: user?.vendorType, hasRestaurantDetails: !!user?.restaurantDetails, userLoaded: !!user });
+    logger.log("[RestaurantDashboard] useEffect:", { isLoggedIn, vendorType: user?.vendorType, hasRestaurantDetails: !!user?.restaurantDetails, userLoaded: !!user });
 
     // Wait for user to be loaded before checking
     if (!isLoggedIn || !user) {
-      console.log("[RestaurantDashboard] Not logged in or no user - redirecting to home");
+      logger.log("[RestaurantDashboard] Not logged in or no user - redirecting to home");
       onNavigate?.("home");
       return;
     }
@@ -279,30 +282,30 @@ export default function RestaurantDashboard({ onNavigate, addToast }) {
     const isRestaurantVendor = user?.vendorType === "restaurant" ||
       (user?.restaurantDetails && Object.keys(user.restaurantDetails).length > 0);
 
-    console.log("[RestaurantDashboard] isRestaurantVendor:", isRestaurantVendor);
+    logger.log("[RestaurantDashboard] isRestaurantVendor:", isRestaurantVendor);
 
     // CRITICAL FIX: Don't redirect if we don't have vendorType yet (data might still be loading)
     // Only redirect if user is definitively NOT a restaurant vendor
     const hasVendorData = user?.vendorType !== undefined || (user?.restaurantDetails && Object.keys(user.restaurantDetails).length > 0);
 
     if (hasVendorData && !isRestaurantVendor) {
-      console.log("[RestaurantDashboard] User is NOT a restaurant vendor - redirecting to vendor dashboard");
+      logger.log("[RestaurantDashboard] User is NOT a restaurant vendor - redirecting to vendor dashboard");
       onNavigate?.("vendor");
       return;
     }
 
     if (!hasVendorData) {
-      console.log("[RestaurantDashboard] User data incomplete - waiting for auth check");
+      logger.log("[RestaurantDashboard] User data incomplete - waiting for auth check");
       // Don't redirect - wait for auth to complete
       return;
     }
 
-    console.log("[RestaurantDashboard] Fetching data...");
+    logger.log("[RestaurantDashboard] Fetching data...");
     fetchData();
   }, [user, isLoggedIn]);
 
   async function fetchData() {
-    console.log("[RestaurantDashboard] fetchData called");
+    logger.log("[RestaurantDashboard] fetchData called");
     setLoading(true);
     try {
       // Use Promise.allSettled to prevent one failed request from blocking rendering.
@@ -316,7 +319,7 @@ export default function RestaurantDashboard({ onNavigate, addToast }) {
       const itemsRes = results[0].status === "fulfilled" ? results[0].value : [];
       const ordersRes = results[1].status === "fulfilled" ? results[1].value : [];
 
-      console.log("[RestaurantDashboard] API results:", {
+      logger.log("[RestaurantDashboard] API results:", {
         items: itemsRes?.length || 0,
         orders: ordersRes?.length || 0,
         itemErrors: results[0].reason?.message,
@@ -449,7 +452,7 @@ export default function RestaurantDashboard({ onNavigate, addToast }) {
   const preparingOrders = orders.filter((o) => o.orderStatus === "preparing");
 
   if (loading) {
-    console.log("[RestaurantDashboard] Rendering loading state");
+    logger.log("[RestaurantDashboard] Rendering loading state");
     return (
       <div className={styles.page}>
         <div className={styles.loading}>

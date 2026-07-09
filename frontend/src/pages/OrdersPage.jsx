@@ -19,6 +19,7 @@ function OrderDetailContent({ order, onNavigate, handleMessageVendor, fmt }) {
   if (!order) return null;
 
   const items = safeItems(order.items);
+  const isDelivered = order.orderStatus === "delivered";
 
   return (
     <div className={styles.detailCard}>
@@ -58,6 +59,23 @@ function OrderDetailContent({ order, onNavigate, handleMessageVendor, fmt }) {
           💬 Message Vendor
         </button>
       </div>
+
+      {/* Leave a Review Button - only for delivered orders. The orderId
+          is the only thing the new ReviewPage needs; it queries the
+          server for the actual reviewable items. This makes the
+          review flow discoverable even if the user misses the bell
+          notification. */}
+      {isDelivered && (
+        <div style={{ marginTop: 12 }}>
+          <button
+            className="btn btn-secondary"
+            style={{ width: "100%" }}
+            onClick={() => onNavigate?.("review", { orderId: order._id, source: "orders" })}
+          >
+            ⭐ Leave a review
+          </button>
+        </div>
+      )}
 
       <div className={styles.divider} />
 
@@ -306,6 +324,24 @@ export default function OrdersPage({ addToast, onRequireAuth, onNavigate }) {
                       <span className={styles.payMethodChip}>{order.paymentMethod === "cash" ? "💵 COD" : "💳 Card"}</span>
                       <span className={styles.orderDate}>{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}</span>
                     </div>
+                    {/* ✅ Quick review shortcut on delivered orders.
+                       Stops propagation so clicking it doesn't toggle
+                       the accordion. The detail view also has a button
+                       for desktop — this is the discoverable path for
+                       the mobile list. */}
+                    {order.orderStatus === "delivered" && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ marginTop: 8, alignSelf: "flex-start" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onNavigate?.("review", { orderId: order._id, source: "orders" });
+                        }}
+                      >
+                        ⭐ Leave a review
+                      </button>
+                    )}
                   </button>
 
                   {/* Mobile Accordion - Expanded Details */}

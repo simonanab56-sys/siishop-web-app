@@ -37,17 +37,20 @@
   border: 1.5px solid white;
 }
 
-/* Dropdown panel */
+/* Dropdown panel — rendered into document.body via React Portal
+   (see UserDropdown.jsx). The `top` and `right` are computed from
+   the trigger button's bounding rect and applied as inline styles;
+   the only thing this rule owns is the visual chrome and the
+   stacking layer. z-index 1100 places the panel above the sticky
+   Navbar (which is z-index 200) and any in-page content. */
 .dropdown {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
+  position: fixed;
   background: white;
   border-radius: 14px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.06);
   min-width: 230px;
   padding: 6px;
-  z-index: 200;
+  z-index: 1100;
   animation: popIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 @keyframes popIn {

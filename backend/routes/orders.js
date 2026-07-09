@@ -14,7 +14,7 @@ const {
   createCashOrder,
   createPaidOrder,
 } = require("../services/order.service");
-const { notifyOrderStatusUpdate } = require("../services/notification.service");
+const { notifyOrderStatusUpdate, notifyOrderDelivered, buildPendingReviewItems } = require("../services/notification.service");
 
 /* ─── INITIALIZE PAYMENT ────────────────────────────────────────── */
 /* POST /api/orders/initialize-payment
@@ -237,6 +237,18 @@ router.patch(
       console.error(`[Order] Failed to send status notification:`, err.message);
     });
 
+    // ✅ Review-flow: when an order transitions to "delivered" we also
+    // create in-app "leave a review" notifications for the customer —
+    // one per unique product (or restaurant) in the order. See
+    // services/notification.service.js#notifyOrderDelivered.
+    // Fired async + best-effort so notification failures never block
+    // the status response.
+    if (orderStatus === "delivered" && oldStatus !== "delivered") {
+      notifyOrderDelivered(order, req.app.get("io")).catch((err) => {
+        console.error(`[Order] Failed to send review notification:`, err.message);
+      });
+    }
+
     res.json(order);
   })
 );
@@ -252,6 +264,57 @@ router.delete(
     if (!order) return res.status(404).json({ error: "Order not found" });
 
     res.json({ message: "Order deleted" });
+  })
+);
+
+/* ─── PENDING REVIEWS FOR AN ORDER ─────────────────────────────────
+ * GET /api/orders/:id/pending-reviews
+ *
+ * Returns the list of items in this order that the current customer
+ * can still review. The list is consumed by the review page so it can
+ * pre-render the form for every product/food in the order. The
+ * backend is the source of truth for eligibility (order owner +
+ * delivered status + no prior review), the frontend just renders.
+ *
+ * Response shape:
+ *   { orderId, orderStatus, items: [PendingReviewItem] }
+ *
+ * Returns 404 if the order does not exist OR does not belong to the
+ * caller. We collapse the "not yours" case into the same response as
+ * "doesn't exist" so an unauthorized caller cannot probe other
+ * customers' order ids.
+ */
+router.get(
+  "/:id/pending-reviews",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const order = await Order.findById(req.params.id).lean();
+    if (!order || String(order.userId) !== String(req.user.userId)) {
+      return res.status(404).json({ error: "This order is no longer available." });
+    }
+
+    // Look up the customer's existing reviews for this order so we can
+    // mark each item alreadyReviewed. The buildPendingReviewItems
+    // helper is shared with notifyOrderDelivered so the server-side
+    // and client-side definitions of "pending" stay in lockstep.
+    const ProductReview = require("../models/ProductReview");
+    const RestaurantReview = require("../models/RestaurantReview");
+    const [productReviews, restaurantReviews] = await Promise.all([
+      ProductReview.find({ orderId: order._id }).select("productId").lean(),
+      RestaurantReview.find({ orderId: order._id }).select("restaurantId").lean(),
+    ]);
+    const existingReviews = {
+      product: new Set(productReviews.map((r) => `${String(r.productId)}:${String(order._id)}`)),
+      food: new Set(restaurantReviews.map((r) => `${String(r.restaurantId)}:${String(order._id)}`)),
+    };
+
+    const items = buildPendingReviewItems(order, existingReviews);
+
+    res.json({
+      orderId: String(order._id),
+      orderStatus: order.orderStatus,
+      items,
+    });
   })
 );
 

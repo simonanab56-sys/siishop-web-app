@@ -1411,3 +1411,187 @@ describe("18. Admin Commissions — per-vendor withdrawal-status derivation", ()
     );
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SECTION 19 — Customer review notification flow
+// ═════════════════════════════════════════════════════════════════════════════
+// Mirrors the pure helpers in
+//   backend/services/notification.service.js
+//     - buildPendingReviewItems(order, existingReviews)
+//     - shouldCreateReviewNotification(item, isDelivered, alreadyReviewed)
+//     - validateRating(rating)
+//
+// The new customer review flow is pure-data end-to-end: the server
+// reads from a delivered order, dedupes against existing reviews, and
+// surfaces one reviewable item per unique product (or restaurant for
+// food items). All three helpers are exported from
+// notification.service.js so they can be unit-tested without touching
+// MongoDB. The frontend's ReviewPage consumes exactly the same shape.
+describe("19. Customer review notification flow", () => {
+  // ── 19.1 buildPendingReviewItems ────────────────────────────────────────
+  // Inlined copy of the helper from services/notification.service.js.
+  // Returns [] for non-delivered orders, and one row per unique
+  // productId / restaurantId for delivered ones. The shape matches
+  // what the review modal consumes.
+  function buildPendingReviewItems(order, existingReviews) {
+    if (!order || order.orderStatus !== "delivered") return [];
+    const reviews = existingReviews || { product: new Set(), food: new Set() };
+    const productMap = new Map();
+    const restaurantMap = new Map();
+
+    const items = Array.isArray(order.items) ? order.items : [];
+    for (const it of items) {
+      if (it.itemType === "food" && it.restaurantId) {
+        const key = String(it.restaurantId);
+        if (!restaurantMap.has(key)) {
+          restaurantMap.set(key, {
+            type: "food",
+            orderId: String(order._id),
+            restaurantId: it.restaurantId,
+            name: it.restaurantName || "Restaurant",
+            image: it.image || "",
+            vendorId: it.restaurantId,
+            orderType: "food",
+            alreadyReviewed: reviews.food.has(`${key}:${String(order._id)}`),
+          });
+        }
+      } else if (it.itemType !== "food" && it.productId) {
+        const key = String(it.productId);
+        if (!productMap.has(key)) {
+          productMap.set(key, {
+            type: "product",
+            orderId: String(order._id),
+            productId: it.productId,
+            name: it.name || "Product",
+            image: it.image || "",
+            vendorId: it.vendorId,
+            orderType: "product",
+            alreadyReviewed: reviews.product.has(`${key}:${String(order._id)}`),
+          });
+        }
+      }
+    }
+
+    return [...productMap.values(), ...restaurantMap.values()];
+  }
+
+  // ── 19.2 shouldCreateReviewNotification ─────────────────────────────────
+  // Inlined copy of the boolean helper. Returns true only if the order
+  // is delivered AND the item is non-null AND the customer has not
+  // already reviewed it. The "false" cases are the dedupe path.
+  function shouldCreateReviewNotification(item, isDelivered, alreadyReviewed) {
+    if (!isDelivered) return false;
+    if (!item) return false;
+    if (alreadyReviewed) return false;
+    return true;
+  }
+
+  // ── 19.3 validateRating ────────────────────────────────────────────────
+  // Inlined copy. Returns null on a valid 1..5 integer, or a string
+  // error message explaining the rejection.
+  function validateRating(rating) {
+    const n = Number(rating);
+    if (!Number.isFinite(n)) return "Rating must be a number";
+    if (n < 1 || n > 5) return "Rating must be between 1 and 5";
+    if (!Number.isInteger(n)) return "Rating must be a whole number (1-5)";
+    return null;
+  }
+
+  test("19.1 buildPendingReviewItems: 2 product items + 1 food item → 3 rows", () => {
+    const order = {
+      _id: "ord-1",
+      orderStatus: "delivered",
+      items: [
+        { productId: "p1", vendorId: "v1", name: "Headphones", image: "h.jpg", itemType: "product", quantity: 2 },
+        { productId: "p2", vendorId: "v1", name: "Cable",       image: "c.jpg", itemType: "product", quantity: 1 },
+        { restaurantId: "r1", restaurantName: "Joes Pizza", image: "p.jpg", itemType: "food",     quantity: 1 },
+      ],
+    };
+    const items = buildPendingReviewItems(order);
+    assert.strictEqual(items.length, 3);
+    // Products first, restaurant second (per the implementation).
+    assert.strictEqual(items[0].type, "product");
+    assert.strictEqual(items[0].name, "Headphones");
+    assert.strictEqual(items[1].type, "product");
+    assert.strictEqual(items[1].name, "Cable");
+    assert.strictEqual(items[2].type, "food");
+    assert.strictEqual(items[2].name, "Joes Pizza");
+  });
+
+  test("19.2 buildPendingReviewItems: duplicate productId is deduped (one row, not per quantity)", () => {
+    const order = {
+      _id: "ord-2",
+      orderStatus: "delivered",
+      items: [
+        { productId: "p1", vendorId: "v1", name: "Mug", image: "m.jpg", itemType: "product", quantity: 3 },
+        { productId: "p1", vendorId: "v1", name: "Mug", image: "m.jpg", itemType: "product", quantity: 1 },
+      ],
+    };
+    const items = buildPendingReviewItems(order);
+    assert.strictEqual(items.length, 1);
+    assert.strictEqual(items[0].productId, "p1");
+  });
+
+  test("19.3 buildPendingReviewItems: non-delivered order returns []", () => {
+    const order = {
+      _id: "ord-3",
+      orderStatus: "out_for_delivery",
+      items: [
+        { productId: "p1", vendorId: "v1", name: "X", itemType: "product" },
+      ],
+    };
+    assert.deepStrictEqual(buildPendingReviewItems(order), []);
+  });
+
+  test("19.4 buildPendingReviewItems: already-reviewed items are marked but still returned", () => {
+    const order = {
+      _id: "ord-4",
+      orderStatus: "delivered",
+      items: [
+        { productId: "p1", vendorId: "v1", name: "Reviewed",  itemType: "product" },
+        { productId: "p2", vendorId: "v1", name: "Unreviewed", itemType: "product" },
+      ],
+    };
+    const existing = {
+      product: new Set(["p1:ord-4"]),
+      food: new Set(),
+    };
+    const items = buildPendingReviewItems(order, existing);
+    const reviewed = items.find((i) => i.productId === "p1");
+    const unreviewed = items.find((i) => i.productId === "p2");
+    assert.strictEqual(reviewed.alreadyReviewed, true);
+    assert.strictEqual(unreviewed.alreadyReviewed, false);
+  });
+
+  test("19.5 shouldCreateReviewNotification: false for non-delivered orders", () => {
+    assert.strictEqual(shouldCreateReviewNotification({ id: 1 }, false, false), false);
+  });
+
+  test("19.6 shouldCreateReviewNotification: false when already reviewed", () => {
+    assert.strictEqual(shouldCreateReviewNotification({ id: 1 }, true, true), false);
+  });
+
+  test("19.7 shouldCreateReviewNotification: false for null item", () => {
+    assert.strictEqual(shouldCreateReviewNotification(null, true, false), false);
+  });
+
+  test("19.8 shouldCreateReviewNotification: true for delivered, unreviewed, valid item", () => {
+    assert.strictEqual(shouldCreateReviewNotification({ id: 1 }, true, false), true);
+  });
+
+  test("19.9 validateRating: accepts 1, 2, 3, 4, 5", () => {
+    for (const n of [1, 2, 3, 4, 5]) {
+      assert.strictEqual(validateRating(n), null, `expected ${n} to be valid`);
+    }
+  });
+
+  test("19.10 validateRating: rejects 0, 6, non-integer, NaN, non-numeric", () => {
+    assert.ok(validateRating(0));
+    assert.ok(validateRating(6));
+    assert.ok(validateRating(3.5));
+    assert.ok(validateRating("abc"));
+    assert.ok(validateRating(NaN));
+    assert.ok(validateRating(null));
+    assert.ok(validateRating(undefined));
+  });
+});

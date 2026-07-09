@@ -1,0 +1,304 @@
+/* pages/ReviewPage.module.css — single-column review form.
+ *
+ * The card stack and star widget are mobile-first; the layout never
+ * breaks below 360px because nothing depends on horizontal
+ * positioning. The same .card / .btn classes from global.css are
+ * re-used where possible; this file is only for the bits that
+ * ReviewPage introduces.
+ */
+
+.page {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 16px;
+  min-height: 70vh;
+  background: linear-gradient(180deg, #f6f7fb 0%, #ffffff 100%);
+}
+
+.card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 32px;
+  max-width: 640px;
+  width: 100%;
+}
+
+.header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.loading {
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+  margin: 0;
+  padding: 12px 0;
+}
+
+/* ── Item cards ───────────────────────────────────────────────────────── */
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.item {
+  border: 1px solid #ececec;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.itemHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.itemImage {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #f0f0f0;
+  flex-shrink: 0;
+}
+
+.itemImagePlaceholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.itemMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.itemKind {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+}
+
+.itemName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #222;
+  word-break: break-word;
+}
+
+/* ── Star picker ──────────────────────────────────────────────────────── */
+
+.stars {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-start;
+}
+
+.star {
+  background: transparent;
+  border: none;
+  font-size: 28px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+  color: #d6d8dd;
+  transition: color 0.15s, transform 0.1s;
+  border-radius: 6px;
+}
+
+.star:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+
+.star:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.star:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+.starOn {
+  color: #f5b301;
+}
+
+/* ── Textarea ─────────────────────────────────────────────────────────── */
+
+.textarea {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 72px;
+  transition: border-color 0.15s;
+  background: white;
+  color: #222;
+  box-sizing: border-box;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
+}
+
+.textarea:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+/* ── Submit / footer ──────────────────────────────────────────────────── */
+
+.submitBtn {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  align-self: flex-start;
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.submitBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.footer {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.backLink {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+.backLink:hover {
+  color: #4a5acc;
+  background: rgba(102, 126, 234, 0.06);
+}
+
+/* ── Empty / error states ─────────────────────────────────────────────── */
+
+.empty {
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.emptyTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #222;
+  margin: 0 0 8px 0;
+}
+
+.emptyMessage {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+  margin: 0 0 20px 0;
+}
+
+.backBtn {
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.backBtn:hover {
+  background: #4a5acc;
+}
+
+/* ── Mobile tweaks ────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .page {
+    padding: 16px 12px;
+  }
+  .card {
+    padding: 22px 18px;
+  }
+  .title {
+    font-size: 22px;
+  }
+  .item {
+    padding: 14px;
+  }
+  .itemImage,
+  .itemImagePlaceholder {
+    width: 48px;
+    height: 48px;
+  }
+  .star {
+    font-size: 26px;
+    padding: 2px 4px;
+  }
+}

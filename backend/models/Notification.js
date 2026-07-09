@@ -24,6 +24,13 @@ const notificationSchema = new mongoose.Schema({
       "commission_paid",
       "wishlist_price_drop",
       "wishlist_stock_available",
+      // ✅ NEW: created by services/notification.service.js#notifyOrderDelivered
+      // when an order transitions to "delivered". One Notification per
+      // unique product (or restaurant) in the order, deduped by
+      // productId|restaurantId. metadata.orderId is the source of truth
+      // for the review page; the bell click handler navigates to
+      // /review?orderId=<metadata.orderId>.
+      "review_request",
       "system",
     ],
     required: true,

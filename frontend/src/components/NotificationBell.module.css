@@ -59,16 +59,20 @@
   border: 2px solid white;
 }
 
+/* Panel — portaled into document.body (see NotificationBell.jsx).
+   `position: fixed` plus inline `top`/`right` are set in the JSX so
+   the panel sits in the same rendering tree as the rest of the page
+   and can be anchored to the trigger button without being clipped
+   by any ancestor `overflow: hidden`. The visual chrome and the
+   z-index live here. z-index 1100 places the panel above the sticky
+   Navbar (which is z-index 200). */
 .panel {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
   width: 320px;
   max-height: 400px;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
+  z-index: 1100;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -218,9 +222,12 @@
     font-size: 0.6rem;
   }
 
+  /* On mobile the panel is anchored to the right edge of the screen
+     with a small gutter; the desktop `right` value is computed from
+     the trigger rect in JSX. */
   .panel {
     width: 280px;
-    right: -60px;
+    right: 8px !important;
   }
 }
 

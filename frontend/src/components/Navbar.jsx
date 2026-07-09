@@ -184,7 +184,7 @@ export default function Navbar({ cartCount, chatUnreadCount = 0, currentPage, on
           {isLoggedIn && (
             <NotificationBell
               userId={user?._id}
-              onNavigate={nav}
+              onNavigate={(page, payload) => onNavigate(page, payload)}
             />
           )}
 

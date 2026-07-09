@@ -27,6 +27,13 @@ function getCustomerOrdersUrl() {
   return `${getAppUrl()}?page=orders`;
 }
 
+// Generate per-order review deep link. The frontend reads the `?review=`
+// param, saves it as the pending destination if the user is logged out,
+// and routes to the new ReviewPage once auth succeeds.
+function getOrderReviewUrl(orderId) {
+  return `${getAppUrl()}?review=${encodeURIComponent(orderId || "")}`;
+}
+
 // Generate vendor dashboard URL
 function getVendorDashboardUrl() {
   return `${getAppUrl()}?page=vendor`;
@@ -694,7 +701,7 @@ async function sendOrderDeliveredEmail(email, order) {
 
                       <div style="text-align: center; margin: 25px 0;">
                         <p style="color: #666; margin-bottom: 15px;">How was your experience?</p>
-                        <a href="${getCustomerOrdersUrl()}" style="background: #11998e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">Leave a Review</a>
+                        <a href="${getOrderReviewUrl(order?._id)}" style="background: #11998e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: 600; display: inline-block;">Leave a Review</a>
                       </div>
                     </td>
                   </tr>
@@ -705,7 +712,7 @@ async function sendOrderDeliveredEmail(email, order) {
         </body>
         </html>
       `,
-      text: `Order Delivered! ✓\n\nOrder #${order?._id}\nTotal: ₵${totalAmount}\n\nThank you for shopping with SiiShop!\nLeave a review: ${getCustomerOrdersUrl()}`,
+      text: `Order Delivered! ✓\n\nOrder #${order?._id}\nTotal: ₵${totalAmount}\n\nThank you for shopping with SiiShop!\nLeave a review: ${getOrderReviewUrl(order?._id)}`,
     };
 
     const result = await trans.sendMail(mailOptions);

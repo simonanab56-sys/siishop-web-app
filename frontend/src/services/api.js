@@ -313,6 +313,13 @@ export const orderAPI = {
       body: JSON.stringify({ paymentRef, orderId }),
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+  // Get items in a delivered order that the current user can still review.
+  // Source of truth for the ReviewPage. Returns the same shape used by
+  // notificationAPI.getPendingReviews (per-item, with `orderId`).
+  getPendingReviews: (orderId) =>
+    apiRequest(`/orders/${orderId}/pending-reviews`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
 };
 
 /* ── Vendor ────────────────────────────────────────────────────────────────── */
@@ -1035,6 +1042,13 @@ export const notificationAPI = {
       method: "POST",
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+
+  // Aggregated list of items the current user can still review, across
+  // ALL delivered orders. Powers the bell's "Leave a review" quick action.
+  getPendingReviews: () =>
+    apiRequest("/notifications/pending-reviews", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
 };
 
 /* ── Wishlist ──────────────────────────────────────────────────────────────── */
@@ -1350,4 +1364,28 @@ export const restaurantReviewAPI = {
   // Get review for order
   getOrderReview: (orderId) =>
     apiRequest(`/restaurant-reviews/order/${orderId}`, { headers: getAuthHeader() }),
+};
+
+/* ── Product Reviews ────────────────────────────────────────────────────────── */
+export const productReviewAPI = {
+  // Public list of reviews for a product
+  list: (productId, params = {}) =>
+    apiRequest(`/products/${productId}/reviews?${new URLSearchParams(params)}`),
+
+  // Has the current user already reviewed this product? Returns the review
+  // or null. Used by the form to disable / pre-fill the input.
+  mine: (productId) =>
+    apiRequest(`/products/${productId}/reviews/mine`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Submit a new review. Eligibility is checked server-side — the order
+  // must belong to the user, be `delivered`, contain the product, and have
+  // no prior review for the {user, product, order} triple.
+  create: (productId, { orderId, rating, review }) =>
+    apiRequest(`/products/${productId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify({ orderId, rating, review }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
 };

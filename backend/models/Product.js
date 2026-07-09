@@ -67,6 +67,15 @@ const productSchema = new mongoose.Schema(
     // auto-derived in prepareProductForSave().
     discountType:  { type: String, enum: ["percentage", "fixed"], default: null },
     discountValue: { type: Number, min: 0, default: null },
+
+    // ✅ NEW (review flow): Aggregated customer rating. Recomputed by
+    // POST /api/products/:id/reviews on each new review. `rating` is
+    // a 0..5 average (rounded to 2 dp), `reviewCount` is the count of
+    // non-deleted ProductReview docs. Both are returned by
+    // /api/products/:id/reviews so the public product list can show
+    // "★ 4.6 (12 reviews)" without a join.
+    rating:      { type: Number, default: 0, min: 0, max: 5 },
+    reviewCount: { type: Number, default: 0, min: 0, index: true },
   },
   { timestamps: true }
 );

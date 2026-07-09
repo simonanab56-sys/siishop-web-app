@@ -6,6 +6,7 @@ import { CurrencyProvider } from "./context/CurrencyContext";
 import Navbar from "./components/Navbar";
 import MobileLayoutWrapper from "./components/mobile/MobileLayoutWrapper";
 import AuthModal from "./components/auth/AuthModal";
+import ReviewPage from "./pages/ReviewPage";
 import { useToast, ToastContainer } from "./components/Toast";
 import { productAPI } from "./services/api";
 import HomePage from "./pages/HomePage";
@@ -273,8 +274,13 @@ function AppInner() {
       const urlPage = params.get("page");
       const orderId = params.get("orderId");
       const section = params.get("section");
+      // ✅ Review deep link from the delivered-order email CTA. Shape:
+      //   /?review=<orderId>  — same pattern as the other email params.
+      //   If the user is already authenticated, route straight to the
+      //   review page. If not, save the destination so onAuthSuccess
+      //   can restore it after login.
+      const reviewOrderId = params.get("review");
 
-      // If URL has a page parameter, navigate to it
       if (urlPage && urlPage !== page) {
         // Validate the page is valid before navigating
         const validPages = ["home", "see-all", "deals", "product", "vendors", "cart", "orders", "settings", "reset-password", "vendor", "admin", "about", "contact", "privacy", "terms", "refund", "faq"];
@@ -296,6 +302,26 @@ function AppInner() {
 
           // Clear URL params to clean up the address bar
           window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } else if (reviewOrderId) {
+        // Email/notification deep link to a specific order's review page.
+        // Strip the param from the address bar so a refresh doesn't loop
+        // us back through the URL-param effect.
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        if (isLoggedIn) {
+          navigateTo("review", { orderId: reviewOrderId, source: "email" });
+        } else {
+          // Save the destination; onAuthSuccess will pick it up after login.
+          try {
+            sessionStorage.setItem(
+              "pendingReview",
+              JSON.stringify({ orderId: reviewOrderId, source: "email" })
+            );
+          } catch (e) {
+            /* sessionStorage may be unavailable in some private modes */
+          }
+          onRequireAuth("login");
         }
       }
     } catch (e) {
@@ -346,6 +372,16 @@ function AppInner() {
       }
     }
   }, [authChecked, user, page, token]);
+
+  // ── Page payload ───────────────────────────────────────────────────────
+  // Some routes need a small piece of data with them — the review page
+  // needs an orderId, the product page needs a product, etc. The
+  // existing pages read those from sibling state (selectedProduct,
+  // selectedRestaurant, etc.). The review page reads from a single
+  // generic `pagePayload` slot so the URL param / notification click /
+  // email deep link can all funnel into one place without growing
+  // special-purpose state for each new deep-linkable page.
+  const [pagePayload, setPagePayload] = useState(null);
 
   // Initialize cart from localStorage for persistence across refreshes
   const [cart, setCart] = useState(() => {
@@ -447,6 +483,29 @@ function AppInner() {
     logger.log("[onAuthSuccess] restaurantDetails:", user?.restaurantDetails);
     addToast(`Welcome, ${user?.name || "there"}! 🎉`, "success");
     setAuthModalOpen(false);
+
+    // ── Restore pending review destination ───────────────────────────────
+    // If the user arrived via the delivered-order email (?review=…)
+    // while logged out, or via an unauthenticated notification click,
+    // sessionStorage still holds the destination. Re-route them to
+    // the ReviewPage before falling through to the role-based redirect.
+    try {
+      const raw = sessionStorage.getItem("pendingReview");
+      if (raw) {
+        const pending = JSON.parse(raw);
+        sessionStorage.removeItem("pendingReview");
+        if (pending && pending.orderId) {
+          navigateTo("review", {
+            orderId: pending.orderId,
+            source: pending.source || "login-redirect",
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      /* ignore sessionStorage parse errors */
+    }
+
     if (user?.isAdmin) {
       setPage("admin");
     } else if (user?.isVendor && user?.vendorStatus === "approved") {
@@ -471,6 +530,26 @@ function AppInner() {
     setPreviousPage(source);
     handleSetSelectedProduct(product);
     setPage("product");
+  }
+
+  // ── navigateTo ───────────────────────────────────────────────────────
+  // Single navigation entry point for callers that want to attach a
+  // payload. The page string is required; the payload is optional and
+  // stashed in `pagePayload` so the destination page can read it on
+  // mount. Existing callers continue to use `setPage` directly — only
+  // the review flow (notification click, email deep link, restore
+  // from sessionStorage) goes through this wrapper.
+  function navigateTo(pageName, payload) {
+    if (payload) {
+      setPagePayload(payload);
+    } else if (pageName !== "review") {
+      // Don't blow away a pending-review payload when navigating to
+      // an unrelated page; the review page will still pick it up if
+      // the user navigates there later. For other destinations, the
+      // payload slot is page-specific so it can be cleared freely.
+      setPagePayload(null);
+    }
+    setPage(pageName);
   }
 
   // Handle navigation from ProductDetailPage recommendations, Wishlist, etc.
@@ -726,6 +805,13 @@ function AppInner() {
       case "delivery-tracking": return <DeliveryTrackingPage onNavigate={setPage} />;
       case "chat": return <ChatPage onNavigate={setPage} />;
       case "admin-chat": return <AdminChatPage onNavigate={setPage} addToast={addToast} />;
+      // ✅ NEW: Review deep-link target. The orderId is read from
+      //   `pagePayload` (notification click) or sessionStorage (the
+      //   email ?review=… deep link survives a refresh). The page
+      //   pre-renders a per-item list using
+      //   orderAPI.getPendingReviews and submits through either
+      //   productReviewAPI or restaurantReviewAPI.
+      case "review": return <ReviewPage payload={pagePayload} addToast={addToast} onRequireAuth={onRequireAuth} onNavigate={setPage} />;
       default: return <HomePage onAddToCart={addToCart} onViewProduct={handleViewProduct} onRequireAuth={onRequireAuth} />;
     }
   }
@@ -735,7 +821,7 @@ function AppInner() {
         cartCount={cartCount}
         chatUnreadCount={chatUnreadCount}
         currentPage={page}
-        onNavigate={setPage}
+        onNavigate={navigateTo}
         onOpenAuth={() => onRequireAuth("login")}
         isLoggedIn={isLoggedIn}
         isAdmin={isAdmin}

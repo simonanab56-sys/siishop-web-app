@@ -7,6 +7,7 @@ const User = require("../models/User");
 const { requireAuth, requireAdmin, requireVendor } = require("../middleware/auth");
 const asyncHandler = require("../utils/asyncHandler");
 const walletService = require("../services/wallet.service");
+const { notifyOrderDelivered } = require("../services/notification.service");
 
 /* ───────────────────────── HELPER FUNCTIONS ───────────────────────── */
 
@@ -291,6 +292,14 @@ router.post(
     // Process wallet earnings for vendors (async, don't block response)
     walletService.processOrderEarnings(orderId).catch(err => {
       console.error("[DELIVERY] Failed to process wallet earnings:", err.message);
+    });
+
+    // ✅ Review-flow: when the rider completes delivery the order is
+    // now "delivered" — create in-app review-prompt notifications for
+    // the customer. Same hook used by PATCH /api/orders/:id/status so
+    // both delivery paths converge on the same notification behavior.
+    notifyOrderDelivered(order, req.app.get("io")).catch(err => {
+      console.error("[DELIVERY] Failed to send review notification:", err.message);
     });
 
     // Emit delivery completed

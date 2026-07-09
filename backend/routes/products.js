@@ -762,4 +762,211 @@ router.post("/:id/view", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCT REVIEWS
+// ═══════════════════════════════════════════════════════════════════════════
+// Customer-submitted reviews of marketplace products. Eligibility at the
+// DB layer is enforced by the compound unique index on
+// { userId, productId, orderId } in models/ProductReview — a duplicate
+// insert fails with E11000 and the API maps that to a 400.
+//
+// The customer can only review a product if:
+//   1) They placed an order containing that product.
+//   2) That order is `delivered`.
+//   3) They have not already reviewed that {product, order} pair.
+//
+// All three checks happen server-side, both in the POST handler and in
+// the GET /reviews/mine preflight — the frontend never has to trust
+// client-side validation for eligibility.
+
+const ProductReview = require("../models/ProductReview");
+const ReviewOrder = require("../models/Order");
+
+// ── POST /api/products/:id/reviews ────────────────────────────────────────────
+router.post(
+  "/:id/reviews",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { orderId, rating, review } = req.body || {};
+      const productId = req.params.id;
+      const userId = req.user.userId;
+
+      // ── Validate the product exists and is a marketplace item ────────────
+      const product = await Product.findOne({
+        _id: productId,
+        isDeleted: { $ne: true },
+      }).select("_id vendorId rating reviewCount").lean();
+      if (!product) {
+        return res.status(404).json({ error: "This product is no longer available." });
+      }
+
+      // ── Validate inputs ──────────────────────────────────────────────────
+      if (!orderId) {
+        return res.status(400).json({ error: "orderId is required" });
+      }
+      const ratingErr = (function validate(r) {
+        const n = Number(r);
+        if (!Number.isFinite(n)) return "Rating must be a number";
+        if (n < 1 || n > 5) return "Rating must be between 1 and 5";
+        if (!Number.isInteger(n)) return "Rating must be a whole number (1-5)";
+        return null;
+      })(rating);
+      if (ratingErr) {
+        return res.status(400).json({ error: ratingErr });
+      }
+      const cleanReview = String(review || "").trim().slice(0, 2000);
+
+      // ── Eligibility: the order must belong to the user, be delivered, and
+      //    contain this product. We collapse "not yours" / "wrong status" /
+      //    "missing product" into a single 404 with the same customer-facing
+      //    message so an unauthorized caller cannot probe other customers'
+      //    order ids.
+      const order = await ReviewOrder.findById(orderId).lean();
+      if (
+        !order ||
+        String(order.userId) !== String(userId) ||
+        order.orderStatus !== "delivered" ||
+        !(order.items || []).some(
+          (it) =>
+            it &&
+            String(it.productId) === String(productId) &&
+            it.itemType !== "food"
+        )
+      ) {
+        return res.status(404).json({ error: "This order is no longer available." });
+      }
+
+      // ── Eligibility: no prior review for the same {user, product, order}.
+      //    The DB-layer compound unique index is the authoritative guard — a
+      //    second insert fails with E11000 and we map that to 400.
+      const existing = await ProductReview.findOne({
+        userId, productId, orderId,
+      }).select("_id").lean();
+      if (existing) {
+        return res.status(400).json({ error: "You have already reviewed this item." });
+      }
+
+      // ── Persist the review. The unique index would also catch a race, but
+      //    we still wrap the insert in try/catch so a duplicate-key error
+      //    from a concurrent request returns a clean 400 to the client.
+      let saved;
+      try {
+        saved = await ProductReview.create({
+          userId,
+          productId,
+          vendorId: product.vendorId,
+          orderId,
+          rating: Number(rating),
+          review: cleanReview,
+        });
+      } catch (err) {
+        if (err && err.code === 11000) {
+          return res.status(400).json({ error: "You have already reviewed this item." });
+        }
+        throw err;
+      }
+
+      // ── Aggregate into the parent Product. We compute the new average
+      //    rating and total count from scratch — simple, correct, and cheap
+      //    at marketplace scale. A worker that recomputes on a schedule
+      //    could replace this if write volume ever justifies it.
+      const [stats] = await ProductReview.aggregate([
+        { $match: { productId: product._id, isDeleted: { $ne: true } } },
+        { $group: { _id: null, avg: { $avg: "$rating" }, count: { $sum: 1 } } },
+      ]);
+      await Product.updateOne(
+        { _id: product._id },
+        {
+          $set: {
+            rating: stats ? Number(stats.avg.toFixed(2)) : 0,
+            reviewCount: stats ? stats.count : 0,
+          },
+        }
+      );
+
+      res.status(201).json({
+        _id: saved._id,
+        userId: saved.userId,
+        productId: saved.productId,
+        orderId: saved.orderId,
+        rating: saved.rating,
+        review: saved.review,
+        createdAt: saved.createdAt,
+      });
+    } catch (err) {
+      console.error("[PRODUCT REVIEW] POST error:", err.message);
+      res.status(500).json({ error: "Failed to submit review" });
+    }
+  }
+);
+
+// ── GET /api/products/:id/reviews ─────────────────────────────────────────────
+// Public, paginated list of reviews for a product. Returns the most recent
+// reviews first and includes the averageRating / totalReviews for the badge.
+router.get("/:id/reviews", async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const skip = Number(req.query.skip) || 0;
+
+    const [reviews, stats] = await Promise.all([
+      ProductReview.find({ productId, isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("userId", "name")
+        .lean(),
+      ProductReview.aggregate([
+        { $match: { productId: new (require("mongoose").Types.ObjectId)(productId), isDeleted: { $ne: true } } },
+        { $group: { _id: null, avg: { $avg: "$rating" }, count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    res.json({
+      reviews: (reviews || []).map((r) => ({
+        _id: r._id,
+        rating: r.rating,
+        review: r.review,
+        userName: r.userId?.name || "Customer",
+        createdAt: r.createdAt,
+      })),
+      averageRating: stats?.[0] ? Number(stats[0].avg.toFixed(2)) : 0,
+      totalReviews: stats?.[0]?.count || 0,
+    });
+  } catch (err) {
+    console.error("[PRODUCT REVIEW] GET list error:", err.message);
+    res.status(500).json({ error: "Failed to fetch reviews" });
+  }
+});
+
+// ── GET /api/products/:id/reviews/mine ────────────────────────────────────────
+// Has the current user reviewed this product? Returns the review if so, or
+// null. The frontend uses this to pre-fill / disable the review form when
+// the customer lands on a product page directly.
+router.get("/:id/reviews/mine", requireAuth, async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const userId = req.user.userId;
+
+    const review = await ProductReview.findOne({
+      userId,
+      productId,
+      isDeleted: { $ne: true },
+    }).lean();
+
+    if (!review) return res.json(null);
+    res.json({
+      _id: review._id,
+      rating: review.rating,
+      review: review.review,
+      orderId: review.orderId,
+      createdAt: review.createdAt,
+    });
+  } catch (err) {
+    console.error("[PRODUCT REVIEW] GET mine error:", err.message);
+    res.status(500).json({ error: "Failed to fetch your review" });
+  }
+});
+
 module.exports = router;

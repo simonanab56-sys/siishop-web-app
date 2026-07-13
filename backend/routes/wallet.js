@@ -7,6 +7,7 @@ const walletService = require("../services/wallet.service");
 const paystackService = require("../services/paystack.service");
 const withdrawalNotifications = require("../services/withdrawal-notification.service");
 const commissionNotifications = require("../services/commission-notification.service");
+const { notifyUser } = require("../services/notification.service");
 
 // Apply auth to all routes
 router.use(requireAuth);
@@ -301,6 +302,17 @@ router.post("/commission/verify", async (req, res) => {
           // doesn't go silently missing.
           console.error("[WALLET] Commission notification fan-out error:", err.message);
         });
+
+      // Phase 2: also fire in-app commission_paid to the vendor (admin already gets it).
+      notifyUser(req.user.userId, {
+        type: "commission_paid",
+        title: "Commission payment received",
+        message: `Your commission of GHS ${(result.amountPaid / 100).toFixed(2)} has been received.`,
+        commissionId: result.commissionId || result.paymentRef,
+        vendorId: req.user.userId,
+        deepLink: "/vendor?tab=wallet",
+        priority: "high",
+      }).catch(() => {});
     }
   } catch (error) {
     const msg = error.message || "Failed to verify commission payment";

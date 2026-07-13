@@ -147,6 +147,28 @@ class SocketService {
     }
   }
 
+  // ─────────────────────────────────────────────────────────
+  // PHASE 2: PER-USER NOTIFICATION CHANNEL
+  // ─────────────────────────────────────────────────────────
+  // Non-admin users previously had no real-time channel and relied on
+  // a 30s bell poll. After connecting, the auth flow emits
+  // `join-user-room` so the socket lands in `user:<userId>` — the
+  // same room the server-side notification service emits to via
+  //   io.to(`user:${userId}`).emit("user-notification", {...}).
+  // The bell and inbox subscribe to "user-notification" to refresh
+  // unread counts without waiting for the next poll tick.
+  joinUserRoom(userId) {
+    if (this.socket?.connected && userId) {
+      this.socket.emit("join-user-room", { userId: String(userId) });
+    }
+  }
+
+  leaveUserRoom(userId) {
+    if (this.socket?.connected && userId) {
+      this.socket.emit("leave-user-room", { userId: String(userId) });
+    }
+  }
+
   // Mark messages as read
   chatRead(conversationId, userId) {
     if (this.socket?.connected) {

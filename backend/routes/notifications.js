@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 const express = require("express");
 const router = express.Router();
@@ -132,7 +132,7 @@ router.get("/pending-reviews", async (req, res) => {
       };
       const items = buildPendingReviewItems(order, existingReviews);
       // Only surface items the user has NOT yet reviewed, and only
-      // items the user actually bought (defensive — should always be
+      // items the user actually bought (defensive â€” should always be
       // true given the query, but cheap to check).
       for (const it of items) {
         if (!it.alreadyReviewed) allItems.push(it);
@@ -146,4 +146,232 @@ router.get("/pending-reviews", async (req, res) => {
   }
 });
 
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-2 ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const { requireAdmin } = require("../middleware/auth");
+const User = require("../models/User");
+const Broadcast = require("../models/Broadcast");
+const {
+  notifyByAudience,
+  validateBroadcastInput,
+  buildAudienceQuery,
+  isInDnd,
+  shouldNotifyByType,
+} = require("../services/notification.service");
+
+/**
+ * DELETE /api/notifications/:id
+ * Delete a single notification (owner only).
+ */
+router.delete("/:id", async (req, res) => {
+  try {
+    const Notification = require("../models/Notification");
+    const deleted = await Notification.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user.userId,
+    });
+    if (!deleted) return res.status(404).json({ error: "Notification not found" });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("[NOTIFICATIONS] Error deleting notification:", error.message);
+    res.status(500).json({ error: "Failed to delete notification" });
+  }
+});
+
+/**
+ * DELETE /api/notifications
+ * Clear all READ notifications for the current user. Unread are kept.
+ */
+router.delete("/", async (req, res) => {
+  try {
+    const Notification = require("../models/Notification");
+    const r = await Notification.deleteMany({ userId: req.user.userId, isRead: true });
+    res.json({ deleted: r.deletedCount || 0 });
+  } catch (error) {
+    console.error("[NOTIFICATIONS] Error clearing notifications:", error.message);
+    res.status(500).json({ error: "Failed to clear notifications" });
+  }
+});
+
+/**
+ * POST /api/notifications
+ * Admin broadcast. Resolves the audience to a set of users and calls
+ * `notifyUser()` for each. Persists a Broadcast row for history.
+ */
+router.post("/", requireAdmin, async (req, res) => {
+  try {
+    const err = validateBroadcastInput(req.body);
+    if (err) return res.status(400).json({ error: err });
+
+    const {
+      audience, filters, selectedUserIds,
+      title, message, image, deepLink, priority, expiresAt,
+      scheduledFor, sendEmail,
+    } = req.body;
+
+    // If scheduled, persist a draft Broadcast and let the in-process
+    // scheduler pick it up. Otherwise dispatch immediately.
+    if (scheduledFor) {
+      const draft = await Broadcast.create({
+        audience,
+        filters: filters || {},
+        selectedUserIds: audience === "selected" ? (selectedUserIds || []) : [],
+        title, message, image, deepLink, priority,
+        sendEmail: !!sendEmail,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        scheduledFor: new Date(scheduledFor),
+        status: "scheduled",
+        createdBy: req.user.userId,
+      });
+      return res.json({ ok: true, broadcastId: draft._id, status: "scheduled" });
+    }
+
+    // Immediate dispatch
+    const result = await notifyByAudience({
+      audience,
+      filters,
+      selectedUserIds,
+      sender: req.user.userId,
+      payload: {
+        type: "system_announcement",
+        title,
+        message,
+        image,
+        deepLink,
+        priority: priority || "medium",
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        sendEmail: !!sendEmail,
+      },
+    });
+
+    await Broadcast.create({
+      audience,
+      filters: filters || {},
+      selectedUserIds: audience === "selected" ? (selectedUserIds || []) : [],
+      title, message, image, deepLink, priority,
+      sendEmail: !!sendEmail,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      status: "sent",
+      sentAt: new Date(),
+      matchedCount: result.matched,
+      sentCount: result.sent,
+      createdBy: req.user.userId,
+    });
+
+    res.json({ ok: true, status: "sent", matched: result.matched, sent: result.sent });
+  } catch (error) {
+    console.error("[NOTIFICATIONS] Admin broadcast failed:", error.message);
+    res.status(500).json({ error: "Broadcast failed" });
+  }
+});
+
+/**
+ * GET /api/notifications/broadcasts
+ * Admin: list the last 20 broadcasts.
+ */
+router.get("/broadcasts", requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+    const list = await Broadcast.find({})
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate("createdBy", "name email")
+      .lean();
+    res.json({ broadcasts: list });
+  } catch (error) {
+    console.error("[NOTIFICATIONS] Error listing broadcasts:", error.message);
+    res.status(500).json({ error: "Failed to list broadcasts" });
+  }
+});
+
+/**
+ * GET /api/notifications/preferences
+ * Returns the current user's notificationPrefs (or defaults).
+ */
+router.get("/preferences", async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select("notificationPrefs").lean();
+    const defaults = {
+      push: true, email: true, inApp: true,
+      promotional: true, orderUpdates: true, walletUpdates: true,
+      reviewReminders: true, marketing: false,
+      dndStart: "", dndEnd: "",
+    };
+    res.json({ preferences: { ...defaults, ...(user?.notificationPrefs || {}) } });
+  } catch (error) {
+    console.error("[NOTIFICATIONS] Error getting prefs:", error.message);
+    res.status(500).json({ error: "Failed to get preferences" });
+  }
+});
+
+/**
+ * PUT /api/notifications/preferences
+ * Update the current user's notificationPrefs.
+ */
+router.put("/preferences", async (req, res) => {
+  try {
+    const allowed = ["push", "email", "inApp", "promotional", "orderUpdates", "walletUpdates", "reviewReminders", "marketing", "dndStart", "dndEnd"];
+    const update = {};
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) update[`notificationPrefs.${k}`] = req.body[k];
+    }
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ error: "No recognized fields" });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user.userId,
+      { $set: update },
+      { new: true }
+    ).select("notificationPrefs").lean();
+    res.json({ preferences: user?.notificationPrefs || {} });
+  } catch (error) {
+    console.error("[NOTIFICATIONS] Error updating prefs:", error.message);
+    res.status(500).json({ error: "Failed to update preferences" });
+  }
+});
+
+/**
+ * POST /api/notifications/device-token
+ * Register a device token for Web Push / FCM delivery.
+ */
+router.post("/device-token", async (req, res) => {
+  try {
+    const { token, platform, userAgent } = req.body || {};
+    if (!token || typeof token !== "string") return res.status(400).json({ error: "token required" });
+    const plat = ["web", "android", "ios"].includes(platform) ? platform : "web";
+    // Upsert: remove existing same-token entry, then push a new one
+    await User.findByIdAndUpdate(req.user.userId, {
+      $pull: { deviceTokens: { token } },
+    });
+    await User.findByIdAndUpdate(req.user.userId, {
+      $push: { deviceTokens: { token, platform: plat, userAgent: userAgent || "", createdAt: new Date() } },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("[NOTIFICATIONS] Error registering device token:", error.message);
+    res.status(500).json({ error: "Failed to register device token" });
+  }
+});
+
+/**
+ * DELETE /api/notifications/device-token
+ * Remove a device token (logout, opt-out, etc).
+ */
+router.delete("/device-token", async (req, res) => {
+  try {
+    const { token } = req.body || {};
+    if (!token) return res.status(400).json({ error: "token required" });
+    await User.findByIdAndUpdate(req.user.userId, {
+      $pull: { deviceTokens: { token } },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("[NOTIFICATIONS] Error removing device token:", error.message);
+    res.status(500).json({ error: "Failed to remove device token" });
+  }
+});
 module.exports = router;

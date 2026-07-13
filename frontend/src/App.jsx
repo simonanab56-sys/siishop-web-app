@@ -45,6 +45,10 @@ const FoodDetailPage = lazy(() => import("./pages/FoodDetailPage"));
 const FoodOrdersPage = lazy(() => import("./pages/FoodOrdersPage"));
 const DeliveryTrackingPage = lazy(() => import("./pages/DeliveryTrackingPage"));
 const ChatPage = lazy(() => import("./pages/ChatPage"));
+// Phase 2: full notification inbox + preferences page
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
+const NotificationPreferencesPage = lazy(() => import("./pages/NotificationPreferencesPage"));
+const AdminBroadcastPage = lazy(() => import("./pages/admin/AdminBroadcastPage"));
 
 // ── Global Error Boundary ─────────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -169,6 +173,21 @@ const PAGE_SEO = {
     title: "Admin Dashboard | SiiShop",
     description: "SiiShop marketplace administration panel. Manage vendors, orders, and platform settings.",
     keywords: "admin dashboard, marketplace management, platform admin",
+  },
+  notifications: {
+    title: "Notifications | SiiShop",
+    description: "Your full notification inbox — orders, wallet updates, reviews, promotions and system announcements.",
+    keywords: "notifications, alerts, inbox, updates",
+  },
+  "notification-preferences": {
+    title: "Notification Preferences | SiiShop",
+    description: "Choose how and when SiiShop notifies you — push, email, in-app, and do-not-disturb hours.",
+    keywords: "notification settings, preferences, do not disturb, dnd",
+  },
+  "admin-broadcast": {
+    title: "Admin Broadcast | SiiShop",
+    description: "Send a notification broadcast to all users or a specific segment.",
+    keywords: "admin broadcast, announcements, system message",
   },
   // ✅ NEW: Food/Restaurant pages
   food: {
@@ -350,8 +369,11 @@ function AppInner() {
 
     // Check if current page is vendor but user is a restaurant vendor
     if (page === "vendor" && user?.isVendor && user?.vendorStatus === "approved") {
-      const isRestaurantVendor = user?.vendorType === "restaurant" ||
-        (user?.restaurantDetails && Object.keys(user?.restaurantDetails).length > 0);
+      const isRestaurantVendor =
+        user?.vendorType === "restaurant" ||
+        (user?.vendorType == null &&
+          user?.restaurantDetails &&
+          Object.keys(user?.restaurantDetails).length > 0);
 
       if (isRestaurantVendor) {
         logger.log("[App] 🚨 Wrong dashboard detected! Redirecting to RestaurantDashboard");
@@ -362,8 +384,11 @@ function AppInner() {
 
     // Check if current page is restaurant-dashboard but user is NOT a restaurant vendor
     if (page === "restaurant-dashboard" && user?.isVendor) {
-      const isRestaurantVendor = user?.vendorType === "restaurant" ||
-        (user?.restaurantDetails && Object.keys(user?.restaurantDetails).length > 0);
+      const isRestaurantVendor =
+        user?.vendorType === "restaurant" ||
+        (user?.vendorType == null &&
+          user?.restaurantDetails &&
+          Object.keys(user?.restaurantDetails).length > 0);
 
       if (!isRestaurantVendor) {
         logger.log("[App] 🚨 Wrong dashboard detected! Redirecting to VendorDashboard");
@@ -471,7 +496,21 @@ function AppInner() {
     } catch {}
   }, []);
 
-  function onRequireAuth(view = "login") { setAuthModalView(view); setAuthModalOpen(true); }
+  function onRequireAuth(view = "login", pendingDest) {
+    // Phase 2: any caller can stash a destination to be restored after
+    // login. Replaces the old review-only pendingReview slot — the
+    // generic slot covers ALL notification-driven deep links (orders,
+    // vendor, settings, deals, wishlist, chat, etc.).
+    if (pendingDest && (pendingDest.page || pendingDest.orderId)) {
+      try {
+        sessionStorage.setItem("pendingDestination", JSON.stringify(pendingDest));
+      } catch (e) {
+        /* sessionStorage may be unavailable in some private modes */
+      }
+    }
+    setAuthModalView(view);
+    setAuthModalOpen(true);
+  }
 
   // ── Login redirect: go to correct dashboard based on role ─────────────────
   function onAuthSuccess(user) {
@@ -483,6 +522,24 @@ function AppInner() {
     logger.log("[onAuthSuccess] restaurantDetails:", user?.restaurantDetails);
     addToast(`Welcome, ${user?.name || "there"}! 🎉`, "success");
     setAuthModalOpen(false);
+
+    // ── Phase 2: restore generic pending destination first ─────────────
+    // Any notification click while logged out (not just reviews) saves
+    // its target here. Honor it before the legacy review-only slot and
+    // before the role-based redirect.
+    try {
+      const raw = sessionStorage.getItem("pendingDestination");
+      if (raw) {
+        const dest = JSON.parse(raw);
+        sessionStorage.removeItem("pendingDestination");
+        if (dest && dest.page) {
+          navigateTo(dest.page, dest.payload || {});
+          return;
+        }
+      }
+    } catch (e) {
+      /* ignore sessionStorage parse errors */
+    }
 
     // ── Restore pending review destination ───────────────────────────────
     // If the user arrived via the delivered-order email (?review=…)
@@ -509,9 +566,19 @@ function AppInner() {
     if (user?.isAdmin) {
       setPage("admin");
     } else if (user?.isVendor && user?.vendorStatus === "approved") {
-      // ✅ Route based on vendorType OR restaurantDetails: restaurant vendors get restaurant dashboard
-      const isRestaurantVendor = user?.vendorType === "restaurant" ||
-        (user?.restaurantDetails && Object.keys(user.restaurantDetails).length > 0);
+      // ✅ Route based on the EXPLICIT `vendorType` field — never on the
+      // presence of `restaurantDetails`. The latter is a Mongoose
+      // sub-document that gets default-hydrated with `deliveryRadius:
+      // 5`, `deliveryFee: 0`, etc. the moment the user object is loaded,
+      // so a marketplace vendor can have a non-empty `restaurantDetails`
+      // even though they never set it. The legacy `vendorType == null`
+      // branch handles the pre-migration case (vendor registered before
+      // the `vendorType` field was added to the schema).
+      const isRestaurantVendor =
+        user?.vendorType === "restaurant" ||
+        (user?.vendorType == null &&
+          user?.restaurantDetails &&
+          Object.keys(user.restaurantDetails).length > 0);
 
       logger.log("[onAuthSuccess] isRestaurantVendor:", isRestaurantVendor);
 
@@ -792,6 +859,10 @@ function AppInner() {
       case "wishlist": return <WishlistPage onNavigate={handleProductNavigate} addToast={addToast} onRequireAuth={onRequireAuth} onAddToCart={addToCart} />;
       case "settings": return <SettingsPage addToast={addToast} />;
       case "reset-password": return <ResetPasswordPage addToast={addToast} onNavigate={setPage} />;
+      // Phase 2: full notification inbox + per-user preferences page
+      case "notifications": return <NotificationsPage addToast={addToast} onNavigate={setPage} onRequireAuth={onRequireAuth} />;
+      case "notification-preferences": return <NotificationPreferencesPage addToast={addToast} />;
+      case "admin-broadcast": return <AdminBroadcastPage addToast={addToast} />;
       case "vendor": return <VendorDashboard addToast={addToast} onRequireAuth={onRequireAuth} />;
       // ✅ NEW: Restaurant Dashboard (same route, checks vendorType internally)
       case "restaurant-dashboard": return <RestaurantDashboard addToast={addToast} onRequireAuth={onRequireAuth} onNavigate={setPage} />;

@@ -1,20 +1,20 @@
-
+﻿
 const router = require("express").Router();
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { OAuth2Client } = require("google-auth-library"); // ✅ ADDED: For secure Google token verification
+const { OAuth2Client } = require("google-auth-library"); // âœ… ADDED: For secure Google token verification
 
-// ✅ FIX: Widen google-auth-library's clock-skew tolerance so a host with even
+// âœ… FIX: Widen google-auth-library's clock-skew tolerance so a host with even
 //   a few minutes of forward clock drift (e.g. mis-set TZ / NTP on the Render
 //   dyno) no longer rejects otherwise-valid Google ID tokens with
 //   "Token used too late". The library hard-codes `now = Date.now()/1000` and
 //   compares it to `exp + OAuth2Client.CLOCK_SKEW_SECS_` (default 300s).
-//   The actual production drift observed is ~2h (server_time - exp ≈ 7180s).
+//   The actual production drift observed is ~2h (server_time - exp â‰ˆ 7180s).
 //   3 hours of tolerance fully absorbs a 2h drift and gives a safety margin,
 //   while still rejecting tokens that are multiple hours past their Google
-//   1h lifetime — Google itself never issues a token with such skew.
+//   1h lifetime â€” Google itself never issues a token with such skew.
 OAuth2Client.CLOCK_SKEW_SECS_ = 3 * 60 * 60; // 10800 seconds = 3 hours
 // Runtime-visible log so the deploy can be confirmed to have taken effect.
 console.log(
@@ -28,8 +28,9 @@ const { sendPasswordResetEmail } = require("../services/email.service");
 const { validate, registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema, updateProfileSchema } = require("../utils/joiSchemas");
 const { vendorKYCUpload } = require("../config/multer");
 const logger = require("../utils/logger");
+const { notifyUser, notifyAdmins } = require("../services/notification.service");
 
-// ── LOCATION CONFIG ─────────────────────────────────────────────────────────────
+// â”€â”€ LOCATION CONFIG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Load Ghana locations configuration safely
 let ghanaLocations = null;
 try {
@@ -53,9 +54,16 @@ function sign(user) {
  * Helper: Return a clean user object (no password)
  */
 function cleanUser(user) {
-  // Force vendorType to "restaurant" if restaurantDetails exists (backwards compatibility)
-  const hasRestaurantDetails = user.restaurantDetails && Object.keys(user.restaurantDetails).length > 0;
-  const forceRestaurant = hasRestaurantDetails ? "restaurant" : null;
+  // Detect a "real" restaurant subdoc via the shared helper. This
+  // avoids misclassifying marketplace vendors whose `restaurantDetails`
+  // is just the Mongoose default subdoc. See backend/utils/vendorType.js.
+  const {
+    isRestaurantVendor,
+    classifyVendorType,
+  } = require("../utils/vendorType");
+  const details = user.restaurantDetails || {};
+  const userIsRestaurantVendor = isRestaurantVendor(user.vendorType, details);
+  const effectiveVendorType = classifyVendorType(user.vendorType, details);
 
   return {
     _id: String(user._id),
@@ -65,7 +73,7 @@ function cleanUser(user) {
     isVendor: !!user.isVendor,
     vendorStatus: user.vendorStatus || "pending",
     /* ✅ NEW: Vendor Type for dual marketplace */
-    vendorType: user.vendorType || forceRestaurant || "marketplace",
+    vendorType: effectiveVendorType,
     storeName: user.storeName,
     storeDescription: user.storeDescription,
     storeLogo: user.storeLogo,
@@ -73,11 +81,11 @@ function cleanUser(user) {
     ...(user.isVendor && {
       location: user.location || { country: "Ghana", region: "", city: "" },
     }),
-    /* ✅ NEW: Restaurant Details (if restaurant vendor) ── */
-    ...((user.isVendor && user.vendorType === "restaurant") || hasRestaurantDetails ? {
-      restaurantDetails: user.restaurantDetails || {},
+    /* ✅ NEW: Restaurant Details (only for actual restaurant vendors) ── */
+    ...(user.isVendor && userIsRestaurantVendor ? {
+      restaurantDetails: details,
     } : {}),
-    /* ── KYC Fields (if vendor) ── */
+    /* â”€â”€ KYC Fields (if vendor) â”€â”€ */
     ...(user.isVendor && {
       phoneNumber: user.phoneNumber,
       idType: user.idType,
@@ -87,7 +95,7 @@ function cleanUser(user) {
   };
 }
 
-/* ───────────────────────── PUBLIC ROUTES ───────────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PUBLIC ROUTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 // Register (with optional KYC for vendors)
 router.post(
@@ -98,18 +106,18 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      // ✅ FIXED: Validate input
+      // âœ… FIXED: Validate input
       const { error, value } = validate(req.body, registerSchema);
       if (error) {
         return res.status(400).json({ error: error.details[0].message });
       }
 
       const isVendor = value.isVendor === true || value.isVendor === "true";
-      // ✅ NEW: Handle vendorType (marketplace or restaurant)
+      // âœ… NEW: Handle vendorType (marketplace or restaurant)
       const vendorType = isVendor ? (value.vendorType === "restaurant" ? "restaurant" : "marketplace") : "marketplace";
       const isRestaurantVendor = vendorType === "restaurant";
 
-      // ✅ Validate KYC fields for vendors
+      // âœ… Validate KYC fields for vendors
       if (isVendor) {
         if (!value.phoneNumber) {
           return res.status(400).json({ error: "Phone number is required for vendors" });
@@ -124,7 +132,7 @@ router.post(
           return res.status(400).json({ error: "ID back image is required for vendors" });
         }
 
-        // ✅ Validate location fields for vendors (Ghana-focused)
+        // âœ… Validate location fields for vendors (Ghana-focused)
         // Accept predefined OR custom input (user typed)
         // Defensive: Check ghanaLocations is properly loaded
         const locationConfig = ghanaLocations && typeof ghanaLocations.isValidRegion === 'function'
@@ -150,7 +158,7 @@ router.post(
           return res.status(400).json({ error: "City must be at least 2 characters" });
         }
 
-        // ✅ Process uploaded ID documents
+        // âœ… Process uploaded ID documents
         const frontFile = req.files.idFrontImage[0];
         const backFile = req.files.idBackImage[0];
 
@@ -164,14 +172,14 @@ router.post(
         const useCloudinary = isKYCCloudinaryConfigured();
       }
 
-      // ✅ Prepare user data
+      // âœ… Prepare user data
       const userData = {
         ...value,
         isVendor,
-        vendorType, // ✅ NEW: marketplace or restaurant
+        vendorType, // âœ… NEW: marketplace or restaurant
       };
 
-      // ✅ Add restaurant details if restaurant vendor
+      // âœ… Add restaurant details if restaurant vendor
       if (isRestaurantVendor) {
         userData.restaurantDetails = {
           restaurantName: value.restaurantName || value.storeName || "",
@@ -185,7 +193,7 @@ router.post(
         };
       }
 
-      // ✅ Add location data if vendor (Ghana-focused)
+      // âœ… Add location data if vendor (Ghana-focused)
       if (isVendor) {
         userData.location = {
           country: value.country || "Ghana",
@@ -194,7 +202,7 @@ router.post(
         };
       }
 
-      // ✅ Add KYC data if vendor
+      // âœ… Add KYC data if vendor
       if (isVendor) {
         userData.phoneNumber = value.phoneNumber;
         userData.idType = value.idType;
@@ -228,8 +236,55 @@ router.post(
       const user = await User.create(userData);
       const token = sign(user);
       res.status(201).json({ user: cleanUser(user), token });
+      // After register — fire welcome to the new user + new registration notice to admins
+      (async () => {
+        try {
+          const isVendorReg = !!userData.isVendor;
+          const isRestaurantReg = userData.vendorType === "restaurant";
+          // 1) Welcome / approval-needed to the new user
+          if (isVendorReg) {
+            await notifyUser(user._id, {
+              type: "welcome",
+              title: "Welcome to SiiShop!",
+              message: isRestaurantReg
+                ? "Your restaurant application is in. We will notify you once it's reviewed."
+                : "Your vendor application is in. We will notify you once it's reviewed.",
+              deepLink: "/settings",
+              priority: "medium",
+            });
+          } else {
+            await notifyUser(user._id, {
+              type: "welcome",
+              title: "Welcome to SiiShop!",
+              message: `Hi ${user.name || "there"}, your account is ready. Start shopping!`,
+              deepLink: "/",
+              priority: "medium",
+            });
+          }
+          // 2) New-registration notice to all admins
+          const adminType = isRestaurantReg
+            ? "new_restaurant_registration"
+            : isVendorReg
+            ? "new_vendor_registration"
+            : "new_customer_registration";
+          const adminTitle = isRestaurantReg
+            ? "New restaurant registration"
+            : isVendorReg
+            ? "New vendor registration"
+            : "New customer registration";
+          await notifyAdmins({
+            type: adminType,
+            title: adminTitle,
+            message: `${user.name || user.email} just signed up${isRestaurantReg ? " (restaurant)" : isVendorReg ? " (vendor)" : ""}.`,
+            deepLink: isRestaurantReg ? "/admin?tab=restaurants" : isVendorReg ? "/admin?tab=vendors" : "/admin?tab=users",
+            sender: user._id,
+            senderType: "user",
+            priority: "low",
+          });
+        } catch (e) { logger.log("[auth register notify]", e.message); }
+      })();
     } catch (err) {
-      // ✅ Clean up uploaded local files on error (Cloudinary files are already in cloud)
+      // âœ… Clean up uploaded local files on error (Cloudinary files are already in cloud)
       if (req.files) {
         try {
           // Only cleanup local files - not Cloudinary URLs
@@ -254,7 +309,7 @@ router.post(
 // Login
 router.post("/login", async (req, res) => {
   try {
-    // ✅ FIXED: Validate input
+    // âœ… FIXED: Validate input
     const { error, value } = validate(req.body, loginSchema);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
@@ -292,7 +347,7 @@ router.post("/login", async (req, res) => {
 // Forgot password
 router.post("/forgot-password", async (req, res) => {
   try {
-    // ✅ FIXED: Validate input
+    // âœ… FIXED: Validate input
     const { error, value } = validate(req.body, forgotPasswordSchema);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
@@ -343,7 +398,7 @@ router.get("/me", requireAuth, async (req, res) => {
 // Update own profile
 router.put("/me", requireAuth, async (req, res) => {
   try {
-    // ✅ FIXED: Validate input
+    // âœ… FIXED: Validate input
     const { error, value } = validate(req.body, updateProfileSchema);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
@@ -359,7 +414,7 @@ router.put("/me", requireAuth, async (req, res) => {
     if (storeDescription !== undefined) updates.storeDescription = storeDescription;
     if (storeLogo !== undefined) updates.storeLogo = storeLogo;
 
-    // ✅ Update location (for vendors)
+    // âœ… Update location (for vendors)
     if (location !== undefined && req.user.isVendor) {
       // Validate location if provided (accept both predefined and custom)
       if (location && (location.region || location.city)) {
@@ -389,7 +444,7 @@ router.put("/me", requireAuth, async (req, res) => {
       };
     }
 
-    // ✅ FIX: Persist `restaurantDetails` for restaurant vendors.
+    // âœ… FIX: Persist `restaurantDetails` for restaurant vendors.
     //   Joi (`updateProfileSchema` in backend/utils/joiSchemas.js) now
     //   accepts and type-checks the `restaurantDetails` sub-object, so by
     //   the time we reach this line `value.restaurantDetails` is either
@@ -397,18 +452,18 @@ router.put("/me", requireAuth, async (req, res) => {
     //   all sub-fields already validated. The previous version of this
     //   handler destructured only {name,email,storeName,storeDescription,
     //   storeLogo,location} and silently dropped `restaurantDetails` on
-    //   the floor — so PUT /auth/me returned HTTP 200 with "Settings
+    //   the floor â€” so PUT /auth/me returned HTTP 200 with "Settings
     //   saved" but the database was never updated for the restaurant
     //   sub-document. RestaurantSettingsPage then re-read the unchanged
     //   docs on next mount and re-rendered the original values, making
     //   the page look like everything had "reverted to defaults".
     //
     //   Guards:
-    //   1. Only vendors can write `restaurantDetails` — matches the
+    //   1. Only vendors can write `restaurantDetails` â€” matches the
     //      `location` guard above. Customers/marketplace-vendors ignore
     //      the field (it is stripped/ignored on non-vendor docs anyway
     //      by the Mongoose sub-schema).
-    //   2. `restaurantDetails` must be a plain object — not an array,
+    //   2. `restaurantDetails` must be a plain object â€” not an array,
     //      string, etc. Joi's `Joi.object(...).unknown(true)` already
     //      enforces this, so this check is a belt-and-suspenders defense
     //      against future schema drift.
@@ -442,7 +497,7 @@ router.put("/me", requireAuth, async (req, res) => {
 // Reset password (public route, requires valid token)
 router.post("/reset-password", async (req, res) => {
   try {
-    // ✅ FIXED: Validate input
+    // âœ… FIXED: Validate input
     const { error, value } = validate(req.body, resetPasswordSchema);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
@@ -470,7 +525,15 @@ router.post("/reset-password", async (req, res) => {
     user.resetExpires = null;
     await user.save();
 
-    res.json({ message: "Password reset successfully. You can now log in." });
+
+    // After reset — fire in-app notification to the user
+    notifyUser(user._id, {
+      type: "password_reset",
+      title: "Your password was reset",
+      message: "Your SiiShop password was just changed. If this wasn't you, contact support immediately.",
+      deepLink: "/settings",
+      priority: "high",
+    }).catch((e) => logger.log("[auth reset-password notify]", e.message));    res.json({ message: "Password reset successfully. You can now log in." });
   } catch (err) {
     console.error("Reset password error:", err.message);
     res.status(500).json({ error: "Failed to reset password" });
@@ -480,7 +543,7 @@ router.post("/reset-password", async (req, res) => {
 // Change password
 router.put("/change-password", requireAuth, async (req, res) => {
   try {
-    // ✅ FIXED: Validate input
+    // âœ… FIXED: Validate input
     const { error, value } = validate(req.body, changePasswordSchema);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
@@ -497,14 +560,22 @@ router.put("/change-password", requireAuth, async (req, res) => {
     user.password = newPassword;
     await user.save();
 
+    // After password change — fire in-app notification
+    notifyUser(req.user.userId, {
+      type: "password_changed",
+      title: "Your password was changed",
+      message: "If this wasn't you, please contact support immediately.",
+      deepLink: "/settings",
+      priority: "high",
+    }).catch((e) => logger.log("[auth change-password notify]", e.message));
+
     res.json({ message: "Password changed successfully" });
   } catch (err) {
     res.status(500).json({ error: "Password change failed" });
   }
 });
-
-// ── GOOGLE OAUTH ──────────────────────────────────────────────────────────────
-// ✅ FIXED: Using google-auth-library for secure token verification
+// â”€â”€ GOOGLE OAUTH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// âœ… FIXED: Using google-auth-library for secure token verification
 router.post("/google", async (req, res) => {
   try {
     const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
@@ -517,7 +588,7 @@ router.post("/google", async (req, res) => {
       return res.status(400).json({ error: "Google credential required" });
     }
 
-    // ✅ CRITICAL: Verify token with Google's servers (not just decode)
+    // âœ… CRITICAL: Verify token with Google's servers (not just decode)
     const client = new OAuth2Client(googleClientId);
 
     let ticket;
@@ -548,14 +619,14 @@ router.post("/google", async (req, res) => {
         name: name || email.split("@")[0],
         email,
         password: crypto.randomBytes(16).toString("hex"), // Random password
-        googleId, // ✅ Store Google's unique ID
+        googleId, // âœ… Store Google's unique ID
         isVendor: false,
         isAdmin: false,
       });
     } else if (user.googleId && user.googleId !== googleId) {
       return res.status(401).json({ error: "Google account does not match this user" });
     } else if (!user.googleId) {
-      // ✅ Update existing user with googleId if missing
+      // âœ… Update existing user with googleId if missing
       user.googleId = googleId;
       await user.save();
     }
@@ -569,7 +640,7 @@ router.post("/google", async (req, res) => {
   }
 });
 
-// ── APPLE SIGN-IN ─────────────────────────────────────────────────────────────
+// â”€â”€ APPLE SIGN-IN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post("/apple", async (req, res) => {
   try {
     const { token, identityToken } = req.body;
@@ -609,7 +680,7 @@ router.post("/apple", async (req, res) => {
   }
 });
 
-/* ───────────────────────── MULTER ERROR HANDLER ───────────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ MULTER ERROR HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 // Must be after all routes to catch multer errors
 router.use((err, req, res, next) => {
   if (err && err.code === 'LIMIT_FILE_SIZE') {
@@ -625,3 +696,7 @@ router.use((err, req, res, next) => {
 });
 
 module.exports = router;
+
+
+
+

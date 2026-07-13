@@ -3,9 +3,10 @@ import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from
 import { createPortal } from "react-dom";
 import { notificationAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import socketService from "../services/socket";
 import styles from "./NotificationBell.module.css";
 
-export default function NotificationBell({ userId, onNavigate }) {
+export default function NotificationBell({ userId, onNavigate, onRequireAuth, onOpenAuth }) {
   const { user } = useAuth();
   const [showPanel, setShowPanel] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -78,6 +79,54 @@ export default function NotificationBell({ userId, onNavigate }) {
     };
   }, [fetchUnreadCount, fetchNotifications, showPanel]);
 
+  // Phase 2: per-user real-time channel. When a logged-in user opens
+  // the bell, connect the socket (idempotent) and join the user's
+  // notification room. The server then pushes "user-notification"
+  // events the moment notifyUser() creates a row — the bell badge
+  // updates without waiting for the 30s poll. Admins still get
+  // their admin-notify-room events (handled in AdminDashboard);
+  // admins ALSO join the per-user room so they see their own
+  // account-level notifications.
+  useEffect(() => {
+    if (!userId) return undefined;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        await socketService.connect(token);
+        if (cancelled) return;
+        socketService.joinUserRoom(userId);
+
+        const handler = () => {
+          // The server's user-notification payload doesn't carry the
+          // full row, just a type/title/deepLink. The bell re-fetches
+          // the count + the panel list to keep the UI consistent.
+          fetchUnreadCount();
+          if (showPanel) fetchNotifications();
+        };
+        socketService.on("user-notification", handler);
+
+        // Stash cleanup on the socket service for the next effect
+        // teardown via a local listener-remove closure.
+        return () => {
+          socketService.off("user-notification", handler);
+          socketService.leaveUserRoom(userId);
+        };
+      } catch (err) {
+        // Non-fatal — bell still updates via 30s poll.
+        // eslint-disable-next-line no-console
+        console.warn("[NotificationBell] per-user socket connect failed:", err.message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, isAdmin]);
+
   // Close panel when clicking outside (or Escape). The portal moves
   // the panel out of the trigger's DOM tree, so the outside-click
   // test has to check BOTH the trigger ref and the panel ref.
@@ -145,28 +194,114 @@ export default function NotificationBell({ userId, onNavigate }) {
     }
   };
 
+  // Phase 2: a single dispatch table that maps notification.type to
+  // a {page, payload} destination. The old 4-branch if/else chain
+  // only covered 3 notification types; the table below covers 30+
+  // so every wire-up in services/notification.service.js actually
+  // deep-links somewhere useful.
+  //
+  // Each entry returns { page, payload } or null. The fallback case
+  // (no entry) just closes the panel and stays on the current page.
+  //
+  // The page key matches the keys used by App.jsx's `case` ladder
+  // (home, orders, vendor, admin, settings, etc.).
+  const DEEP_LINKS = {
+    // Reviews
+    review_request: (n) => ({
+      page: "review",
+      payload: { orderId: n.metadata?.orderId || n.referenceId, source: "notification" },
+    }),
+
+    // Wallet — vendors land on the vendor wallet tab
+    withdrawal_submitted:    () => ({ page: "vendor", payload: { tab: "wallet" } }),
+    withdrawal_approved:     () => ({ page: "vendor", payload: { tab: "wallet" } }),
+    withdrawal_processing:   () => ({ page: "vendor", payload: { tab: "wallet" } }),
+    withdrawal_completed:    () => ({ page: "vendor", payload: { tab: "wallet" } }),
+    withdrawal_rejected:     () => ({ page: "vendor", payload: { tab: "wallet" } }),
+    commission_due:          () => ({ page: "vendor", payload: { tab: "wallet" } }),
+    commission_overdue:      () => ({ page: "vendor", payload: { tab: "wallet" } }),
+
+    // Commission paid — admins go to the admin commissions tab,
+    // vendors to the vendor wallet tab.
+    commission_paid: (n, role) => role === "admin"
+      ? { page: "admin", payload: { tab: "commissions" } }
+      : { page: "vendor", payload: { tab: "wallet" } },
+
+    // New order to vendor
+    order_new:               () => ({ page: "vendor", payload: { tab: "orders" } }),
+    order_status:            () => ({ page: "vendor", payload: { tab: "orders" } }),
+
+    // Customer-facing order notifications
+    order_placed:            (n) => ({ page: "orders", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    order_accepted:          (n) => ({ page: "orders", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    order_preparing:         (n) => ({ page: "orders", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    order_packed:            (n) => ({ page: "orders", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    rider_assigned:          (n) => ({ page: "delivery-tracking", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    out_for_delivery:        (n) => ({ page: "delivery-tracking", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    payment_succeeded:       (n) => ({ page: "orders", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    payment_failed:          (n) => ({ page: "orders", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    refund_processed:        (n) => ({ page: "orders", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+    cancellation_approved:   (n) => ({ page: "orders", payload: { orderId: n.metadata?.orderId || n.referenceId } }),
+
+    // Product / vendor / restaurant admin actions
+    product_approved:        () => ({ page: "vendor", payload: { tab: "products" } }),
+    product_rejected:        () => ({ page: "vendor", payload: { tab: "products" } }),
+    product_hidden:          () => ({ page: "vendor", payload: { tab: "products" } }),
+    product_low_stock:       () => ({ page: "vendor", payload: { tab: "products" } }),
+    product_out_of_stock:    () => ({ page: "vendor", payload: { tab: "products" } }),
+    new_review:              () => ({ page: "vendor", payload: { tab: "reviews" } }),
+    kyc_approved:            () => ({ page: "vendor", payload: { tab: "settings" } }),
+    kyc_rejected:            () => ({ page: "vendor", payload: { tab: "settings" } }),
+    store_approved:          () => ({ page: "vendor", payload: {} }),
+    store_suspended:         () => ({ page: "vendor", payload: {} }),
+    store_restored:          () => ({ page: "vendor", payload: {} }),
+    restaurant_approved:     () => ({ page: "restaurant-dashboard", payload: {} }),
+    restaurant_rejected:     () => ({ page: "restaurant-dashboard", payload: {} }),
+    restaurant_suspended:    () => ({ page: "restaurant-dashboard", payload: {} }),
+    restaurant_restored:     () => ({ page: "restaurant-dashboard", payload: {} }),
+
+    // Promotions / wishlist
+    coupon_received:         () => ({ page: "deals", payload: {} }),
+    promo_available:         () => ({ page: "deals", payload: {} }),
+    flash_sale:              () => ({ page: "deals", payload: {} }),
+    wishlist_price_drop:     () => ({ page: "wishlist", payload: {} }),
+    wishlist_stock_available:() => ({ page: "wishlist", payload: {} }),
+
+    // Account / support
+    support_reply:           (n) => ({ page: "chat", payload: { conversationId: n.metadata?.conversationId } }),
+    account_suspended:       () => ({ page: "settings", payload: {} }),
+    account_restored:        () => ({ page: "settings", payload: {} }),
+  };
+
+  // Auth-gated navigation: if the user is logged out, save the
+  // destination via the new generic `pendingDestination` slot and
+  // prompt them to sign in. The App.jsx#onAuthSuccess handler
+  // restores the destination after login. `onRequireAuth` is the
+  // App-level prop; fall back to `onOpenAuth` (which Navbar uses)
+  // when the bell is mounted in a Navbar context.
+  const safeNavigate = (page, payload) => {
+    if (!user) {
+      const auth = onRequireAuth || onOpenAuth;
+      auth?.("login", { page, payload });
+      return;
+    }
+    onNavigate?.(page, payload);
+  };
+
   const handleNotificationClick = (notification) => {
     if (!notification.isRead) {
       handleMarkAsRead(notification._id);
     }
     setShowPanel(false);
-    // Navigate based on notification type
-    if (notification.type?.includes("withdrawal")) {
-      onNavigate?.("vendor");
-    } else if (notification.type === "commission_paid" && isAdmin) {
-      // Admins land on the Admin Dashboard wallet tab. Vendor
-      // recipients never see this type (admins are the only
-      // recipients), but the role gate is here for safety.
-      onNavigate?.("admin");
-    } else if (notification.type === "review_request") {
-      // Review request — the bell's payload already carries the
-      // orderId in metadata (or, as a fallback, in referenceId).
-      // The ReviewPage resolves that orderId into the list of
-      // items the customer can still review.
-      const orderId =
-        notification.metadata?.orderId || notification.referenceId;
-      onNavigate?.("review", { orderId, source: "notification" });
+
+    const role = isAdmin ? "admin" : (user?.isVendor ? "vendor" : "customer");
+    const dest = DEEP_LINKS[notification.type]?.(notification, role);
+
+    if (dest) {
+      safeNavigate(dest.page, dest.payload || {});
     }
+    // else: just close the panel — the user can act on it later
+    // from the NotificationsPage inbox.
   };
 
   const getNotificationIcon = (type) => {

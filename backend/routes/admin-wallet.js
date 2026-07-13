@@ -167,6 +167,84 @@ router.post("/withdrawal/:id/reject", async (req, res) => {
 });
 
 /**
+ * POST /api/admin/wallet/withdrawal/:id/mark-processing
+ * Phase 2: previously the in-app `withdrawal_processing` notification
+ * was never fired because the only caller (this route) didn't exist.
+ * The withdrawal-notification service had `notifyWithdrawalProcessing`
+ * defined and exported, but no route invoked it. Now an admin can
+ * flip a withdrawal to "processing" and the vendor gets a real-time
+ * in-app + email notification via the same function the existing
+ * approve/reject paths use.
+ */
+router.post("/withdrawal/:id/mark-processing", async (req, res) => {
+  try {
+    const withdrawal = await Withdrawal.findById(req.params.id);
+    if (!withdrawal) {
+      return res.status(404).json({ error: "Withdrawal not found" });
+    }
+    if (withdrawal.status !== "approved" && withdrawal.status !== "pending") {
+      return res.status(400).json({
+        error: `Cannot mark withdrawal as processing from status "${withdrawal.status}"`,
+      });
+    }
+
+    withdrawal.status = "processing";
+    await withdrawal.save();
+
+    // Fire the in-app + email notification (was dead code before Phase 2)
+    withdrawalNotifications
+      .notifyWithdrawalProcessing(withdrawal)
+      .catch((err) => {
+        console.error("[ADMIN WALLET] Processing notification error:", err.message);
+      });
+
+    res.json({ ok: true, withdrawal });
+  } catch (error) {
+    console.error("[ADMIN WALLET] Error marking withdrawal as processing:", error.message);
+    res.status(500).json({ error: "Failed to mark withdrawal as processing" });
+  }
+});
+
+/**
+ * POST /api/admin/wallet/withdrawal/:id/mark-completed
+ * Phase 2: counterpart to /mark-processing. Flips a withdrawal to
+ * "completed" and fires the in-app + email completion notification
+ * (`notifyWithdrawalCompleted` — also previously dead code).
+ */
+router.post("/withdrawal/:id/mark-completed", async (req, res) => {
+  try {
+    const { paymentRef, transactionId } = req.body || {};
+    const withdrawal = await Withdrawal.findById(req.params.id);
+    if (!withdrawal) {
+      return res.status(404).json({ error: "Withdrawal not found" });
+    }
+    if (withdrawal.status !== "processing" && withdrawal.status !== "approved") {
+      return res.status(400).json({
+        error: `Cannot complete withdrawal from status "${withdrawal.status}"`,
+      });
+    }
+
+    withdrawal.status = "completed";
+    if (paymentRef) withdrawal.paymentRef = paymentRef;
+    if (transactionId) withdrawal.transactionId = transactionId;
+    withdrawal.completedAt = new Date();
+    await withdrawal.save();
+
+    // Fire the in-app + email completion notification
+    withdrawalNotifications
+      .notifyWithdrawalCompleted(withdrawal)
+      .catch((err) => {
+        console.error("[ADMIN WALLET] Completion notification error:", err.message);
+      });
+
+    res.json({ ok: true, withdrawal });
+  } catch (error) {
+    console.error("[ADMIN WALLET] Error marking withdrawal as completed:", error.message);
+    res.status(500).json({ error: "Failed to mark withdrawal as completed" });
+  }
+});
+
+/**
  * GET /api/admin/wallet/vendor/:vendorId
  * Get vendor wallet details
  */

@@ -279,8 +279,11 @@ export default function RestaurantDashboard({ onNavigate, addToast }) {
     }
 
     // Check BOTH vendorType AND restaurantDetails for backwards compatibility
-    const isRestaurantVendor = user?.vendorType === "restaurant" ||
-      (user?.restaurantDetails && Object.keys(user.restaurantDetails).length > 0);
+    const isRestaurantVendor =
+      user?.vendorType === "restaurant" ||
+      (user?.vendorType == null &&
+        user?.restaurantDetails &&
+        Object.keys(user.restaurantDetails).length > 0);
 
     logger.log("[RestaurantDashboard] isRestaurantVendor:", isRestaurantVendor);
 

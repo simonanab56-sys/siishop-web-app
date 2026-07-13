@@ -30,6 +30,11 @@ import {
 import styles from "./ReviewPage.module.css";
 
 const PENDING_STORAGE_KEY = "pendingReview";
+// Phase 2: the new generic pendingDestination slot is checked
+// FIRST so any notification click targeting the review page goes
+// through the same path. The old `pendingReview` slot remains
+// as a back-compat fallback for the email `?review=…` link.
+const GENERIC_PENDING_KEY = "pendingDestination";
 
 // ── Read orderId from payload or sessionStorage ──────────────────────────────
 // The notification click and the email deep link both funnel here. Payload
@@ -38,6 +43,15 @@ const PENDING_STORAGE_KEY = "pendingReview";
 function resolveOrderId(payload) {
   if (payload && payload.orderId) return payload.orderId;
   try {
+    // 1) Generic pendingDestination slot (Phase 2)
+    const generic = sessionStorage.getItem(GENERIC_PENDING_KEY);
+    if (generic) {
+      const parsed = JSON.parse(generic);
+      if (parsed && parsed.page === "review" && parsed.payload && parsed.payload.orderId) {
+        return parsed.payload.orderId;
+      }
+    }
+    // 2) Legacy pendingReview slot (back-compat for ?review=… emails)
     const raw = sessionStorage.getItem(PENDING_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);

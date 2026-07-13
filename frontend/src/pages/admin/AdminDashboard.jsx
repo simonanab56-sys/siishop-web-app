@@ -14,6 +14,7 @@ import { StatusBadge } from "../../components/OrderStatusBadge";
 import OrderTracker from "../../components/OrderTracker";
 import { AnalyticsCalendar, DateFilter, StatsCard } from "../../components/analytics";
 import AdminChatPage   from "./AdminChatPage";
+import AdminBroadcastPage from "./AdminBroadcastPage";
 import { DISCOUNT_TYPES, deriveSellingPrice } from "../../utils/pricing";
 import socketService   from "../../services/socket";
 import styles          from "./AdminDashboard.module.css";
@@ -134,7 +135,7 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
   if (!isLoggedIn) return <GateScreen msg="Sign in to access the Admin Dashboard" onAuth={onRequireAuth} icon="🔐" />;
   if (!isAdmin)    return <GateScreen msg="Admin access required." icon="🚫" />;
 
-  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["delivered-orders","✅ Delivered"],["analytics","📈 Analytics"],["wallet","💰 Wallet"],["commissions","💼 Commissions & Payouts"],["promos","🏷️ Promos"],["categories","🗂️ Categories"],["sections","🧩 Sections"],["chat","💬 Chat"],["restaurants","🍔 Restaurants"]];
+  const TABS = [["overview","📊 Overview"],["users","👥 Users"],["vendors","🏪 Vendors"],["products","📦 Products"],["orders","🚚 Orders"],["delivered-orders","✅ Delivered"],["analytics","📈 Analytics"],["wallet","💰 Wallet"],["commissions","💼 Commissions & Payouts"],["promos","🏷️ Promos"],["categories","🗂️ Categories"],["sections","🧩 Sections"],["chat","💬 Chat"],["restaurants","🍔 Restaurants"],["broadcast","📣 Broadcast"]];
 
   return (
     <React.Fragment>
@@ -179,6 +180,7 @@ export default function AdminDashboard({ addToast, onRequireAuth }) {
       {tab === "sections"   && <AdminSections   addToast={addToast} fmt={fmt} />}
       {tab === "chat"       && <AdminChatPage   addToast={addToast} />}
       {tab === "restaurants" && <AdminRestaurants addToast={addToast} fmt={fmt} />}
+      {tab === "broadcast" && <AdminBroadcastPage addToast={addToast} />}
     </div>
     </React.Fragment>
   );

@@ -4,6 +4,7 @@ import { authAPI }      from "../services/api";
 import { useAuth }      from "../context/AuthContext";
 import { useCurrency }  from "../context/CurrencyContext";
 import ImageUpload      from "../components/ImageUpload";
+import NotificationPreferencesPage from "./NotificationPreferencesPage";
 import styles           from "./SettingsPage.module.css";
 
 function getInitials(name) {
@@ -83,6 +84,7 @@ export default function SettingsPage({ addToast }) {
     ["profile",  "👤 Profile"],
     ["password", "🔒 Password"],
     ["currency", "💱 Currency"],
+    ["notifications", "🔔 Notifications"],
     ...(isVendor ? [["store","🏪 Store"]] : []),
   ];
 
@@ -207,6 +209,12 @@ export default function SettingsPage({ addToast }) {
               {storeSaving ? "Saving…" : "Update Store"}
             </button>
           </form>
+        )}
+
+        {/* Phase 2: notification preferences live in a separate page;
+            we just embed it here so users find it from settings. */}
+        {tab === "notifications" && (
+          <NotificationPreferencesPage addToast={addToast} />
         )}
 
       </div>

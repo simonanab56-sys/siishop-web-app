@@ -11,6 +11,7 @@ const Order = require("../models/Order");
 const { requireAuth } = require("../middleware/auth");
 const { cloudinary } = require("../config/cloudinary");
 const logger = require("../utils/logger");
+const { notifyUser } = require("../services/notification.service");
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -532,6 +533,41 @@ router.post("/send", requireAuth, async (req, res) => {
           conversationId,
           message: message.toObject(),
         });
+      }
+    }
+
+    // Phase 2: when an admin replies on a SUPPORT conversation, fire
+    // a `support_reply` in-app notification to the original ticket
+    // creator (the non-admin participant). We don't notify on every
+    // chat message — only on support tickets, and only when an admin
+    // is the sender, to avoid spam. Failures are best-effort.
+    if (
+      user.isAdmin === true &&
+      conversation.conversationType === "support"
+    ) {
+      try {
+        const customer = conversation.participants.find(
+          (p) => p.userId.toString() !== userId.toString()
+        );
+        if (customer) {
+          const preview = (text || "").substring(0, 120);
+          notifyUser(customer.userId, {
+            type: "support_reply",
+            title: "Support replied",
+            message:
+              preview || "An admin has responded to your support ticket.",
+            deepLink: `/chat?conversationId=${conversationId}`,
+            priority: "high",
+            metadata: {
+              conversationId: String(conversationId),
+              messageId: String(message._id),
+            },
+          }).catch((err) => {
+            logger.log("[Chat] support_reply notify failed:", err.message);
+          });
+        }
+      } catch (e) {
+        logger.log("[Chat] support_reply branch error:", e.message);
       }
     }
 

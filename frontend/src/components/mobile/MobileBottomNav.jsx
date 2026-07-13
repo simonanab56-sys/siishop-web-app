@@ -149,7 +149,7 @@ export default function MobileBottomNav({
                 <span>Settings</span>
               </button>
 
-              <button className={styles.menuItem} onClick={() => handleNav("vendor")}>
+              <button className={styles.menuItem} onClick={() => handleNav("notifications")}>
                 <Bell size={20} />
                 <span>Notifications</span>
                 {notificationUnreadCount > 0 && (

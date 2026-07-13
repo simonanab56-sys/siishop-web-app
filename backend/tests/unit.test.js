@@ -1595,3 +1595,539 @@ describe("19. Customer review notification flow", () => {
     assert.ok(validateRating(undefined));
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SECTION 20 — Phase 2: notification preferences, DND, audience query,
+// broadcast validation. These are all PURE helpers exported by
+// services/notification.service.js. The inlined copies below mirror the
+// source so the suite is self-contained and does not need to import
+// the real service (which transitively requires mongoose).
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("20. Phase 2 — notification preferences, DND, audience, broadcast", () => {
+  // ── 20.1 parseTimeOfDay ───────────────────────────────────────────────
+  // Inlined from services/notification.service.js. Returns minutes
+  // since midnight, or null on invalid input. Drives isInDnd.
+  function parseTimeOfDay(str) {
+    if (!str || typeof str !== "string") return null;
+    const m = /^(\d{1,2}):(\d{2})$/.exec(str.trim());
+    if (!m) return null;
+    const hh = parseInt(m[1], 10);
+    const mm = parseInt(m[2], 10);
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+    return hh * 60 + mm;
+  }
+
+  // ── 20.2 isInDnd ─────────────────────────────────────────────────────
+  // Inlined. Returns true iff `now` (Date or minutes) falls inside
+  // the user's [dndStart, dndEnd) window. Handles overnight wrap.
+  function isInDnd(prefs, now) {
+    if (!prefs || !prefs.dndStart || !prefs.dndEnd) return false;
+    const start = parseTimeOfDay(prefs.dndStart);
+    const end = parseTimeOfDay(prefs.dndEnd);
+    if (start === null || end === null) return false;
+    if (start === end) return false;
+    const minutes = typeof now === "number"
+      ? now
+      : (now instanceof Date ? now.getHours() * 60 + now.getMinutes() : null);
+    if (minutes === null) return false;
+    if (start < end) {
+      return minutes >= start && minutes < end;
+    }
+    return minutes >= start || minutes < end;
+  }
+
+  // ── 20.3 prefKeyForType ──────────────────────────────────────────────
+  // Inlined. Maps a notification type to a preference key, or null
+  // for "no per-type opt-out".
+  function prefKeyForType(type) {
+    if (!type) return null;
+    if (type.startsWith("order_") || type === "rider_assigned" || type === "out_for_delivery" || type === "order_new" || type === "order_status") return "orderUpdates";
+    if (type === "review_request") return "reviewReminders";
+    if (type.startsWith("commission_") || type.startsWith("withdrawal_") || type === "refund_processed" || type === "refund_request" || type === "payment_succeeded" || type === "payment_failed") return "walletUpdates";
+    if (type === "coupon_received" || type === "promo_available" || type === "flash_sale" || type === "wishlist_price_drop" || type === "wishlist_stock_available") return "promotional";
+    return null;
+  }
+
+  // ── 20.4 shouldNotifyByType ──────────────────────────────────────────
+  // Inlined. True unless the user's per-category pref is explicitly false.
+  function shouldNotifyByType(prefs, type) {
+    if (!prefs) return true;
+    const key = prefKeyForType(type);
+    if (!key) return true;
+    return prefs[key] !== false;
+  }
+
+  // ── 20.5 buildAudienceQuery ──────────────────────────────────────────
+  // Inlined. Builds a Mongoose-shaped query for the broadcast endpoint.
+  // Returns null for "selected" (caller must supply ids) and unknown
+  // audiences.
+  function buildAudienceQuery(audience, filters) {
+    const q = {};
+    switch (audience) {
+      case "all":
+        q.isAdmin = { $ne: true };
+        break;
+      case "customers":
+        q.isAdmin = { $ne: true };
+        q.isVendor = { $ne: true };
+        break;
+      case "vendors":
+        q.isVendor = true;
+        q.vendorType = { $ne: "restaurant" };
+        if (filters?.vendorStatus) q.vendorStatus = filters.vendorStatus;
+        break;
+      case "restaurants":
+        q.isVendor = true;
+        q.vendorType = "restaurant";
+        if (filters?.vendorStatus) q.vendorStatus = filters.vendorStatus;
+        break;
+      case "admins":
+        q.isAdmin = true;
+        break;
+      case "selected":
+        return null;
+      default:
+        return null;
+    }
+    if (filters?.country) q["location.country"] = filters.country;
+    if (filters?.city)    q["location.city"]    = filters.city;
+    return q;
+  }
+
+  // ── 20.6 validateBroadcastInput ─────────────────────────────────────
+  // Inlined. Returns null on success or an error string.
+  function validateBroadcastInput(body) {
+    if (!body || typeof body !== "object") return "Body required";
+    if (!body.audience) return "audience is required";
+    if (!["all", "customers", "vendors", "restaurants", "admins", "selected"].includes(body.audience)) {
+      return "audience must be one of: all, customers, vendors, restaurants, admins, selected";
+    }
+    if (body.audience === "selected" && (!Array.isArray(body.selectedUserIds) || body.selectedUserIds.length === 0)) {
+      return "selectedUserIds is required for audience=selected";
+    }
+    if (!body.title || typeof body.title !== "string" || !body.title.trim()) return "title is required";
+    if (!body.message || typeof body.message !== "string" || !body.message.trim()) return "message is required";
+    if (body.title.length > 200) return "title too long (max 200)";
+    if (body.message.length > 2000) return "message too long (max 2000)";
+    if (body.priority && !["high", "medium", "low"].includes(body.priority)) {
+      return "priority must be: high, medium, low";
+    }
+    if (body.scheduledFor) {
+      const d = new Date(body.scheduledFor);
+      if (isNaN(d.getTime())) return "scheduledFor must be a valid ISO date";
+      if (d.getTime() < Date.now() - 60 * 1000) return "scheduledFor must be in the future";
+    }
+    return null;
+  }
+
+  // ───────── parseTimeOfDay ─────────
+  test("20.1 parseTimeOfDay: parses '22:00' → 1320, '00:00' → 0, '7:30' → 450", () => {
+    assert.strictEqual(parseTimeOfDay("22:00"), 22 * 60);
+    assert.strictEqual(parseTimeOfDay("00:00"), 0);
+    assert.strictEqual(parseTimeOfDay("7:30"),  7 * 60 + 30);
+    assert.strictEqual(parseTimeOfDay("23:59"), 23 * 60 + 59);
+  });
+
+  test("20.2 parseTimeOfDay: rejects empty, non-string, out-of-range, malformed", () => {
+    assert.strictEqual(parseTimeOfDay(""),       null);
+    assert.strictEqual(parseTimeOfDay("  "),     null);
+    assert.strictEqual(parseTimeOfDay(null),      null);
+    assert.strictEqual(parseTimeOfDay(undefined), null);
+    assert.strictEqual(parseTimeOfDay(123),       null);
+    assert.strictEqual(parseTimeOfDay("24:00"),   null);
+    assert.strictEqual(parseTimeOfDay("12:60"),   null);
+    assert.strictEqual(parseTimeOfDay("12"),      null);
+    assert.strictEqual(parseTimeOfDay("ab:cd"),   null);
+  });
+
+  // ───────── isInDnd ─────────
+  test("20.3 isInDnd: returns false when prefs/dndStart/dndEnd missing", () => {
+    assert.strictEqual(isInDnd(null,           new Date()), false);
+    assert.strictEqual(isInDnd(undefined,      new Date()), false);
+    assert.strictEqual(isInDnd({},             new Date()), false);
+    assert.strictEqual(isInDnd({ dndStart: "", dndEnd: "07:00" }, new Date()), false);
+    assert.strictEqual(isInDnd({ dndStart: "22:00", dndEnd: "" }, new Date()), false);
+  });
+
+  test("20.4 isInDnd: simple daytime window 13:00-15:00 — true at 14:00, false at 16:00", () => {
+    const prefs = { dndStart: "13:00", dndEnd: "15:00" };
+    assert.strictEqual(isInDnd(prefs, 14 * 60),        true);
+    assert.strictEqual(isInDnd(prefs, 13 * 60),        true);  // inclusive start
+    assert.strictEqual(isInDnd(prefs, 14 * 60 + 59),   true);
+    assert.strictEqual(isInDnd(prefs, 15 * 60),        false); // exclusive end
+    assert.strictEqual(isInDnd(prefs, 12 * 60),        false);
+    assert.strictEqual(isInDnd(prefs, 16 * 60),        false);
+  });
+
+  test("20.5 isInDnd: overnight window 22:00-07:00 — true at 23:00 and 03:00, false at 12:00", () => {
+    const prefs = { dndStart: "22:00", dndEnd: "07:00" };
+    assert.strictEqual(isInDnd(prefs, 23 * 60), true);   // late evening
+    assert.strictEqual(isInDnd(prefs, 3 * 60),  true);   // early morning, after wrap
+    assert.strictEqual(isInDnd(prefs, 6 * 60 + 59), true);
+    assert.strictEqual(isInDnd(prefs, 7 * 60),  false);  // exclusive end
+    assert.strictEqual(isInDnd(prefs, 12 * 60), false);  // daytime
+    assert.strictEqual(isInDnd(prefs, 21 * 60), false);  // before start
+  });
+
+  test("20.6 isInDnd: zero-length window start===end is treated as 'no DND'", () => {
+    const prefs = { dndStart: "08:00", dndEnd: "08:00" };
+    assert.strictEqual(isInDnd(prefs, 8 * 60),  false);
+    assert.strictEqual(isInDnd(prefs, 12 * 60), false);
+  });
+
+  test("20.7 isInDnd: accepts a Date object and uses local time", () => {
+    const prefs = { dndStart: "22:00", dndEnd: "07:00" };
+    const late  = new Date(2026, 6, 4, 23, 30, 0);
+    const day   = new Date(2026, 6, 4, 12, 0, 0);
+    assert.strictEqual(isInDnd(prefs, late), true);
+    assert.strictEqual(isInDnd(prefs, day),  false);
+  });
+
+  // ───────── prefKeyForType / shouldNotifyByType ─────────
+  test("20.8 prefKeyForType: order_*, rider_assigned, out_for_delivery → orderUpdates", () => {
+    assert.strictEqual(prefKeyForType("order_placed"),     "orderUpdates");
+    assert.strictEqual(prefKeyForType("order_accepted"),   "orderUpdates");
+    assert.strictEqual(prefKeyForType("order_delivered"),  "orderUpdates");
+    assert.strictEqual(prefKeyForType("rider_assigned"),   "orderUpdates");
+    assert.strictEqual(prefKeyForType("out_for_delivery"), "orderUpdates");
+    assert.strictEqual(prefKeyForType("order_new"),        "orderUpdates");
+    assert.strictEqual(prefKeyForType("order_status"),     "orderUpdates");
+  });
+
+  test("20.9 prefKeyForType: commission_*/withdrawal_*/refund/payment → walletUpdates", () => {
+    assert.strictEqual(prefKeyForType("commission_paid"),   "walletUpdates");
+    assert.strictEqual(prefKeyForType("commission_due"),    "walletUpdates");
+    assert.strictEqual(prefKeyForType("withdrawal_submitted"), "walletUpdates");
+    assert.strictEqual(prefKeyForType("withdrawal_completed"), "walletUpdates");
+    assert.strictEqual(prefKeyForType("refund_processed"), "walletUpdates");
+    assert.strictEqual(prefKeyForType("payment_succeeded"), "walletUpdates");
+    assert.strictEqual(prefKeyForType("payment_failed"),    "walletUpdates");
+  });
+
+  test("20.10 prefKeyForType: review_request → reviewReminders; coupons/promos → promotional", () => {
+    assert.strictEqual(prefKeyForType("review_request"),         "reviewReminders");
+    assert.strictEqual(prefKeyForType("coupon_received"),        "promotional");
+    assert.strictEqual(prefKeyForType("promo_available"),        "promotional");
+    assert.strictEqual(prefKeyForType("flash_sale"),             "promotional");
+    assert.strictEqual(prefKeyForType("wishlist_price_drop"),    "promotional");
+    assert.strictEqual(prefKeyForType("wishlist_stock_available"), "promotional");
+  });
+
+  test("20.11 prefKeyForType: returns null for unmapped types", () => {
+    assert.strictEqual(prefKeyForType("welcome"),            null);
+    assert.strictEqual(prefKeyForType("system_announcement"), null);
+    assert.strictEqual(prefKeyForType("store_approved"),     null);
+    assert.strictEqual(prefKeyForType(""),                   null);
+    assert.strictEqual(prefKeyForType(null),                null);
+  });
+
+  test("20.12 shouldNotifyByType: empty/null prefs default to allow", () => {
+    assert.strictEqual(shouldNotifyByType(null,      "order_placed"),  true);
+    assert.strictEqual(shouldNotifyByType(undefined, "order_placed"),  true);
+    assert.strictEqual(shouldNotifyByType({},        "order_placed"),  true);
+    assert.strictEqual(shouldNotifyByType({ marketing: false }, "order_placed"), true); // unrelated pref
+  });
+
+  test("20.13 shouldNotifyByType: respects explicit false on the mapped key", () => {
+    const prefs = {
+      orderUpdates:     false,
+      walletUpdates:    false,
+      reviewReminders:  false,
+      promotional:      false,
+    };
+    assert.strictEqual(shouldNotifyByType(prefs, "order_placed"),    false);
+    assert.strictEqual(shouldNotifyByType(prefs, "rider_assigned"),  false);
+    assert.strictEqual(shouldNotifyByType(prefs, "commission_paid"), false);
+    assert.strictEqual(shouldNotifyByType(prefs, "withdrawal_completed"), false);
+    assert.strictEqual(shouldNotifyByType(prefs, "review_request"),  false);
+    assert.strictEqual(shouldNotifyByType(prefs, "flash_sale"),      false);
+  });
+
+  test("20.14 shouldNotifyByType: explicit true still allows", () => {
+    const prefs = { orderUpdates: true };
+    assert.strictEqual(shouldNotifyByType(prefs, "order_placed"), true);
+  });
+
+  // ───────── buildAudienceQuery ─────────
+  test("20.15 buildAudienceQuery: 'all' excludes admins", () => {
+    const q = buildAudienceQuery("all", null);
+    assert.deepStrictEqual(q, { isAdmin: { $ne: true } });
+  });
+
+  test("20.16 buildAudienceQuery: 'customers' excludes vendors and admins", () => {
+    const q = buildAudienceQuery("customers", null);
+    assert.deepStrictEqual(q, {
+      isAdmin:  { $ne: true },
+      isVendor: { $ne: true },
+    });
+  });
+
+  test("20.17 buildAudienceQuery: 'vendors' targets marketplace vendors (not restaurants)", () => {
+    const q = buildAudienceQuery("vendors", { vendorStatus: "approved" });
+    assert.deepStrictEqual(q, {
+      isVendor:     true,
+      vendorType:   { $ne: "restaurant" },
+      vendorStatus: "approved",
+    });
+  });
+
+  test("20.18 buildAudienceQuery: 'restaurants' targets only restaurants", () => {
+    const q = buildAudienceQuery("restaurants", null);
+    assert.deepStrictEqual(q, {
+      isVendor:   true,
+      vendorType: "restaurant",
+    });
+  });
+
+  test("20.19 buildAudienceQuery: 'admins' is just isAdmin:true", () => {
+    assert.deepStrictEqual(buildAudienceQuery("admins", null), { isAdmin: true });
+  });
+
+  test("20.20 buildAudienceQuery: 'selected' returns null (caller supplies ids)", () => {
+    assert.strictEqual(buildAudienceQuery("selected", null), null);
+  });
+
+  test("20.21 buildAudienceQuery: unknown audience returns null", () => {
+    assert.strictEqual(buildAudienceQuery("hackers", null), null);
+    assert.strictEqual(buildAudienceQuery("", null),       null);
+  });
+
+  test("20.22 buildAudienceQuery: applies country + city filters", () => {
+    const q = buildAudienceQuery("all", { country: "GH", city: "Accra" });
+    assert.deepStrictEqual(q, {
+      isAdmin:          { $ne: true },
+      "location.country": "GH",
+      "location.city":    "Accra",
+    });
+  });
+
+  // ───────── validateBroadcastInput ─────────
+  test("20.23 validateBroadcastInput: rejects non-object body", () => {
+    assert.ok(validateBroadcastInput(null));
+    assert.ok(validateBroadcastInput("hi"));
+    assert.ok(validateBroadcastInput(42));
+    assert.ok(validateBroadcastInput([]));
+  });
+
+  test("20.24 validateBroadcastInput: rejects missing audience and unknown audience", () => {
+    assert.ok(validateBroadcastInput({ title: "T", message: "M" }));
+    assert.ok(validateBroadcastInput({ audience: "hackers", title: "T", message: "M" }));
+  });
+
+  test("20.25 validateBroadcastInput: 'selected' requires selectedUserIds", () => {
+    assert.ok(validateBroadcastInput({ audience: "selected", title: "T", message: "M" }));
+    assert.ok(validateBroadcastInput({ audience: "selected", title: "T", message: "M", selectedUserIds: [] }));
+    assert.strictEqual(
+      validateBroadcastInput({ audience: "selected", title: "T", message: "M", selectedUserIds: ["u1"] }),
+      null
+    );
+  });
+
+  test("20.26 validateBroadcastInput: requires non-empty title and message, with length caps", () => {
+    const base = { audience: "all", title: "T", message: "M" };
+    assert.strictEqual(validateBroadcastInput(base), null);
+    assert.ok(validateBroadcastInput({ ...base, title: "" }));
+    assert.ok(validateBroadcastInput({ ...base, title: "   " }));
+    assert.ok(validateBroadcastInput({ ...base, message: "" }));
+    assert.ok(validateBroadcastInput({ ...base, title:  "x".repeat(201) }));
+    assert.ok(validateBroadcastInput({ ...base, message: "x".repeat(2001) }));
+  });
+
+  test("20.27 validateBroadcastInput: rejects bad priority", () => {
+    const base = { audience: "all", title: "T", message: "M" };
+    assert.strictEqual(validateBroadcastInput({ ...base, priority: "high" }),   null);
+    assert.strictEqual(validateBroadcastInput({ ...base, priority: "medium" }), null);
+    assert.strictEqual(validateBroadcastInput({ ...base, priority: "low" }),    null);
+    assert.ok(validateBroadcastInput({ ...base, priority: "urgent" }));
+  });
+
+  test("20.28 validateBroadcastInput: scheduledFor must be a future ISO date", () => {
+    const base = { audience: "all", title: "T", message: "M" };
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const past   = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    assert.strictEqual(validateBroadcastInput({ ...base, scheduledFor: future }), null);
+    assert.ok(validateBroadcastInput({ ...base, scheduledFor: "not-a-date" }));
+    assert.ok(validateBroadcastInput({ ...base, scheduledFor: past }));
+  });
+});
+
+// SECTION 21 — vendorType classification (regression test for the
+// "marketplace vendor routed to Restaurant Dashboard" bug).
+// ─────────────────────────────────────────────────────────────────────────────
+// Bug history: Mongoose auto-hydrates every user's `restaurantDetails`
+// subdoc with default keys (deliveryRadius: 5, deliveryFee: 0,
+// estimatedDeliveryTime: 30, isOpen: false, coverImagePublicId: ""),
+// so a marketplace vendor with no restaurant data still has a
+// non-empty `restaurantDetails` object. The old check
+// `vendorType === "restaurant" || Object.keys(restaurantDetails).length > 0`
+// misclassified those vendors as restaurants and routed them to the
+// Restaurant Dashboard (frontend) and granted them restaurant API
+// access (backend).
+//
+// Fix: see backend/utils/vendorType.js. A user is a restaurant vendor
+// only when `vendorType === "restaurant"`, or (legacy) when
+// `vendorType` is null/undefined AND the restaurantDetails subdoc
+// contains at least one user-populated field (i.e. not just the
+// Mongoose default keys).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const {
+  isRestaurantVendor,
+  classifyVendorType,
+  hasUserSetRestaurantFields,
+  RESTAURANT_DEFAULT_KEYS,
+} = require("../utils/vendorType");
+
+// Default-hydrated subdoc (what Mongoose produces for a brand-new user
+// that has never set any restaurant field).
+const DEFAULT_SUBDOC = {
+  deliveryRadius: 5,
+  deliveryFee: 0,
+  estimatedDeliveryTime: 30,
+  isOpen: false,
+  coverImagePublicId: "",
+};
+
+describe("21. vendorType classification (marketplace-vs-restaurant)", () => {
+  // ── isRestaurantVendor ────────────────────────────────────────────────────
+  test("21.1 isRestaurantVendor: explicit 'restaurant' is true regardless of details", () => {
+    assert.strictEqual(isRestaurantVendor("restaurant", null), true);
+    assert.strictEqual(isRestaurantVendor("restaurant", undefined), true);
+    assert.strictEqual(isRestaurantVendor("restaurant", {}), true);
+    assert.strictEqual(isRestaurantVendor("restaurant", DEFAULT_SUBDOC), true);
+    assert.strictEqual(isRestaurantVendor("restaurant", { cuisineType: "Ghanaian" }), true);
+  });
+
+  test("21.2 isRestaurantVendor: explicit 'marketplace' is false even with full restaurant data", () => {
+    assert.strictEqual(isRestaurantVendor("marketplace", null), false);
+    assert.strictEqual(isRestaurantVendor("marketplace", {}), false);
+    assert.strictEqual(isRestaurantVendor("marketplace", DEFAULT_SUBDOC), false);
+    // Even with a fully populated restaurant subdoc, an explicit
+    // "marketplace" vendorType is a marketplace vendor.
+    assert.strictEqual(
+      isRestaurantVendor("marketplace", {
+        ...DEFAULT_SUBDOC,
+        cuisineType: "Ghanaian",
+        restaurantName: "KFC",
+      }),
+      false
+    );
+  });
+
+  test("21.3 isRestaurantVendor: REGRESSION — default-hydrated subdoc is NOT a restaurant vendor", () => {
+    // The whole point of the fix. A marketplace vendor whose
+    // restaurantDetails is just Mongoose defaults must NOT be
+    // classified as a restaurant vendor.
+    assert.strictEqual(isRestaurantVendor("marketplace", DEFAULT_SUBDOC), false);
+    assert.strictEqual(isRestaurantVendor("marketplace", { ...DEFAULT_SUBDOC }), false);
+  });
+
+  test("21.4 isRestaurantVendor: legacy null vendorType + default subdoc is false", () => {
+    // Pre-migration vendors with no `vendorType` and no real
+    // restaurant data are marketplace vendors.
+    assert.strictEqual(isRestaurantVendor(null, DEFAULT_SUBDOC), false);
+    assert.strictEqual(isRestaurantVendor(undefined, DEFAULT_SUBDOC), false);
+  });
+
+  test("21.5 isRestaurantVendor: legacy null vendorType + user-set fields is true", () => {
+    // Pre-migration vendors who DID set restaurant fields are
+    // restaurant vendors (legacy back-compat).
+    assert.strictEqual(
+      isRestaurantVendor(null, { ...DEFAULT_SUBDOC, cuisineType: "Ghanaian" }),
+      true
+    );
+    assert.strictEqual(
+      isRestaurantVendor(undefined, { ...DEFAULT_SUBDOC, restaurantName: "KFC" }),
+      true
+    );
+  });
+
+  test("21.6 isRestaurantVendor: legacy null vendorType + empty subdoc is false", () => {
+    assert.strictEqual(isRestaurantVendor(null, null), false);
+    assert.strictEqual(isRestaurantVendor(undefined, undefined), false);
+    assert.strictEqual(isRestaurantVendor(null, {}), false);
+  });
+
+  // ── classifyVendorType ────────────────────────────────────────────────────
+  test("21.7 classifyVendorType: explicit values pass through", () => {
+    assert.strictEqual(classifyVendorType("marketplace", null), "marketplace");
+    assert.strictEqual(classifyVendorType("marketplace", DEFAULT_SUBDOC), "marketplace");
+    assert.strictEqual(classifyVendorType("restaurant", null), "restaurant");
+    assert.strictEqual(classifyVendorType("restaurant", DEFAULT_SUBDOC), "restaurant");
+  });
+
+  test("21.8 classifyVendorType: null + default subdoc is 'marketplace'", () => {
+    assert.strictEqual(classifyVendorType(null, DEFAULT_SUBDOC), "marketplace");
+    assert.strictEqual(classifyVendorType(undefined, DEFAULT_SUBDOC), "marketplace");
+  });
+
+  test("21.9 classifyVendorType: null + user-set fields is 'restaurant'", () => {
+    assert.strictEqual(
+      classifyVendorType(null, { ...DEFAULT_SUBDOC, cuisineType: "Ghanaian" }),
+      "restaurant"
+    );
+    assert.strictEqual(
+      classifyVendorType(undefined, { ...DEFAULT_SUBDOC, address: "Accra" }),
+      "restaurant"
+    );
+  });
+
+  test("21.10 classifyVendorType: null + empty is 'marketplace'", () => {
+    assert.strictEqual(classifyVendorType(null, null), "marketplace");
+    assert.strictEqual(classifyVendorType(undefined, {}), "marketplace");
+  });
+
+  test("21.11 classifyVendorType: unknown stored value falls through to inference", () => {
+    // Defensive: if the DB ever holds a value outside the enum
+    // (e.g. "store" from a typo), we should still infer correctly
+    // from the subdoc rather than passing the bad value through.
+    assert.strictEqual(classifyVendorType("store", DEFAULT_SUBDOC), "marketplace");
+    assert.strictEqual(
+      classifyVendorType("store", { ...DEFAULT_SUBDOC, cuisineType: "Pizza" }),
+      "restaurant"
+    );
+  });
+
+  // ── hasUserSetRestaurantFields ────────────────────────────────────────────
+  test("21.12 hasUserSetRestaurantFields: only default keys → false", () => {
+    assert.strictEqual(hasUserSetRestaurantFields(DEFAULT_SUBDOC), false);
+    assert.strictEqual(hasUserSetRestaurantFields({ ...DEFAULT_SUBDOC }), false);
+    assert.strictEqual(hasUserSetRestaurantFields({}), false);
+    assert.strictEqual(hasUserSetRestaurantFields(null), false);
+    assert.strictEqual(hasUserSetRestaurantFields(undefined), false);
+  });
+
+  test("21.13 hasUserSetRestaurantFields: at least one non-default key → true", () => {
+    assert.strictEqual(
+      hasUserSetRestaurantFields({ ...DEFAULT_SUBDOC, cuisineType: "Ghanaian" }),
+      true
+    );
+    assert.strictEqual(
+      hasUserSetRestaurantFields({ ...DEFAULT_SUBDOC, restaurantName: "KFC" }),
+      true
+    );
+    assert.strictEqual(
+      hasUserSetRestaurantFields({ address: "Accra" }),
+      true
+    );
+  });
+
+  // ── integration with the previously-broken pattern ───────────────────────
+  test("21.14 integration: the OLD buggy pattern would misclassify (sanity check)", () => {
+    // The OLD pattern that was in App.jsx / RestaurantDashboard.jsx /
+    // cleanUser / requireRestaurantVendor. It would return `true` for
+    // any non-empty subdoc — including the default-hydrated one.
+    function oldIsRestaurantVendor(vendorType, details) {
+      return (
+        vendorType === "restaurant" ||
+        (details && Object.keys(details).length > 0)
+      );
+    }
+    // The bug: a marketplace vendor with default-hydrated subdoc is
+    // wrongly classified as a restaurant vendor.
+    assert.strictEqual(oldIsRestaurantVendor("marketplace", DEFAULT_SUBDOC), true);
+    // The fix:
+    assert.strictEqual(isRestaurantVendor("marketplace", DEFAULT_SUBDOC), false);
+  });
+});

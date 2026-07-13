@@ -1049,6 +1049,72 @@ export const notificationAPI = {
     apiRequest("/notifications/pending-reviews", {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
+
+  // ── Phase 2 additions: full inbox + preferences + device tokens + admin broadcast ──
+
+  // Delete a single notification (owner only)
+  delete: (id) =>
+    apiRequest(`/notifications/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Delete all read notifications for the current user
+  clearAll: () =>
+    apiRequest(`/notifications`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Get the user's notification preferences
+  getPreferences: () =>
+    apiRequest(`/notifications/preferences`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Update the user's notification preferences. `prefs` is a partial
+  // object of { push, email, inApp, promotional, orderUpdates,
+  // walletUpdates, reviewReminders, marketing, dndStart, dndEnd }.
+  updatePreferences: (prefs) =>
+    apiRequest(`/notifications/preferences`, {
+      method: "PUT",
+      body: JSON.stringify(prefs),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Register a Web Push / FCM device token so the server can target
+  // it. The token is opaque to the backend — Phase-2 only logs it
+  // (the Web Push service-account wiring requires VAPID keys we don't
+  // have yet; see services/notification.service.js#sendWebPushStub).
+  registerDeviceToken: (token, platform = "web", userAgent = "") =>
+    apiRequest(`/notifications/device-token`, {
+      method: "POST",
+      body: JSON.stringify({ token, platform, userAgent }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Remove a previously-registered device token
+  removeDeviceToken: (token) =>
+    apiRequest(`/notifications/device-token`, {
+      method: "DELETE",
+      body: JSON.stringify({ token }),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Admin: send a broadcast. Audience is one of
+  // "all" | "customers" | "vendors" | "restaurants" | "admins" | "selected".
+  sendBroadcast: (payload) =>
+    apiRequest(`/notifications`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+
+  // Admin: list the last N broadcast history rows.
+  listBroadcasts: (limit = 20) =>
+    apiRequest(`/notifications/broadcasts?limit=${limit}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
 };
 
 /* ── Wishlist ──────────────────────────────────────────────────────────────── */

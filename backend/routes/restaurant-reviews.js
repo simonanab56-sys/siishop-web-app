@@ -101,6 +101,20 @@ router.post("/", requireAuth, async (req, res) => {
     }
 
     // Create review
+    // Phase 2: notify the restaurant vendor of a new review
+    const _reviewer = await User.findById(req.userId).select("name").lean();
+    const _orderForReview = await Order.findById(orderId).select("restaurantId").lean();
+    if (_orderForReview && _orderForReview.restaurantId) {
+      notifyUser(_orderForReview.restaurantId, {
+        type: "new_review",
+        title: "New customer review",
+        message: `${_reviewer?.name || "A customer"} left a ${rating}-star review.`,
+        reviewId: newReview._id,
+        restaurantId: _orderForReview.restaurantId,
+        deepLink: "/restaurant-dashboard?tab=reviews",
+        priority: "medium",
+      }).catch(() => {});
+    }
     const newReview = await RestaurantReview.create({
       userId: req.userId,
       restaurantId: restaurantId,

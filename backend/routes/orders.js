@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 const express = require("express");
 const router = express.Router();
@@ -14,9 +14,10 @@ const {
   createCashOrder,
   createPaidOrder,
 } = require("../services/order.service");
-const { notifyOrderStatusUpdate, notifyOrderDelivered, buildPendingReviewItems } = require("../services/notification.service");
+const { notifyOrderStatusUpdate, notifyOrderDelivered, buildPendingReviewItems, notifyUser } = require("../services/notification.service");
+const User = require("../models/User");
 
-/* ─── INITIALIZE PAYMENT ────────────────────────────────────────── */
+/* â”€â”€â”€ INITIALIZE PAYMENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* POST /api/orders/initialize-payment
  * Body: { email, amount }
  */
@@ -47,7 +48,7 @@ router.post(
   })
 );
 
-/* ─── PAYMENT VERIFICATION (FIXED) ───────────────────────────────── */
+/* â”€â”€â”€ PAYMENT VERIFICATION (FIXED) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* POST /api/orders/verify-payment
  * Body: { paymentRef, orderId }
  */
@@ -55,7 +56,7 @@ router.post(
   "/verify-payment",
   requireAuth,
   asyncHandler(async (req, res) => {
-    // ✅ FIXED: Validate input
+    // âœ… FIXED: Validate input
     const { error, value } = validate(req.body, verifyPaymentSchema);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
@@ -63,7 +64,7 @@ router.post(
 
     const { paymentRef, orderId } = value;
 
-    // ✅ Get order from DB
+    // âœ… Get order from DB
     const order = await Order.findById(orderId);
 
     if (!order) {
@@ -73,14 +74,14 @@ router.post(
     const { verifyPaystackPayment } = require("../services/paystack.service");
     const paystackData = await verifyPaystackPayment(paymentRef);
 
-    // ✅ Convert DB amount to kobo
+    // âœ… Convert DB amount to kobo
     const expectedInKobo = Math.round(order.totalAmount * 100);
 
     logger.log("[VERIFY PAYMENT]");
     logger.log("DB amount:", expectedInKobo);
     logger.log("Paystack amount:", paystackData.amount);
 
-    // ✅ Strict check
+    // âœ… Strict check
     if (paystackData.amount !== expectedInKobo) {
       return res.status(402).json({
         error: "Amount mismatch",
@@ -95,7 +96,7 @@ router.post(
       return res.status(402).json({ error: "Payment not successful" });
     }
 
-    // ✅ Update order
+    // âœ… Update order
     order.paymentStatus = "paid";
     order.paymentRef = paymentRef;
     await order.save();
@@ -108,7 +109,7 @@ router.post(
   })
 );
 
-/* ─── GET ALL (ADMIN) ───────────────────────────────────────── */
+/* â”€â”€â”€ GET ALL (ADMIN) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 router.get(
   "/",
   requireAuth,
@@ -122,7 +123,7 @@ router.get(
   })
 );
 
-/* ─── MY ORDERS ─────────────────────────────────────────────── */
+/* â”€â”€â”€ MY ORDERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 router.get(
   "/my",
   requireAuth,
@@ -135,12 +136,12 @@ router.get(
   })
 );
 
-/* ─── CREATE ORDER ──────────────────────────────────────────── */
+/* â”€â”€â”€ CREATE ORDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 router.post(
   "/",
   requireAuth,
   asyncHandler(async (req, res) => {
-    // ✅ FIXED: Validate input
+    // âœ… FIXED: Validate input
     const { error, value } = validate(req.body, createOrderSchema);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
@@ -162,7 +163,7 @@ router.post(
   })
 );
 
-/* ─── SINGLE ORDER ─────────────────────────────────────────── */
+/* â”€â”€â”€ SINGLE ORDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 router.get(
   "/:id",
   requireAuth,
@@ -179,12 +180,12 @@ router.get(
   })
 );
 
-/* ─── UPDATE ORDER STATUS ───────────────────────────────────── */
+/* â”€â”€â”€ UPDATE ORDER STATUS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 router.patch(
   "/:id/status",
   requireAuth,
   asyncHandler(async (req, res) => {
-    // ✅ FIXED: Validate input
+    // âœ… FIXED: Validate input
     const { error, value } = validate(req.body, updateOrderStatusSchema);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
@@ -210,9 +211,9 @@ router.patch(
 
     await order.save();
 
-    // ✅ NEW (Task 7): When an order transitions to "delivered", increment salesCount
+    // âœ… NEW (Task 7): When an order transitions to "delivered", increment salesCount
     // on each affected marketplace product. This powers the "Best Sellers" and
-    // "Most Purchased" automatic homepage sections. Fire-and-forget — if it fails,
+    // "Most Purchased" automatic homepage sections. Fire-and-forget â€” if it fails,
     // the section will just be slightly stale until the next order is delivered.
     if (orderStatus === "delivered" && oldStatus !== "delivered") {
       try {
@@ -237,8 +238,8 @@ router.patch(
       console.error(`[Order] Failed to send status notification:`, err.message);
     });
 
-    // ✅ Review-flow: when an order transitions to "delivered" we also
-    // create in-app "leave a review" notifications for the customer —
+    // âœ… Review-flow: when an order transitions to "delivered" we also
+    // create in-app "leave a review" notifications for the customer â€”
     // one per unique product (or restaurant) in the order. See
     // services/notification.service.js#notifyOrderDelivered.
     // Fired async + best-effort so notification failures never block
@@ -253,7 +254,7 @@ router.patch(
   })
 );
 
-/* ─── DELETE ORDER (ADMIN) ─────────────────────────────────── */
+/* â”€â”€â”€ DELETE ORDER (ADMIN) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 router.delete(
   "/:id",
   requireAuth,
@@ -267,7 +268,7 @@ router.delete(
   })
 );
 
-/* ─── PENDING REVIEWS FOR AN ORDER ─────────────────────────────────
+/* â”€â”€â”€ PENDING REVIEWS FOR AN ORDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * GET /api/orders/:id/pending-reviews
  *
  * Returns the list of items in this order that the current customer
@@ -319,3 +320,5 @@ router.get(
 );
 
 module.exports = router;
+
+

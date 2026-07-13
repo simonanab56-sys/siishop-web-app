@@ -41,9 +41,20 @@ async function requireAuth(req, res, next) {
     console.log("[AUTH] User found:", user ? user.name : "NOT FOUND");
     if (!user) return res.status(401).json({ message: "User not found" });
 
-    // Include vendorType and restaurantDetails for restaurant middleware to work
-    const hasRestaurantDetails = user.restaurantDetails && Object.keys(user.restaurantDetails).length > 0;
-    const isRestaurantVendor = user.vendorType === "restaurant" || hasRestaurantDetails;
+    // Distinguish Mongoose default-hydrated restaurantDetails from a
+    // user-populated subdoc. Marketplace vendors registered before
+    // vendorType was added may have a `restaurantDetails` subdoc with
+    // only default keys; we must NOT treat that as proof of being a
+    // restaurant vendor. See backend/utils/vendorType.js.
+    const {
+      isRestaurantVendor,
+      classifyVendorType,
+    } = require("../utils/vendorType");
+    const details = user.restaurantDetails || {};
+    const effectiveIsRestaurantVendor = isRestaurantVendor(
+      user.vendorType,
+      details
+    );
 
     // NOTE: Setting BOTH id AND userId for compatibility with different middleware versions
     req.user = {
@@ -53,8 +64,8 @@ async function requireAuth(req, res, next) {
       isAdmin: !!user.isAdmin,
       isVendor: !!user.isVendor,
       vendorStatus: user.vendorStatus || "pending",
-      vendorType: user.vendorType || (hasRestaurantDetails ? "restaurant" : "marketplace"),
-      restaurantDetails: hasRestaurantDetails ? user.restaurantDetails : null,
+      vendorType: classifyVendorType(user.vendorType, details),
+      restaurantDetails: effectiveIsRestaurantVendor ? details : null,
     };
 
     console.log("[AUTH] req.user populated:", {
@@ -127,11 +138,17 @@ function requireRestaurantVendor(req, res, next) {
   }
 
   const details = req.user.restaurantDetails;
-  const isRestaurantVendor =
-    req.user.vendorType === "restaurant" ||
-    (details && typeof details === "object" && Object.keys(details).length > 0);
+  // Same guard the frontend uses. See backend/utils/vendorType.js.
+  // A user is a restaurant vendor only when `vendorType === "restaurant"`,
+  // or (legacy) when `vendorType` is unset AND the restaurantDetails
+  // subdoc has user-populated fields (not just Mongoose default keys).
+  const { isRestaurantVendor } = require("../utils/vendorType");
+  const isRestaurantVendorLocal = isRestaurantVendor(
+    req.user.vendorType,
+    details
+  );
 
-  if (!isRestaurantVendor) {
+  if (!isRestaurantVendorLocal) {
     return res.status(403).json({ message: "Restaurant vendor access required" });
   }
 

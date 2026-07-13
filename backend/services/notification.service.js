@@ -2,7 +2,10 @@
 
 const Order = require("../models/Order");
 const User = require("../models/User");
+const Notification = require("../models/Notification");
 const logger = require("../utils/logger");
+const { sendEmail } = require("./email.service");
+const { getIO } = require("./socket-helper");
 const {
   sendOrderConfirmationEmail,
   sendVendorOrderNotificationEmail,
@@ -418,6 +421,11 @@ async function notifyOrderDelivered(order, io) {
           message,
           referenceId: orderId,
           referenceType: "order",
+          orderId: orderId,
+          productId: isProduct ? item.productId : undefined,
+          restaurantId: !isProduct ? item.restaurantId : undefined,
+          vendorId: item.vendorId,
+          deepLink: `/review?orderId=${orderId}`,
           metadata,
         });
         created += 1;
@@ -451,7 +459,316 @@ async function notifyOrderDelivered(order, io) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-2: GENERIC NOTIFY + AUDIENCE-BASED BROADCASTS
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// notifyUser() is the single entry-point every event site uses. It:
+//   1) loads the user's notificationPrefs
+//   2) skips if the user is in their DND window
+//   3) skips if the type is opt-out for that user
+//   4) creates the in-app Notification row
+//   5) emits a socket event to the user's room
+//   6) optionally sends email (explicit opt-in per call)
+//   7) calls the Web Push stub for any registered device tokens
+//
+// notifyAdmins() and notifyByAudience() are fan-out helpers for the
+// admin broadcast page. Both are pure async functions; the
+// `buildAudienceQuery` and `validateBroadcastInput` helpers are also
+// exported so they can be unit-tested in isolation.
+
+/**
+ * Map a notification type to its preference key. Pure helper.
+ *   - order_* / rider_* → orderUpdates
+ *   - commission_* / wallet / refund → walletUpdates
+ *   - review_request → reviewReminders
+ *   - coupon / promo / flash_sale / wishlist_price_drop / wishlist_stock_available → promotional
+ *   - everything else → null (no per-type opt-out, channel opt-out still applies)
+ */
+function prefKeyForType(type) {
+  if (!type) return null;
+  if (type.startsWith("order_") || type === "rider_assigned" || type === "out_for_delivery" || type === "order_new" || type === "order_status") return "orderUpdates";
+  if (type === "review_request") return "reviewReminders";
+  if (type.startsWith("commission_") || type.startsWith("withdrawal_") || type === "refund_processed" || type === "refund_request" || type === "payment_succeeded" || type === "payment_failed") return "walletUpdates";
+  if (type === "coupon_received" || type === "promo_available" || type === "flash_sale" || type === "wishlist_price_drop" || type === "wishlist_stock_available") return "promotional";
+  return null;
+}
+
+/**
+ * Decide whether the notification should be delivered based on the
+ * user's per-category preferences. Pure function.
+ *   - if prefs is undefined/null → allow (defaults to true)
+ *   - if no preference key for the type → allow
+ *   - if the preference key is false → suppress
+ */
+function shouldNotifyByType(prefs, type) {
+  if (!prefs) return true;
+  const key = prefKeyForType(type);
+  if (!key) return true;
+  return prefs[key] !== false;
+}
+
+/**
+ * Parse a "HH:MM" time string into minutes-since-midnight. Pure.
+ * Returns null if the input is empty/invalid.
+ */
+function parseTimeOfDay(str) {
+  if (!str || typeof str !== "string") return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(str.trim());
+  if (!m) return null;
+  const hh = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+/**
+ * Return true if `now` (a Date or minutes-since-midnight) is inside
+ * the user's DND window. Handles overnight windows (e.g. 22:00-07:00)
+ * correctly. Pure function.
+ */
+function isInDnd(prefs, now) {
+  if (!prefs || !prefs.dndStart || !prefs.dndEnd) return false;
+  const start = parseTimeOfDay(prefs.dndStart);
+  const end = parseTimeOfDay(prefs.dndEnd);
+  if (start === null || end === null) return false;
+  if (start === end) return false; // a zero-length window is treated as "no DND"
+
+  const minutes = typeof now === "number"
+    ? now
+    : (now instanceof Date ? now.getHours() * 60 + now.getMinutes() : null);
+  if (minutes === null) return false;
+
+  if (start < end) {
+    return minutes >= start && minutes < end;
+  }
+  // wraps midnight
+  return minutes >= start || minutes < end;
+}
+
+/**
+ * Stub: would call web-push / FCM / APNs. Currently logs the action.
+ */
+async function sendWebPushStub(deviceTokens, payload) {
+  for (const dt of deviceTokens || []) {
+    const tok = (dt.token || "").substring(0, 8);
+    logger.log(`[WebPush] → ${dt.platform || "web"} ${tok}… "${payload.title}"`);
+  }
+}
+
+/**
+ * Send a single notification to a single user, honouring their
+ * preferences. Returns `{ created, _id, reason? }`.
+ *
+ * The function never throws. All errors are caught and logged so
+ * callers can fire-and-forget without breaking the primary action.
+ */
+async function notifyUser(userId, opts) {
+  if (!userId) return { created: false, reason: "no_user" };
+  if (!opts || !opts.type || !opts.title) return { created: false, reason: "missing_fields" };
+
+  try {
+    const user = await User.findById(userId)
+      .select("email notificationPrefs deviceTokens")
+      .lean();
+    if (!user) return { created: false, reason: "user_not_found" };
+
+    // DND
+    if (isInDnd(user.notificationPrefs)) {
+      return { created: false, reason: "dnd" };
+    }
+    // Per-category preference
+    if (!shouldNotifyByType(user.notificationPrefs, opts.type)) {
+      return { created: false, reason: "preference_off" };
+    }
+
+    // 1) In-app row
+    let notif = null;
+    if (user.notificationPrefs?.inApp !== false) {
+      const referenceId = opts.referenceId || opts.orderId || opts.productId || opts.restaurantId || opts.withdrawalId || opts.commissionId || opts.reviewId;
+      const referenceType = opts.referenceType || (
+        opts.orderId ? "order" :
+        opts.productId ? "product" :
+        opts.restaurantId ? "restaurant" :
+        opts.withdrawalId ? "withdrawal" :
+        opts.commissionId ? "commission" :
+        opts.reviewId ? "review" : null
+      );
+      notif = await Notification.create({
+        userId,
+        type: opts.type,
+        title: opts.title,
+        message: opts.message || "",
+        referenceId,
+        referenceType,
+        orderId: opts.orderId,
+        productId: opts.productId,
+        restaurantId: opts.restaurantId,
+        menuItemId: opts.menuItemId,
+        vendorId: opts.vendorId,
+        withdrawalId: opts.withdrawalId,
+        commissionId: opts.commissionId,
+        reviewId: opts.reviewId,
+        sender: opts.sender,
+        senderType: opts.senderType,
+        priority: opts.priority || "medium",
+        expiresAt: opts.expiresAt,
+        image: opts.image,
+        deepLink: opts.deepLink,
+        metadata: opts.metadata || {},
+      });
+    }
+
+    // 2) Socket push (always — the user's bell can refresh in real time)
+    try {
+      const io = getIO();
+      if (io) {
+        io.to(`user:${String(userId)}`).emit("user-notification", opts.socketPayload || {
+          type: opts.type,
+          title: opts.title,
+          message: opts.message || "",
+          _id: notif?._id,
+          deepLink: opts.deepLink,
+          priority: opts.priority || "medium",
+          image: opts.image,
+        });
+      }
+    } catch (err) {
+      logger.log(`[notifyUser] socket emit failed: ${err.message}`);
+    }
+
+    // 3) Email (only if explicitly requested AND the user has email opt-in)
+    if (opts.sendEmail && user.notificationPrefs?.email !== false && user.email) {
+      try {
+        const subject = opts.emailSubject || opts.title;
+        const html = opts.emailHtml || `<p style="font-family:Arial,sans-serif">${opts.message || opts.title}</p>`;
+        await sendEmail(user.email, subject, html);
+      } catch (err) {
+        logger.log(`[notifyUser] email send failed: ${err.message}`);
+      }
+    }
+
+    // 4) Web Push stub (only if user has device tokens + push opt-in)
+    if (user.notificationPrefs?.push !== false && user.deviceTokens?.length) {
+      try {
+        await sendWebPushStub(user.deviceTokens, { title: opts.title, message: opts.message, deepLink: opts.deepLink });
+      } catch (err) {
+        logger.log(`[notifyUser] web-push stub failed: ${err.message}`);
+      }
+    }
+
+    return { created: !!notif, _id: notif?._id };
+  } catch (err) {
+    logger.log(`[notifyUser] error for userId=${userId} type=${opts?.type}: ${err.message}`);
+    return { created: false, reason: "error", error: err.message };
+  }
+}
+
+/**
+ * Fan out a single notification to all admin users.
+ */
+async function notifyAdmins(opts) {
+  const admins = await User.find({ isAdmin: true }).select("_id").lean();
+  const results = await Promise.all(
+    admins.map((a) => notifyUser(a._id, { ...opts, senderType: opts.senderType || "admin" }))
+  );
+  return { matched: admins.length, results };
+}
+
+/**
+ * Build a Mongoose User query from the audience + filters block. Pure
+ * helper — easy to unit-test without DB.
+ */
+function buildAudienceQuery(audience, filters) {
+  const q = {};
+  switch (audience) {
+    case "all":
+      // All non-admin users
+      q.isAdmin = { $ne: true };
+      break;
+    case "customers":
+      q.isAdmin = { $ne: true };
+      q.isVendor = { $ne: true };
+      break;
+    case "vendors":
+      q.isVendor = true;
+      q.vendorType = { $ne: "restaurant" };
+      if (filters?.vendorStatus) q.vendorStatus = filters.vendorStatus;
+      break;
+    case "restaurants":
+      q.isVendor = true;
+      q.vendorType = "restaurant";
+      if (filters?.vendorStatus) q.vendorStatus = filters.vendorStatus;
+      break;
+    case "admins":
+      q.isAdmin = true;
+      break;
+    case "selected":
+      // Caller must supply `selectedUserIds`; this function does not
+      // build the query in that case.
+      return null;
+    default:
+      return null;
+  }
+  if (filters?.country) q["location.country"] = filters.country;
+  if (filters?.city)    q["location.city"]    = filters.city;
+  return q;
+}
+
+/**
+ * Validate a broadcast input body. Pure. Returns null on success or
+ * an error message string.
+ */
+function validateBroadcastInput(body) {
+  if (!body || typeof body !== "object") return "Body required";
+  if (!body.audience) return "audience is required";
+  if (!["all", "customers", "vendors", "restaurants", "admins", "selected"].includes(body.audience)) {
+    return "audience must be one of: all, customers, vendors, restaurants, admins, selected";
+  }
+  if (body.audience === "selected" && (!Array.isArray(body.selectedUserIds) || body.selectedUserIds.length === 0)) {
+    return "selectedUserIds is required for audience=selected";
+  }
+  if (!body.title || typeof body.title !== "string" || !body.title.trim()) return "title is required";
+  if (!body.message || typeof body.message !== "string" || !body.message.trim()) return "message is required";
+  if (body.title.length > 200) return "title too long (max 200)";
+  if (body.message.length > 2000) return "message too long (max 2000)";
+  if (body.priority && !["high", "medium", "low"].includes(body.priority)) {
+    return "priority must be: high, medium, low";
+  }
+  if (body.scheduledFor) {
+    const d = new Date(body.scheduledFor);
+    if (isNaN(d.getTime())) return "scheduledFor must be a valid ISO date";
+    if (d.getTime() < Date.now() - 60 * 1000) return "scheduledFor must be in the future";
+  }
+  return null;
+}
+
+/**
+ * Send a broadcast to a user-segment. The single entry point used by
+ * `POST /api/notifications` (admin) and by the in-process scheduler
+ * for `scheduledFor` jobs.
+ */
+async function notifyByAudience({ audience, filters, selectedUserIds, payload, sender }) {
+  let userIds = [];
+  if (audience === "selected") {
+    userIds = (selectedUserIds || []).map(String);
+  } else {
+    const q = buildAudienceQuery(audience, filters);
+    if (!q) return { matched: 0, sent: 0, reason: "invalid_audience" };
+    const users = await User.find(q).select("_id").lean();
+    userIds = users.map((u) => String(u._id));
+  }
+  const results = await Promise.all(
+    userIds.map((id) => notifyUser(id, { ...payload, sender, senderType: sender ? "admin" : "system" }))
+  );
+  return {
+    matched: userIds.length,
+    sent: results.filter((r) => r.created).length,
+  };
+}
+
 module.exports = {
+  // Existing
   notifyOrderCreated,
   notifyOrderStatusUpdate,
   notifyOrderDelivered,
@@ -462,4 +779,16 @@ module.exports = {
   sendPushNotification,
   wasNotificationSent,
   markNotificationSent,
+  // Phase-2 additions
+  notifyUser,
+  notifyAdmins,
+  notifyByAudience,
+  isInDnd,
+  shouldNotifyByType,
+  buildAudienceQuery,
+  validateBroadcastInput,
+  sendWebPushStub,
+  prefKeyForType,
+  // Re-export for new event sites
+  sendEmail,
 };

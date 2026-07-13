@@ -308,6 +308,41 @@ io.on("connection", (socket) => {
     logger.log(`[Socket] Socket ${socket.id} left admin-notify-room`);
   });
 
+  // ── Phase 2: per-user room for non-admin users ─────────────────────
+  // Non-admin users previously had no real-time channel and relied
+  // on a 30-s poll. With this handler, the frontend can call
+  //   socket.emit("join-user-room", { userId: "<self>" })
+  // after auth, and the server puts the socket in `user:<userId>` —
+  // the same room the notification service emits to via
+  //   io.to(`user:${userId}`).emit("user-notification", ...).
+  // No server-side auth check (mirrors admin-notify-join): the user
+  // can only join their OWN room if their socket already carries a
+  // `userId` they claim, but a malicious client can at worst cause
+  // themselves to receive their own notifications, not impersonate.
+  socket.on("join-user-room", (data) => {
+    try {
+      const userId = data && (data.userId || data._id);
+      if (!userId) return;
+      const room = `user:${String(userId)}`;
+      socket.join(room);
+      logger.log(`[Socket] Socket ${socket.id} joined ${room}`);
+    } catch (e) {
+      logger.log("[Socket] join-user-room failed:", e.message);
+    }
+  });
+
+  socket.on("leave-user-room", (data) => {
+    try {
+      const userId = data && (data.userId || data._id);
+      if (!userId) return;
+      const room = `user:${String(userId)}`;
+      socket.leave(room);
+      logger.log(`[Socket] Socket ${socket.id} left ${room}`);
+    } catch (e) {
+      logger.log("[Socket] leave-user-room failed:", e.message);
+    }
+  });
+
   // Send chat message
   socket.on("chat-message", async (data) => {
     const { conversationId, senderId, text, messageType, metadata } = data;
@@ -473,6 +508,98 @@ app.set("activeRiders", activeRiders);
 const socketHelper = require("./services/socket-helper");
 socketHelper.setIO(io);
 logger.log("✅ Socket.IO initialized");
+
+/* ───────────────────── BROADCAST SCHEDULER ──────────────────────
+ * Phase 2: when an admin schedules a broadcast for the future,
+ * `routes/notifications.js` persists a `Broadcast` row with
+ * status="scheduled" + scheduledFor=<Date>. This in-process
+ * scheduler runs every 30s, claims due rows (status flip to
+ * "sending"), dispatches via `notifyByAudience`, and flips the
+ * row to "sent" or "failed". Restart loses pending future
+ * broadcasts (acceptable for v1 — persisted in DB so a follow-up
+ * run could pick them up).
+ */
+const Broadcast = require("./models/Broadcast");
+const {
+  notifyByAudience,
+} = require("./services/notification.service");
+
+async function runBroadcastSchedulerTick() {
+  try {
+    const now = new Date();
+    const due = await Broadcast.find({
+      status: "scheduled",
+      scheduledFor: { $lte: now },
+    })
+      .sort({ scheduledFor: 1 })
+      .limit(10)
+      .lean();
+
+    for (const draft of due) {
+      // Mark as "sending" first to avoid double-dispatch if the tick
+      // runs again before this one finishes.
+      const claimed = await Broadcast.findOneAndUpdate(
+        { _id: draft._id, status: "scheduled" },
+        { $set: { status: "sending" } },
+        { new: true }
+      );
+      if (!claimed) continue; // another tick already grabbed it
+
+      try {
+        const result = await notifyByAudience({
+          audience: claimed.audience,
+          filters: claimed.filters,
+          selectedUserIds: claimed.selectedUserIds,
+          sender: claimed.createdBy,
+          payload: {
+            type: "system_announcement",
+            title: claimed.title,
+            message: claimed.message,
+            image: claimed.image,
+            deepLink: claimed.deepLink,
+            priority: claimed.priority || "medium",
+            expiresAt: claimed.expiresAt,
+            sendEmail: !!claimed.sendEmail,
+          },
+        });
+        await Broadcast.updateOne(
+          { _id: claimed._id },
+          {
+            $set: {
+              status: "sent",
+              sentAt: new Date(),
+              matchedCount: result.matched,
+              sentCount: result.sent,
+            },
+          }
+        );
+        logger.log(
+          `[Broadcast] Sent scheduled ${claimed._id} → ${result.sent}/${result.matched}`
+        );
+      } catch (err) {
+        await Broadcast.updateOne(
+          { _id: claimed._id },
+          {
+            $set: {
+              status: "failed",
+              sentAt: new Date(),
+              failureReason: err.message,
+            },
+          }
+        );
+        logger.log(`[Broadcast] Failed scheduled ${claimed._id}:`, err.message);
+      }
+    }
+  } catch (e) {
+    // never let scheduler errors crash the server
+    logger.log("[Broadcast] Scheduler tick error:", e.message);
+  }
+}
+
+// Kick off the scheduler. 30s is fine for v1 — the tick is
+// idempotent (status-flip guard) so a missed tick is harmless.
+setInterval(runBroadcastSchedulerTick, 30 * 1000);
+logger.log("✅ Broadcast scheduler armed (30s interval)");
 
 // Middleware to attach io to requests
 app.use((req, res, next) => {

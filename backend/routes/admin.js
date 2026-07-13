@@ -1,4 +1,6 @@
 "use strict";
+
+const { notifyUser, notifyAdmins } = require("../services/notification.service");
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
@@ -274,7 +276,17 @@ router.patch(
       { new: true }
     ).lean();
     if (!user) return res.status(404).json({ error: "Vendor not found" });
-    res.json(user);
+    const sIsRestaurant = user.vendorType === "restaurant";
+    notifyUser(user._id, {
+      type: sIsRestaurant ? "restaurant_suspended" : "store_suspended",
+      title: sIsRestaurant ? "Restaurant suspended" : "Store suspended",
+      message: sIsRestaurant
+        ? "Your restaurant has been suspended. Contact support to restore it."
+        : "Your store has been suspended. Contact support to restore it.",
+      vendorId: user._id,
+      deepLink: "/settings",
+      priority: "high",
+    }).catch(() => {});
   })
 );
 /* ───────────────────────── VENDOR APPROVAL WORKFLOW ───────────────────────── */
@@ -302,7 +314,23 @@ router.patch(
       { new: true }
     ).lean();
     if (!user) return res.status(404).json({ error: "Vendor not found" });
-    res.json(user);
+    const rIsRestaurant = user.vendorType === "restaurant";
+    notifyUser(user._id, {
+      type: rIsRestaurant ? "restaurant_rejected" : "store_rejected",
+      title: rIsRestaurant ? "Restaurant application rejected" : "Vendor application rejected",
+      message: reason || "Your application was not accepted. Please contact support for details.",
+      vendorId: user._id,
+      deepLink: "/settings",
+      priority: "high",
+    }).catch(() => {});
+    notifyUser(user._id, {
+      type: "kyc_rejected",
+      title: "KYC rejected",
+      message: reason || "Your KYC submission was not accepted.",
+      vendorId: user._id,
+      deepLink: "/settings",
+      priority: "high",
+    }).catch(() => {});
   })
 );
 

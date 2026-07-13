@@ -65,7 +65,7 @@ const userSchema = new mongoose.Schema(
       default: "",
     },
     approvedAt: Date,
-    
+
     /* ── KYC Fields (Only for vendors) ── */
     phoneNumber: String,
     idType: {
@@ -82,7 +82,7 @@ const userSchema = new mongoose.Schema(
     tokenVersion: { type: Number, default: 0 },
     resetToken: String,
     resetExpires: Date,
-    
+
     /* ── OAuth Fields ── */
     googleId: String,
     appleId: String,
@@ -109,6 +109,29 @@ const userSchema = new mongoose.Schema(
       region: { type: String, default: "" },
       city: { type: String, default: "" },
     },
+
+    /* ── Notification preferences + device tokens (Phase 8) ────────
+       These are appended to the existing User schema. Default values
+       mean "all channels on, marketing off, no DND" — a sensible
+       starting point that matches the existing opt-in model. */
+    notificationPrefs: {
+      push:           { type: Boolean, default: true },
+      email:          { type: Boolean, default: true },
+      inApp:          { type: Boolean, default: true },
+      promotional:    { type: Boolean, default: true },
+      orderUpdates:   { type: Boolean, default: true },
+      walletUpdates:  { type: Boolean, default: true },
+      reviewReminders:{ type: Boolean, default: true },
+      marketing:      { type: Boolean, default: false },
+      dndStart:       { type: String, default: "" },   // "22:00" 24h
+      dndEnd:         { type: String, default: "" },   // "07:00"
+    },
+    deviceTokens: [{
+      token: { type: String, required: true },
+      platform: { type: String, enum: ["web", "android", "ios"], default: "web" },
+      userAgent: { type: String, default: "" },
+      createdAt: { type: Date, default: Date.now },
+    }],
   },
   { timestamps: true }
 );
@@ -121,7 +144,7 @@ userSchema.index({ isVendor: 1, vendorStatus: 1 });
 userSchema.index({ isAdmin: 1 });
 // ✅ ADDED: Created date index for sorting
 userSchema.index({ createdAt: -1 });
-// ✅ ADDED: Revenue index for vendor earnings queries
+// ✅ ADDED: Revenue index for vendor earnings
 userSchema.index({ isVendor: 1, revenue: -1 });
 // ✅ ADDED: Location indexes for filtering
 userSchema.index({ "location.region": 1 });

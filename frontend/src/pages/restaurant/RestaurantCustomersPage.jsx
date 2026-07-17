@@ -122,18 +122,18 @@ export default function RestaurantCustomersPage({ onBack, vendorId, addToast, sh
             <tbody>
               {customers.map((customer) => (
                 <tr key={customer.customerKey || customer.userId || customer.email}>
-                  <td>
+                  <td data-label="Customer">
                     <div className="customer-info">
                       <strong>{customer.name}</strong>
                       <span>{customer.email}</span>
                       {customer.phone && <span className="phone">{customer.phone}</span>}
                     </div>
                   </td>
-                  <td>{customer.orderCount}</td>
-                  <td>
+                  <td data-label="Orders">{customer.orderCount}</td>
+                  <td data-label="Total Spent">
                     {fmt ? fmt(customer.totalSpent) : `GHS ${(customer.totalSpent || 0).toFixed(2)}`}
                   </td>
-                  <td>{formatDate(customer.lastOrderDate)}</td>
+                  <td data-label="Last Order">{formatDate(customer.lastOrderDate)}</td>
                   {/*
                     Customer Status — relationship signal computed from
                     the customer's full order history in
@@ -142,7 +142,7 @@ export default function RestaurantCustomersPage({ onBack, vendorId, addToast, sh
                     pre-deploy backend (the badge renders uncolored with
                     "—" text until the new fields land).
                   */}
-                  <td>
+                  <td data-label="Customer Status">
                     <span
                       className={`status-badge status-${(customer.customerStatus || "inactive").toLowerCase()}`}
                     >
@@ -155,7 +155,7 @@ export default function RestaurantCustomersPage({ onBack, vendorId, addToast, sh
                     (.status-out-for-delivery for "out_for_delivery"); the
                     space-separated form is the display label.
                   */}
-                  <td>
+                  <td data-label="Latest Order Status">
                     <span
                       className={`status-badge status-${(customer.latestOrderStatus || "pending").replace(/_/g, "-")}`}
                     >

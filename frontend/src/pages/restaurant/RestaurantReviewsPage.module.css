@@ -1,0 +1,293 @@
+/* pages/restaurant/RestaurantReviewsPage.module.css
+   v2: Mobile-first responsive design.
+   Previously this page used unstyled class names (`.reviews-page`,
+   `.review-card`, etc.) that did not exist in the global stylesheet,
+   so the page rendered as unstyled block-level text. This file is
+   the single source of truth for the page. */
+
+.page {
+  padding: 20px 16px 40px;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* ── Page header ───────────────────────────────────────────── */
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.pageHeader h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--brand-dark, #1e293b);
+}
+
+.backBtn {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 8px 0;
+  min-height: 40px;
+  text-align: left;
+  align-self: flex-start;
+}
+
+.reviewCount {
+  color: var(--brand-muted, #64748b);
+  font-size: 0.9rem;
+}
+
+/* ── Rating summary ────────────────────────────────────────── */
+.ratingSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brand-border, #e2e8f0);
+}
+
+.ratingOverview {
+  text-align: center;
+}
+
+.avgRating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.bigRating {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--brand-dark, #1e293b);
+  line-height: 1;
+}
+
+.stars {
+  font-size: 1.2rem;
+  color: #f59e0b;
+  letter-spacing: 2px;
+}
+
+.star { color: #d1d5db; }
+.star.filled { color: #f59e0b; }
+
+.totalReviews {
+  font-size: 0.85rem;
+  color: var(--brand-muted, #64748b);
+}
+
+/* ── Distribution bars ─────────────────────────────────────── */
+.ratingDistribution {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.distributionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.starLabel {
+  width: 32px;
+  flex-shrink: 0;
+  color: var(--brand-muted, #64748b);
+  font-weight: 600;
+}
+
+.distributionBar {
+  flex: 1;
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.distributionFill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #f97316);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.distributionCount {
+  width: 24px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--brand-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Filter bar ────────────────────────────────────────────── */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.filterBar select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: white;
+  min-height: 40px;
+}
+
+.itemCount {
+  width: 100%;
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+/* ── Empty / loading ───────────────────────────────────────── */
+.emptyState {
+  text-align: center;
+  padding: 40px 16px;
+  color: #6b7280;
+}
+
+.emptyIcon { font-size: 2.5rem; margin-bottom: 12px; }
+.emptyTitle {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--brand-dark, #1e293b);
+  margin: 0 0 6px;
+}
+.emptyText { font-size: 0.9rem; margin: 0; }
+
+.loadingCenter {
+  display: flex;
+  justify-content: center;
+  padding: 40px;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--brand-border, #e2e8f0);
+  border-top-color: var(--brand-primary, #7c3aed);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Review list / cards ───────────────────────────────────── */
+.reviewsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reviewCard {
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brand-border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.reviewHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reviewerInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reviewerInfo strong {
+  color: var(--brand-dark, #1e293b);
+  font-size: 0.95rem;
+  word-wrap: break-word;
+}
+
+.reviewDate {
+  color: var(--brand-muted, #64748b);
+  font-size: 0.8rem;
+}
+
+.reviewRating {
+  font-size: 1rem;
+  color: #f59e0b;
+  letter-spacing: 2px;
+}
+
+.reviewText {
+  margin: 0;
+  color: var(--brand-dark, #1e293b);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.orderRef {
+  font-size: 0.75rem;
+  color: var(--brand-muted, #64748b);
+  font-family: monospace;
+}
+
+/* ── Tablet ────────────────────────────────────────────────── */
+@media (min-width: 600px) {
+  .page { padding: 24px 20px 50px; }
+  .pageHeader { flex-direction: row; align-items: center; gap: 12px; }
+  .pageHeader h2 { flex: 1; font-size: 1.4rem; }
+  .reviewCount { font-size: 1rem; }
+  .ratingSummary { flex-direction: row; align-items: center; gap: 32px; padding: 20px; }
+  .ratingOverview { text-align: left; flex-shrink: 0; }
+  .ratingDistribution { flex: 1; }
+  .itemCount { width: auto; margin-left: auto; }
+  .filterBar { flex-wrap: nowrap; }
+  .filterBar select { flex: 0 1 200px; }
+  .reviewHeader { flex-direction: row; justify-content: space-between; align-items: flex-start; }
+}
+
+/* ── Desktop ───────────────────────────────────────────────── */
+@media (min-width: 1024px) {
+  .page { padding: 32px 32px 60px; max-width: 1100px; margin: 0 auto; }
+  .bigRating { font-size: 3rem; }
+  .reviewCard { padding: 16px 18px; }
+}
+
+/* ── Small phones (<360px) ────────────────────────────────── */
+@media (max-width: 359px) {
+  .page { padding: 14px 10px 40px; }
+  .bigRating { font-size: 2rem; }
+  .filterBar { padding: 10px; }
+}

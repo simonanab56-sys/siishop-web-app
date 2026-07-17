@@ -202,24 +202,24 @@ function VendorDeliveredOrders({ addToast }) {
             <tbody>
               {orders.map((order) => (
                 <tr key={order._id}>
-                  <td>{safeId(order._id)}</td>
-                  <td>{order.userId?.name || "Unknown"}</td>
-                  <td>
+                  <td data-label="Order ID">{safeId(order._id)}</td>
+                  <td data-label="Customer">{order.userId?.name || "Unknown"}</td>
+                  <td data-label="Product">
                     {(order.items || [])
                       .map((i) => i.name || i.productId?.name)
                       .filter(Boolean)
                       .slice(0, 2)
                       .join(", ") || "-"}
                   </td>
-                  <td>
+                  <td data-label="Qty">
                     {(order.items || []).reduce(
                       (sum, i) => sum + (i.quantity || 0),
                       0
                     )}
                   </td>
-                  <td>{fmt(order.totalAmount)}</td>
-                  <td>{formatDate(order.deliveredAt)}</td>
-                  <td>
+                  <td data-label="Amount">{fmt(order.totalAmount)}</td>
+                  <td data-label="Delivered">{formatDate(order.deliveredAt)}</td>
+                  <td data-label="Payment">
                     {order.paymentMethod === "paystack" ? "Online" : "COD"}
                   </td>
                 </tr>

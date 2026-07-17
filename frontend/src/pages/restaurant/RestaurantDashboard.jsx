@@ -529,18 +529,20 @@ export default function RestaurantDashboard({ onNavigate, addToast }) {
             <div className={styles.statsCard} onClick={() => setActiveTab("menu")}>
               <span className={styles.statsCardLabel}>🍽️ Menu Items</span>
               <span className={styles.statsCardValue}>{menuItems.length}</span>
+              <span className={styles.statsCardSub}>Tap to manage</span>
             </div>
             <div className={styles.statsCard} onClick={() => setActiveTab("orders")}>
               <span className={styles.statsCardLabel}>📦 New Orders</span>
               <span className={styles.statsCardValue}>{pendingOrders.length}</span>
+              <span className={styles.statsCardSub}>Tap to review</span>
             </div>
-            <div className="stat-card" onClick={() => setActiveTab("orders")}>
-              <span className="stat-icon">🔥</span>
-              <span className="stat-value">{preparingOrders.length}</span>
-              <span className="stat-label">Preparing</span>
+            <div className={styles.statsCard} onClick={() => setActiveTab("orders")}>
+              <span className={styles.statsCardLabel}>🔥 Preparing</span>
+              <span className={styles.statsCardValue}>{preparingOrders.length}</span>
+              <span className={styles.statsCardSub}>In progress</span>
             </div>
-            <div className="stat-card" onClick={() => setActiveTab("analytics")}>
-              <span className="stat-icon">💰</span>
+            <div className={styles.statsCard} onClick={() => setActiveTab("analytics")}>
+              <span className={styles.statsCardLabel}>💰 Revenue</span>
               {/* ✅ FIX: Use the server-aggregated `totalRevenue` from
                   `GET /api/vendor/dashboard` instead of filtering the
                   active-orders list. The previous expression
@@ -550,38 +552,44 @@ export default function RestaurantDashboard({ onNavigate, addToast }) {
                   state for the full root-cause writeup. The fallback
                   keeps the UI from flashing a non-numeric value if the
                   stats request is still in flight. */}
-              <span className="stat-value">{formatPrice(dashboardStats?.totalRevenue ?? 0)}</span>
-              <span className="stat-label">Revenue</span>
+              <span className={styles.statsCardValue}>{formatPrice(dashboardStats?.totalRevenue ?? 0)}</span>
+              <span className={styles.statsCardSub}>All-time</span>
             </div>
           </div>
 
-          <div className="quick-actions">
-            <button className="action-btn" onClick={() => setActiveTab("menu")}>
+          <div className={styles.quickActions}>
+            <button className={styles.statsCard} onClick={() => setActiveTab("menu")} style={{ textAlign: "center", cursor: "pointer" }}>
               ➕ Add Menu Item
             </button>
-            <button className="action-btn" onClick={() => setActiveTab("orders")}>
+            <button className={styles.statsCard} onClick={() => setActiveTab("orders")} style={{ textAlign: "center", cursor: "pointer" }}>
               📦 View Orders
             </button>
-            <button className="action-btn" onClick={() => setActiveTab("analytics")}>
+            <button className={styles.statsCard} onClick={() => setActiveTab("analytics")} style={{ textAlign: "center", cursor: "pointer" }}>
               📈 View Analytics
             </button>
-            <button className="action-btn" onClick={() => setActiveTab("settings")}>
+            <button className={styles.statsCard} onClick={() => setActiveTab("settings")} style={{ textAlign: "center", cursor: "pointer" }}>
               ⚙️ Restaurant Settings
             </button>
           </div>
 
-          <div className="recent-orders">
+          <div className={styles.recentOrders}>
             <h3>Recent Orders</h3>
             {orders.slice(0, 5).map(order => (
-              <div key={order._id} className="recent-order">
-                <span className="order-id">#{order.orderId?.slice(-6) || order._id?.slice(-6)}</span>
-                <span className="order-status">{order.orderStatus}</span>
-                <span className="order-total">{formatPrice(order.totalAmount)}</span>
+              <div key={order._id} className={styles.recentOrderRow}>
+                <div className={styles.recentOrderTopLine}>
+                  <span className={styles.recentOrderId}>#{order.orderId?.slice(-6) || order._id?.slice(-6)}</span>
+                  <span className={styles.recentOrderTotal}>{formatPrice(order.totalAmount)}</span>
+                </div>
+                <span className={styles.recentOrderStatus}>{order.orderStatus}</span>
               </div>
             ))}
-            {orders.length === 0 && <p className="no-orders">No orders yet</p>}
+            {orders.length === 0 && <p className={styles.emptyState}>No orders yet</p>}
             {orders.length > 0 && (
-              <button className="view-all-btn" onClick={() => setActiveTab("orders")}>
+              <button
+                className={styles.statsCard}
+                onClick={() => setActiveTab("orders")}
+                style={{ width: "100%", marginTop: "12px", textAlign: "center", cursor: "pointer", background: "var(--brand-primary, #7c3aed)", color: "white", borderColor: "var(--brand-primary, #7c3aed)" }}
+              >
                 View All Orders →
               </button>
             )}

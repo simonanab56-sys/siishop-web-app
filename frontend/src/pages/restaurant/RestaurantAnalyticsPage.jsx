@@ -248,6 +248,9 @@ export default function RestaurantAnalyticsPage({ onBack, vendorId, addToast, sh
       <style>{`
         .analytics-page {
           padding: 20px;
+          box-sizing: border-box;
+          max-width: 100%;
+          overflow-x: hidden;
         }
         .page-header {
           display: flex;
@@ -426,6 +429,20 @@ export default function RestaurantAnalyticsPage({ onBack, vendorId, addToast, sh
           .top-item {
             padding: 12px;
           }
+        }
+        @media (max-width: 480px) {
+          .analytics-page { padding: 16px 14px 90px; }
+          .page-header { align-items: stretch; }
+          .stats-row { grid-template-columns: 1fr; }
+          .chart-section, .top-section, .status-section { padding: 14px; }
+          .chart { height: 160px; gap: 4px; }
+          .chart-bar { min-width: 32px; }
+          .bar-label { font-size: 0.6rem; }
+          .bar-value { font-size: 0.55rem; }
+          .status-grid { grid-template-columns: repeat(2, 1fr); }
+          .kpi-value { font-size: 1.3rem; }
+          .top-item { flex-wrap: wrap; gap: 6px; padding: 10px; }
+          .item-qty { width: 100%; }
         }
       `}</style>
     </div>

@@ -1,8 +1,15 @@
 // pages/restaurant/RestaurantReviewsPage.jsx - Restaurant reviews management
+//
+// v2: Switched to a CSS module (RestaurantReviewsPage.module.css).
+// v1 used raw class names (`.reviews-page`, `.review-card`, `.star`,
+// etc.) that had NO matching rules in the global stylesheet — the
+// page rendered as unstyled block text on every breakpoint. v2 uses
+// a real CSS module so the styles are scoped to this page.
 import { useState, useEffect, useMemo } from "react";
 import { restaurantReviewAPI } from "../../services/api";
 import { useToast } from "../../components/Toast";
 import logger from "../../utils/logger";
+import styles from "./RestaurantReviewsPage.module.css";
 
 export default function RestaurantReviewsPage({ onBack, vendorId, addToast }) {
   const { addToast: showToast } = useToast();
@@ -92,7 +99,7 @@ export default function RestaurantReviewsPage({ onBack, vendorId, addToast }) {
     const roundedRating = Math.round(rating);
     for (let i = 1; i <= 5; i++) {
       stars.push(
-        <span key={i} className={i <= roundedRating ? "star filled" : "star"}>
+        <span key={i} className={i <= roundedRating ? `${styles.star} ${styles.filled}` : styles.star}>
           ★
         </span>
       );
@@ -102,48 +109,48 @@ export default function RestaurantReviewsPage({ onBack, vendorId, addToast }) {
 
   if (loading) {
     return (
-      <div className="reviews-page">
-        <div className="page-header">
-          <button onClick={onBack} className="back-btn">← Back to Dashboard</button>
+      <div className={styles.page}>
+        <div className={styles.pageHeader}>
+          <button onClick={onBack} className={styles.backBtn}>← Back to Dashboard</button>
           <h2>⭐ Reviews</h2>
         </div>
-        <div className="loading-center">
-          <div className="spinner" />
+        <div className={styles.loadingCenter}>
+          <div className={styles.spinner} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="reviews-page">
-      <div className="page-header">
-        <button onClick={onBack} className="back-btn">← Back to Dashboard</button>
+    <div className={styles.page}>
+      <div className={styles.pageHeader}>
+        <button onClick={onBack} className={styles.backBtn}>← Back to Dashboard</button>
         <h2>⭐ Reviews</h2>
-        <span className="review-count">{safeReviews.length} reviews</span>
+        <span className={styles.reviewCount}>{safeReviews.length} reviews</span>
       </div>
 
       {/* Rating Summary */}
       {safeReviews.length > 0 && (
-        <div className="rating-summary">
-          <div className="rating-overview">
-            <div className="avg-rating">
-              <span className="big-rating">{stats.avgRating.toFixed(1)}</span>
-              <div className="stars">{renderStars(stats.avgRating)}</div>
-              <span className="total-reviews">{stats.total} reviews</span>
+        <div className={styles.ratingSummary}>
+          <div className={styles.ratingOverview}>
+            <div className={styles.avgRating}>
+              <span className={styles.bigRating}>{stats.avgRating.toFixed(1)}</span>
+              <div className={styles.stars}>{renderStars(stats.avgRating)}</div>
+              <span className={styles.totalReviews}>{stats.total} reviews</span>
             </div>
           </div>
 
-          <div className="rating-distribution">
+          <div className={styles.ratingDistribution}>
             {[5, 4, 3, 2, 1].map(star => (
-              <div key={star} className="distribution-row">
-                <span className="star-label">{star} ★</span>
-                <div className="distribution-bar">
+              <div key={star} className={styles.distributionRow}>
+                <span className={styles.starLabel}>{star} ★</span>
+                <div className={styles.distributionBar}>
                   <div
-                    className="distribution-fill"
+                    className={styles.distributionFill}
                     style={{ width: `${(stats.distribution[star] / stats.total) * 100}%` }}
                   />
                 </div>
-                <span className="distribution-count">{stats.distribution[star]}</span>
+                <span className={styles.distributionCount}>{stats.distribution[star]}</span>
               </div>
             ))}
           </div>
@@ -151,7 +158,7 @@ export default function RestaurantReviewsPage({ onBack, vendorId, addToast }) {
       )}
 
       {/* Filter */}
-      <div className="filter-bar">
+      <div className={styles.filterBar}>
         <select value={filterRating} onChange={(e) => setFilterRating(e.target.value)}>
           <option value="all">All Ratings</option>
           <option value="5">5 Stars</option>
@@ -160,37 +167,37 @@ export default function RestaurantReviewsPage({ onBack, vendorId, addToast }) {
           <option value="2">2 Stars</option>
           <option value="1">1 Star</option>
         </select>
-        <span className="item-count">{filteredReviews.length} reviews</span>
+        <span className={styles.itemCount}>{filteredReviews.length} reviews</span>
       </div>
 
       {safeReviews.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">⭐</div>
-          <h3>No reviews yet</h3>
-          <p>Customer reviews will appear here</p>
+        <div className={styles.emptyState}>
+          <div className={styles.emptyIcon}>⭐</div>
+          <h3 className={styles.emptyTitle}>No reviews yet</h3>
+          <p className={styles.emptyText}>Customer reviews will appear here</p>
         </div>
       ) : filteredReviews.length === 0 ? (
-        <div className="empty-state">
-          <h3>No {filterRating}-star reviews</h3>
+        <div className={styles.emptyState}>
+          <h3 className={styles.emptyTitle}>No {filterRating}-star reviews</h3>
         </div>
       ) : (
-        <div className="reviews-list">
+        <div className={styles.reviewsList}>
           {filteredReviews.map(review => (
-            <div key={review._id} className="review-card">
-              <div className="review-header">
-                <div className="reviewer-info">
+            <div key={review._id} className={styles.reviewCard}>
+              <div className={styles.reviewHeader}>
+                <div className={styles.reviewerInfo}>
                   <strong>{review.userId?.name || "Anonymous"}</strong>
-                  <span className="review-date">{formatDate(review.createdAt)}</span>
+                  <span className={styles.reviewDate}>{formatDate(review.createdAt)}</span>
                 </div>
-                <div className="review-rating">
+                <div className={styles.reviewRating}>
                   {renderStars(review.rating)}
                 </div>
               </div>
               {review.review && (
-                <p className="review-text">{review.review}</p>
+                <p className={styles.reviewText}>{review.review}</p>
               )}
               {review.orderId && (
-                <span className="order-ref">Order: #{review.orderId.slice(-8)}</span>
+                <span className={styles.orderRef}>Order: #{review.orderId.slice(-8)}</span>
               )}
             </div>
           ))}

@@ -2,7 +2,7 @@
    v2: extracted from the inline <style> block in MenuItemsPage.jsx.
    Adds an .uploadProgress bar for the video upload affordance. */
 
-.page { padding: 20px; padding-bottom: 90px; }
+.page { padding: 20px; padding-bottom: 90px; box-sizing: border-box; max-width: 100%; }
 
 /* ── Page header ───────────────────────────────────────────── */
 .pageHeader {
@@ -10,11 +10,15 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.pageHeader h2 { margin: 0; flex: 1; text-align: center; }
+.pageHeader h2 { margin: 0; flex: 1; text-align: center; min-width: 0; }
+.pageHeader button { min-height: 40px; }
 .backBtn {
   background: none; border: none;
-  color: #6b7280; cursor: pointer; font-size: 0.9rem;
+  color: #6b7280; cursor: pointer;
+  font-size: 0.9rem; min-height: 40px;
 }
 
 /* ── Filter bar ────────────────────────────────────────────── */
@@ -190,15 +194,35 @@
 }
 
 /* ── Responsive ────────────────────────────────────────────── */
-@media (max-width: 640px) {
-  .grid { grid-template-columns: 1fr; }
-  .pageHeader { flex-direction: column; gap: 12px; }
+@media (max-width: 1024px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
 }
-@media (max-width: 480px) {
-  .fieldRow { grid-template-columns: 1fr; }
+@media (max-width: 820px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .itemImage { height: 130px; }
 }
 @media (max-width: 768px) {
   .modalContent { width: 95%; padding: 16px; }
   .modalActions { flex-direction: column; }
   .modalActions button { width: 100%; }
+  .fieldRow { grid-template-columns: 1fr; }
+  .filterBar { flex-wrap: wrap; }
+  .filterBar select { flex: 1 1 auto; min-width: 0; }
+  .itemCount { width: 100%; margin-left: 0; }
+}
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+  .pageHeader { flex-direction: column; gap: 12px; align-items: stretch; }
+  .pageHeader h2 { text-align: left; }
+}
+@media (max-width: 480px) {
+  .fieldRow { grid-template-columns: 1fr; }
+  .page { padding: 16px 14px 90px; }
+  .itemDetails { padding: 10px; }
+  .itemActions { flex-direction: column; }
+  .itemActions button { width: 100%; }
+}
+@media (max-width: 360px) {
+  .page { padding: 14px 12px 90px; }
+  .itemMeta { flex-direction: column; gap: 4px; }
 }

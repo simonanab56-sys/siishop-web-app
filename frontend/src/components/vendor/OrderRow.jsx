@@ -72,30 +72,30 @@ export default function OrderRow({
         style={{ cursor: "pointer" }}
         className={isExpanded ? css.expandedRow : ""}
       >
-        <td>
+        <td data-label="Order">
           <code>{safeId(order._id)}</code>
           <br />
           <small style={{ color: "var(--brand-muted)" }}>
             {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}
           </small>
         </td>
-        <td>
+        <td data-label="Customer">
           <strong>{order.customerName || "—"}</strong>
           <br />
           <small style={{ color: "var(--brand-muted)" }}>
             {order.customerPhone || ""}
           </small>
         </td>
-        <td>
+        <td data-label="Items">
           {items.length} item{items.length !== 1 ? "s" : ""}
         </td>
-        <td>
+        <td data-label="Total">
           <strong>{fmt(typeof order.totalAmount === "number" ? order.totalAmount : 0)}</strong>
         </td>
-        <td>
+        <td data-label="Status">
           <StatusBadge status={order.orderStatus || "pending"} />
         </td>
-        <td onClick={(e) => e.stopPropagation()}>
+        <td data-label="Update" onClick={(e) => e.stopPropagation()}>
           <select
             className={css.statusSelect}
             value={order.orderStatus || "pending"}

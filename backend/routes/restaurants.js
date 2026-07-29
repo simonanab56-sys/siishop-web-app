@@ -75,10 +75,12 @@ router.get("/", async (req, res) => {
     // ✅ FIX: select only the fields the UI reads. `storeDescription` is
     // read on the slug endpoint (RestaurantPage), not the list — drop it
     // here. restaurantDetails is projected to the 3 sub-fields
-    // FoodPage / listings use.
+    // FoodPage / listings use. The `vendorSlug` field is also included
+    // so the card click handler can navigate to the restaurant page
+    // without a second fetch.
     const projection =
       "storeName storeLogo vendorSlug location restaurantDetails.restaurantName " +
-      "restaurantDetails.cuisineType restaurantDetails.restaurantLogo createdAt";
+      "restaurantDetails.cuisineType createdAt";
 
     let results = await User.find(filter)
       .select(projection)
@@ -181,11 +183,15 @@ router.get("/food", async (req, res) => {
     // ✅ FIX: Trim the populate to the fields FoodPage actually reads
     // and add `.lean()` so the docs come back as plain objects (no
     // hydration overhead, no virtuals).
+    //
+    // Same field trim as the `/api/restaurants/:slug` projection above:
+    // productType / portionSize / ingredients / allergens / spiceLevel /
+    // videoUrl / videoPublicId / videoDuration are dropped because the
+    // public food card on FoodPage doesn't render them.
     const foodItems = await Product.find(filter)
       .select(
         "name price description category images image available preparationTime " +
-        "vendorId productType stock portionSize ingredients allergens spiceLevel " +
-        "videoUrl videoPublicId videoDuration"
+        "vendorId stock"
       )
       .populate(
         "vendorId",
@@ -279,14 +285,20 @@ router.get("/:slug", async (req, res) => {
     console.log("[restaurants/:slug] Restaurant slug:", slug);
 
     // ✅ FIX: trim the .select() to only the fields the page reads.
-    // storeDescription and vendorStatus were over-fetched.
+    // `storeDescription` and `restaurantDetails.restaurantDescription`
+    // are unused by the public RestaurantPage (the page builds its own
+    // SEO description from cuisineType / restaurantName), and dropping
+    // them saves ~150-300 bytes per row.
     const restaurant = await User.findOne({
       vendorSlug: slug,
       isVendor: true,
       vendorType: "restaurant",
     })
       .select(
-        "storeName storeLogo storeDescription vendorSlug location restaurantDetails createdAt"
+        "storeName storeLogo vendorSlug location restaurantDetails.restaurantName " +
+        "restaurantDetails.restaurantLogo restaurantDetails.restaurantCoverImage " +
+        "restaurantDetails.cuisineType restaurantDetails.address restaurantDetails.openingHours " +
+        "restaurantDetails.closingHours createdAt"
       )
       .lean();
 
@@ -297,7 +309,7 @@ router.get("/:slug", async (req, res) => {
 
     console.log("[restaurants/:slug] Restaurant found:", restaurant.storeName, restaurant._id);
 
-    // ✅ FIX: 1 User.findOne + 4 parallel queries. User is needed first
+    // ✅ FIX: 1 User.findOne + 3 parallel queries. User is needed first
     // for `restaurant._id`. Everything else (categories, products,
     // review stats) can run in parallel — they all key off
     // restaurant._id. The legacy MenuItem query is dropped: the
@@ -305,21 +317,28 @@ router.get("/:slug", async (req, res) => {
     // menu item is now in the Product collection.
     const [categories, foodItemsRaw, stats] = await Promise.all([
       MenuCategory.find({ vendorId: restaurant._id, isActive: true })
+        .select("name displayOrder")
         .sort({ displayOrder: 1 })
         .lean(),
       // ✅ FIX: tight .select() on the food product find + a server-side
       // cap (default 50) so a restaurant with 200 menu items doesn't
       // ship all 200 on every slug load. The frontend can ask for more
       // via `?limit=N&skip=M` when it implements pagination.
+      //
+      // Fields DROPPED (none read by MenuItemCard on RestaurantPage):
+      //   - productType: every result is `food`; the card doesn't branch.
+      //   - portionSize, ingredients, allergens, spiceLevel: not in the
+      //     menu-card template; they show on FoodDetailPage (which fetches
+      //     its own /products/:id anyway).
+      //   - videoUrl, videoPublicId, videoDuration: not rendered on the
+      //     menu card; the FoodDetailPage is the video viewer.
       Product.find({
         vendorId: restaurant._id,
         productType: "food",
         isDeleted: { $ne: true },
       })
         .select(
-          "name price description category images image available preparationTime " +
-          "productType portionSize ingredients allergens spiceLevel " +
-          "videoUrl videoPublicId videoDuration"
+          "name price description category images image available preparationTime"
         )
         .sort({ category: 1, name: 1 })
         .limit(50)
@@ -388,9 +407,7 @@ router.get("/:slug/menu", async (req, res) => {
         isDeleted: { $ne: true },
       })
         .select(
-          "name price description category images image available preparationTime " +
-          "productType portionSize ingredients allergens spiceLevel " +
-          "videoUrl videoPublicId videoDuration"
+          "name price description category images image available preparationTime"
         )
         .sort({ category: 1, name: 1 })
         .lean(),

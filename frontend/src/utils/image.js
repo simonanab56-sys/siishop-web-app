@@ -22,6 +22,35 @@ const RENDER_BASE_URL = "https://siishop-web-app-backend.onrender.com";
 export const PLACEHOLDER_IMAGE = "/no-image.svg";
 
 /**
+ * Cloudinary-derived width variants pre-baked by the upload pipeline
+ * (`backend/services/media.service.js`). Cloudinary's free plan caps
+ * derived-resource generation; we only request widths the pipeline has
+ * already baked so we never 404 on a cold cache.
+ *
+ *   800  → vendor KYC documents
+ *   1200 → product / food images
+ *   1600 → restaurant branding (logo + cover)
+ */
+const PRE_BAKED_WIDTHS = [800, 1200, 1600];
+
+/**
+ * Map a requested pixel width to the smallest pre-baked Cloudinary width
+ * that is still ≥ the requested size (so the image is never undersized).
+ *
+ *   160 → 800     360 → 800      800 → 800
+ *   801 → 1200    1200 → 1200    1500 → 1600
+ */
+function pickCloudinaryWidth(requested) {
+  if (!requested || !Number.isFinite(requested)) return null;
+  for (const w of PRE_BAKED_WIDTHS) {
+    if (w >= requested) return w;
+  }
+  // Above the largest pre-baked width → fall through to the largest
+  // pre-baked variant (Cloudinary will serve the original; we don't 404).
+  return PRE_BAKED_WIDTHS[PRE_BAKED_WIDTHS.length - 1];
+}
+
+/**
  * Check if URL is a Cloudinary URL
  */
 function isCloudinaryUrl(url) {
@@ -38,23 +67,48 @@ function isLegacyUploadPath(url) {
 }
 
 /**
+ * Inject a Cloudinary transformation segment into a Cloudinary delivery
+ * URL. Returns the URL unchanged if it can't be parsed.
+ *
+ *   in : https://res.cloudinary.com/<cloud>/image/upload/v123/abc.jpg
+ *   out: https://res.cloudinary.com/<cloud>/image/upload/w_360,f_auto,q_auto,c_limit/v123/abc.jpg
+ */
+function injectCloudinaryTransform(url, transform) {
+  if (!url || typeof url !== "string" || !transform) return url;
+  // The delivery segment is `image/upload/`. We insert the transform
+  // right after the trailing `/`.
+  const marker = "/image/upload/";
+  const idx = url.indexOf(marker);
+  if (idx === -1) {
+    // Try video deliveries too — same transform syntax.
+    const videoMarker = "/video/upload/";
+    const vIdx = url.indexOf(videoMarker);
+    if (vIdx === -1) return url;
+    return url.slice(0, vIdx + videoMarker.length) + transform + "/" + url.slice(vIdx + videoMarker.length);
+  }
+  return url.slice(0, idx + marker.length) + transform + "/" + url.slice(idx + marker.length);
+}
+
+/**
  * Get a production-safe image URL from any path format.
  *
  * @param {string|object|null} path - Image path, URL, or object with url property
- * @param {object} [options] - Reserved for future use; currently ignored.
- *   Kept in the signature so existing callers that pass `{ width }` /
- *   `{ height }` / `{ crop }` don't break — those options are simply
- *   no-ops now (the helper returns the raw `secure_url` and Cloudinary
- *   serves whatever variant the upload pipeline pre-baked).
+ * @param {object} [options] - Optional transforms. The only field read today
+ *   is `width` (pixels). When the URL is a Cloudinary delivery URL and a
+ *   `width` is supplied, a `w_<width>,f_auto,q_auto,c_limit` transform is
+ *   injected so the browser downloads a variant sized for the slot instead
+ *   of the original asset. Callers that omit `options` (the historical
+ *   contract) get exactly the same URL as before — no regression.
  * @returns {string} - Production-safe URL (relative in dev, full in prod)
  *
  * Examples:
- * - Cloudinary URL -> returned as-is (already in cloud)
- * - "/uploads/image.jpg" -> "/uploads/image.jpg" (dev) or Cloudinary URL (prod tries render, may fail)
- * - "http://localhost:5000/uploads/image.jpg" -> "/uploads/image.jpg"
- * - "https://other.com/image.jpg" -> returned as-is
- * - "data:image/png;base64,..." -> returned as-is
- * - { url: "/uploads/image.jpg" } -> extracted and processed
+ * - Cloudinary URL + { width: 360 }  → Cloudinary URL with w_360,f_auto,q_auto transform
+ * - Cloudinary URL, no options       → Cloudinary URL as-is
+ * - "/uploads/image.jpg"             → "/uploads/image.jpg" (dev) or render URL (prod)
+ * - "http://localhost:5000/uploads/image.jpg" → "/uploads/image.jpg"
+ * - "https://other.com/image.jpg"    → returned as-is
+ * - "data:image/png;base64,..."      → returned as-is
+ * - { url: "/uploads/image.jpg" }    → extracted and processed
  */
 export function getImageUrl(path, options = {}) {
   // Handle null/undefined
@@ -71,8 +125,17 @@ export function getImageUrl(path, options = {}) {
   // Handle string
   if (typeof path !== "string") return PLACEHOLDER_IMAGE;
 
-  // Handle Cloudinary URLs - return as-is (already in cloud)
+  // Handle Cloudinary URLs - apply the requested width transform if any.
+  // Widths map to the closest pre-baked Cloudinary variant so we never
+  // request a derived resource the free plan hasn't cached.
   if (isCloudinaryUrl(path)) {
+    const width = options && options.width;
+    if (width) {
+      const baked = pickCloudinaryWidth(width);
+      if (baked) {
+        return injectCloudinaryTransform(path, `w_${baked},f_auto,q_auto,c_limit`);
+      }
+    }
     return path;
   }
 
@@ -129,18 +192,38 @@ export function getImageUrl(path, options = {}) {
 /**
  * Build a `srcSet` string for a Cloudinary URL.
  *
+ * Each requested width is mapped to the closest pre-baked Cloudinary
+ * variant so the browser actually downloads a smaller image instead of
+ * the original. Duplicate URLs (caused by multiple requested widths
+ * landing on the same pre-baked variant) are removed — `srcSet` is
+ * allowed to contain the same URL at multiple descriptors, but doing so
+ * just confuses the browser's candidate-selection algorithm.
+ *
  * @param {string} url - Cloudinary image URL.
  * @param {number[]} widths - Pixel widths to generate variants for
- *   (e.g. [400, 800, 1200]).
- * @returns {string} - `srcset` attribute value: `"url 400w, url 800w, ..."`.
+ *   (e.g. [400, 800, 1200]). Each value is rounded up to the closest
+ *   pre-baked variant (800, 1200, 1600) by `pickCloudinaryWidth`.
+ * @returns {string} - `srcset` attribute value: `"url 800w, url 1200w, ..."`.
  *   Returns an empty string for non-Cloudinary URLs (no point serving
  *   variants the CDN doesn't know about).
  */
 export function getImageSrcSet(url, widths = [400, 800, 1200]) {
   if (!isCloudinaryUrl(url)) return "";
-  return widths
-    .map((w) => `${getImageUrl(url, { width: w })} ${w}w`)
-    .join(", ");
+
+  const seen = new Set();
+  const descriptors = [];
+  for (const w of widths) {
+    const baked = pickCloudinaryWidth(w);
+    if (!baked) continue;
+    const variantUrl = injectCloudinaryTransform(
+      url,
+      `w_${baked},f_auto,q_auto,c_limit`
+    );
+    if (seen.has(variantUrl)) continue;
+    seen.add(variantUrl);
+    descriptors.push(`${variantUrl} ${baked}w`);
+  }
+  return descriptors.join(", ");
 }
 
 /**

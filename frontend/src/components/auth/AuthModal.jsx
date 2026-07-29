@@ -599,7 +599,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialView = "l
                   </div>
                 </div>
                 
-                <p className={styles.vendorNote}>⛳ Your vendor account will be reviewed by an siishop before you can list products.</p>
+                <p className={styles.vendorNote}>⛳ Your vendor account will be reviewed by  siishop before you can list products.</p>
               </div>
             )}
 
